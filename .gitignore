@@ -1,0 +1,9 @@
+/target/
+/.classpath
+/.project
+/.settings/
+/lib_managed/
+/TODO
+/bin/
+/.cache-main
+/.README.md.html
