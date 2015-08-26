@@ -65,6 +65,18 @@ private[nio] final class BytesList(val head: BytesNode, var last: BytesNode) {
 
 object NioSocketServer {
 
+  def warn(ex: Throwable, msg: String = "empty message") = {
+    Console.err.print(msg)
+    Console.err.print(" ")
+    ex.printStackTrace(Console.err)
+  }
+
+  val INITIALIZED = 0
+  val STARTED = 1
+  val STOPPING = 2
+  val STOPPED_GRACEFULLY = 4
+  val STOPPED_ROUGHLY = 8
+
   val CHANNEL_NORMAL = 0
   val CHANNEL_CLOSING_GRACEFULLY = 1
   val CHANNEL_CLOSING_RIGHT_NOW = 2
@@ -112,12 +124,6 @@ class NioSocketServer(interface: String,
   private def pending_for_io_operation(channelWrapper: ChannelWrapper) = this.synchronized {
     pending_io_operations = channelWrapper :: pending_io_operations
   }
-
-  val INITIALIZED = 0
-  val STARTED = 1
-  val STOPPING = 2
-  val STOPPED_GRACEFULLY = 4
-  val STOPPED_ROUGHLY = 8
 
   private var status = 0
 
@@ -326,7 +332,8 @@ class NioSocketServer(interface: String,
           }
         }
       } catch {
-        case _: Throwable => {
+        case ex: Throwable => {
+          warn(ex, "when key is acceptable.")
           if (null == channelWrapper) {
             safeClose(channel)
           } else {
@@ -353,7 +360,8 @@ class NioSocketServer(interface: String,
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       } catch {
-        case _: Throwable => {
+        case ex: Throwable => {
+          warn(ex, "when key is readable.")
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       } finally {
@@ -368,7 +376,8 @@ class NioSocketServer(interface: String,
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       } catch {
-        case _: Throwable => {
+        case ex: Throwable => {
+          warn(ex, "when key is writable.")
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       }
@@ -460,6 +469,13 @@ class NioSocketServer(interface: String,
       }*/
       //perfectly
       if (null != handler) {
+        //just for test
+        /*while (bytes.hasRemaining()) {
+          val b = ByteBuffer.wrap(Array(bytes.get()))
+          val newHandler = handler.bytesReceived(b, this)
+          //nothing to do with oldHandler
+          this.handler = newHandler
+        }*/
         val newHandler = handler.bytesReceived(bytes, this)
         //nothing to do with oldHandler
         this.handler = newHandler

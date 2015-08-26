@@ -24,9 +24,9 @@ import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketShow
 
 import woshilaiceshide.sserver.nio.NioSocketServer._
 
-class HttpChannelHandlerFactory(plain_http_channel_handler: PlainHttpChannelHandler) extends ChannelHandlerFactory {
+class HttpChannelHandlerFactory(plain_http_channel_handler: PlainHttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
 
-  def handler = Some(new ByteChannelToHttpChannel(plain_http_channel_handler))
+  def handler = Some(new ByteChannelToHttpChannel(plain_http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
   def getChannelHandler(aChannel: AChannel): Option[ChannelHandler] = handler
 }
 
@@ -106,6 +106,7 @@ sealed abstract class HttpChannelWrapper(
       if (!_finished) {
         _finished = HttpChannelWrapper.this.writeResponse(r1) == WriteResult.WR_OK
       }
+      _finished
     }
   }
 
@@ -113,6 +114,12 @@ sealed abstract class HttpChannelWrapper(
     def channelWrapper = HttpChannelWrapper.this
     private val r1 = r.recover {
       case _ => HttpResponse(500)
+    }
+    r1.onSuccess {
+      case response => synchronized {
+        resp = response
+        becomeWritable()
+      }
     }
     private var resp: HttpResponse = null
     def close() {}
@@ -158,7 +165,8 @@ trait HttpRequestProcessor {
   def chunkReceived(x: MessageChunk): Unit = {}
   def chunkEnded(x: ChunkedMessageEnd): Unit = {}
 
-  def becomeWritable(): Unit
+  //I's completed just now if I return true!
+  def becomeWritable(): Boolean
   def close(): Unit
   def finished: Boolean
 }
@@ -193,7 +201,7 @@ final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHa
   override def chunkReceived(x: MessageChunk): Unit = no
   override def chunkEnded(x: ChunkedMessageEnd): Unit = no
 
-  def becomeWritable(): Unit = no
+  def becomeWritable(): Boolean = no
   def close(): Unit = no
   def finished: Boolean = no
 
@@ -301,7 +309,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
   @inline private def has_next(): Boolean = null != head
 
   //am i switching to websocket?
-  private def switching = data_to_switching == null
+  private def switching = data_to_switching != null
   //if too many bytes here??? close it! the max is 1024 bytes.
   private var bytes_to_switching: ByteString = null
   private var data_to_switching: DataToSwitch = null
@@ -334,7 +342,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
       }
       this
     } else {
-      bytesReceived(byteBuffer, channelWrapper)
+      bytesReceived1(byteBuffer, channelWrapper)
     }
   }
 
@@ -347,6 +355,10 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
       //it should be PlainHttpChannelWrapper
       val channel = new PlainHttpChannelWrapper(tmp.channelWrapper, tmp.closeAfterResponseCompletion, this)
       handler.requestReceived(tmp.value, channel) match {
+        case null => {
+          tmp.channelWrapper.closeChannel(true)
+          this
+        }
         case h: LengthedWebSocketChannelHandler => {
           if (switching) {
             //switching protocol
@@ -366,7 +378,12 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
             this
           }
         }
-        case p: HttpRequestProcessor => { processor = p; this }
+        case p: HttpRequestProcessor => {
+          if (!p.becomeWritable()) {
+            processor = p
+          }
+          this
+        }
       }
     } else {
       this
@@ -420,6 +437,10 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
               if (processor == null) {
                 val channel = new PlainHttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
                 handler.requestReceived(x, channel) match {
+                  case null => {
+                    channelWrapper.closeChannel(true)
+                    this
+                  }
                   case h: LengthedWebSocketChannelHandler => {
                     //use a http parser for websocket data
                     continue() match {
@@ -434,7 +455,12 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
                     }
 
                   }
-                  case p: HttpRequestProcessor => { processor = p; this }
+                  case p: HttpRequestProcessor => {
+                    if (!p.becomeWritable()) {
+                      processor = p
+                    }
+                    process(continue())
+                  }
                 }
 
               } else {
