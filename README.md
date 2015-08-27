@@ -1,7 +1,7 @@
 # s-server
 Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only).
 
-It's targeted for small footprint when running, but with extensibility for mulit-threading when processing http requests's business.
+It's targeted for small footprint when running, with extensibility for mulit-threading when processing http requests' business.
 
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
@@ -17,3 +17,13 @@ It's targeted for small footprint when running, but with extensibility for mulit
 ## Two Examples
 * test/main/scala/woshilaiceshide/sserver/EchoServer.scala
 * test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala
+
+## Attention Please!
+When the input stream is shutdown by the client, the server will read "-1" bytes from the stream.
+But, "-1" can not determine among "the entire socket is broken" or "just the input is shutdown by peer, but the output is still alive".
+
+I tried much, but did not catch it!
+
+Business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation.
+The key hook is "woshilaiceshide.sserver.nio.ChannelHandler.inputEnded(channelWrapper: NioSocketServer.ChannelWrapper)".
+In most situations, You can just close the connection  
