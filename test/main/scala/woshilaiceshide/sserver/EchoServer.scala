@@ -11,6 +11,7 @@ object EchoServer extends App {
       def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {
         println("open...")
       }
+      def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper) = channelWrapper.closeChannel(false)
       def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
 
         val bytes = this.toBytesArray(byteBuffer)

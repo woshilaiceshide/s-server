@@ -28,15 +28,19 @@ object SampleHttpServer extends App {
     def requestReceived(request: HttpRequestPart, channel: HttpChannelWrapper): HttpRequestProcessor = request match {
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping1"), _, _, _) =>
         channel.respond {
-          new HttpResponse(200, "pong0")
+          new HttpResponse(200, "pong1\r\n")
         }
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping0"), _, _, _) =>
         channel.respondAsynchronously {
-          Future { new HttpResponse(200, "pong1") }
+          Future { Thread.sleep(3 * 1000); new HttpResponse(200, "pong0\r\n") }
         }
       case x @ HttpRequest(HttpMethods.GET, Uri.Path("/ws_example"), _, _, _) =>
         channel.toWebSocketChannelHandler(x, Nil, 1024, c => {
           new WebSocketChannelHandler() {
+
+            def inputEnded() = {
+              c.close(WebSocket13.CloseCode.NORMAL_CLOSURE_OPTION)
+            }
 
             def becomeWritable() {
 

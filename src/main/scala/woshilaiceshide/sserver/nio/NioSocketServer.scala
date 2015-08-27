@@ -29,6 +29,7 @@ trait ChannelHandler {
   }
 
   def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit
+  def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper): Unit
   def bytesReceived(byteBuffer: ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler
   //if the handler does not close the channel, then the channel will closed roughly. 
   def channelIdeled(channelWrapper: NioSocketServer#ChannelWrapper): Unit
@@ -83,7 +84,13 @@ object NioSocketServer {
   val CHANNEL_CLOSED = 3
 
   object ChannelClosedCause extends scala.Enumeration {
-    val UNKNOWN, BY_BIZ, SERVER_STOPPING, BY_PEER, BECUASE_SOCKET_CLOSED_UNEXPECTED, BECAUSE_IDLE = Value
+    val UNKNOWN = Value
+    val BY_BIZ = Value
+    val SERVER_STOPPING = Value
+    val BY_PEER = Value
+    val BECUASE_INPUTSTREAM_ENDED = Value
+    val BECUASE_SOCKET_CLOSED_UNEXPECTED = Value
+    val BECAUSE_IDLE = Value
   }
 
   object WriteResult extends scala.Enumeration {
@@ -342,43 +349,52 @@ class NioSocketServer(interface: String,
         }
       }
 
-    } else if (key.isReadable()) {
+    } else {
+
       val channel = key.channel().asInstanceOf[SocketChannel]
       val channelWrapper = key.attachment().asInstanceOf[ChannelWrapper]
-      try {
-        val readCount = channel.read(CLIENT_BUFFER)
-        if (readCount > 0) {
-          CLIENT_BUFFER.flip()
-          channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
+
+      if (key.isReadable()) {
+        try {
+          val readCount = channel.read(CLIENT_BUFFER)
+          if (readCount > 0) {
+            CLIENT_BUFFER.flip()
+            channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
+            if (!key.isValid()) {
+              channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+            }
+          } else {
+            if (!key.isValid() || !channel.isOpen()) {
+              channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+            } else {
+              //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
+              //I tried much, but did not catch it!
+              //Business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
+              channelWrapper.clearOpRead()
+              channelWrapper.inputEnded()
+            }
+          }
+        } catch {
+          case ex: Throwable => {
+            warn(ex, "when key is readable.")
+            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+          }
+        } finally {
+          CLIENT_BUFFER.clear()
+        }
+      }
+
+      if (key.isWritable()) {
+        try {
+          channelWrapper.writing()
           if (!key.isValid()) {
             channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
           }
-        } else {
-          //-1 can not be a hint for "closed by peer".
-          //it's ok for business codes that need to know "why closed", 
-          //because generally c/s will speak to each other that "I'll close the socket".
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-        }
-      } catch {
-        case ex: Throwable => {
-          warn(ex, "when key is readable.")
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-        }
-      } finally {
-        CLIENT_BUFFER.clear()
-      }
-    } else if (key.isWritable()) {
-      val channel = key.channel().asInstanceOf[SocketChannel]
-      val channelWrapper = key.attachment().asInstanceOf[ChannelWrapper]
-      try {
-        channelWrapper.writing()
-        if (!key.isValid()) {
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-        }
-      } catch {
-        case ex: Throwable => {
-          warn(ex, "when key is writable.")
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+        } catch {
+          case ex: Throwable => {
+            warn(ex, "when key is writable.")
+            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+          }
         }
       }
     }
@@ -460,6 +476,12 @@ class NioSocketServer(interface: String,
 
     def post(task: Runnable): Boolean = NioSocketServer.this.post(task)
     def is_in_io_worker_thread() = Thread.currentThread() == NioSocketServer.this.workerThread
+
+    private[nio] def inputEnded() = {
+      if (null != handler) {
+        handler.inputEnded(this)
+      }
+    }
 
     private[nio] def bytesReceived(bytes: ByteBuffer) = {
       //DO NOT take the received event into account!
@@ -684,6 +706,15 @@ class NioSocketServer(interface: String,
       var alreadyOps = key.interestOps()
       if ((alreadyOps & SelectionKey.OP_WRITE) != 0) {
         alreadyOps &= ~SelectionKey.OP_WRITE
+        key.interestOps(alreadyOps)
+      }
+    }
+
+    private[nio] def clearOpRead() {
+      val key = channel.keyFor(selector)
+      var alreadyOps = key.interestOps()
+      if ((alreadyOps & SelectionKey.OP_READ) != 0) {
+        alreadyOps &= ~SelectionKey.OP_READ
         key.interestOps(alreadyOps)
       }
     }
