@@ -210,6 +210,7 @@ trait WebSocketChannelHandler extends HttpChannelHandler {
   def pongReceived(frame: WebSocket13.WSFrame): Unit
   def frameReceived(frame: WebSocket13.WSFrame): Unit
   def fireClosed(code: WebSocket13.CloseCode.Value, reason: String): Unit
+  def inputEnded(): Unit
 
   def channelWrapper: HttpChannelWrapper =
     throw new RuntimeException("this method should not be invoked anywhere.")
@@ -288,16 +289,14 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
   private[can] def check(channelWrapper: NioSocketServer#ChannelWrapper, closeAfterEnd: Boolean): Unit = {
     //use "post(...)" to keep things run on its way.
     if (channelWrapper.is_in_io_worker_thread()) {
-      if (closeAfterEnd) {
+      if (closeAfterEnd || (!has_next() && _inputEnded)) {
         channelWrapper.closeChannel(false)
-      } else {
-        if (has_next()) {
-          channelWrapper.post(new Runnable() {
-            def run() {
-              bytesReceived(null, channelWrapper)
-            }
-          })
-        }
+      } else if (has_next()) {
+        channelWrapper.post(new Runnable() {
+          def run() {
+            bytesReceived(null, channelWrapper)
+          }
+        })
       }
     } else {
       channelWrapper.post(new Runnable() {
@@ -318,6 +317,14 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
 
   def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
 
+  private var _inputEnded = false
+  def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper) = {
+    _inputEnded = true
+    if (!has_next) {
+      channelWrapper.closeChannel(false)
+    }
+  }
+
   private var head: Node = null
   private var tail: Node = null
   private var pipeline_size = 0
@@ -328,9 +335,9 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
 
   def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
     if (null == byteBuffer) {
-      check()
+      check(channelWrapper)
     } else if (switching) {
-      if (1024 < byteBuffer.remaining()) {
+      if (128 < byteBuffer.remaining()) {
         throw new RuntimeException("too many bytes in the websocket channel")
       } else if (null == bytes_to_switching)
         bytes_to_switching = ByteString(byteBuffer)
@@ -346,7 +353,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
     }
   }
 
-  def check(): ChannelHandler = {
+  def check(channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
     if (head != null) {
       val tmp = head
       head = head.next
@@ -386,6 +393,9 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
         }
       }
     } else {
+      if (_inputEnded) {
+        channelWrapper.closeChannel(false)
+      }
       this
     }
   }
@@ -527,6 +537,9 @@ class ByteChannelToWebsocketChannel(
     extends ChannelHandler {
 
   def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
+
+  def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper) = handler.inputEnded()
+
   def bytesReceived(byteString: ByteString, offset: Int, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
     import WebSocket13._
     val result = parser(byteString)
