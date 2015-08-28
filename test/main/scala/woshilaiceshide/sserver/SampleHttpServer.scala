@@ -34,7 +34,7 @@ object SampleHttpServer extends App {
         channel.respondAsynchronously {
           Future { Thread.sleep(3 * 1000); new HttpResponse(200, "pong0\r\n") }
         }
-      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/ws_example"), _, _, _) =>
+      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/demo"), _, _, _) =>
         channel.toWebSocketChannelHandler(x, Nil, 1024, c => {
           new WebSocketChannelHandler() {
 

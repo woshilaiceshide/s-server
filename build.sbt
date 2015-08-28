@@ -26,8 +26,6 @@ unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "java" )
 
 unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "scala" )
 
-libraryDependencies += "com.google.guava" % "guava" % "18.0"
-
 libraryDependencies ++= {
   val akkaV = "2.3.12"
   val sprayV = "1.3.3"

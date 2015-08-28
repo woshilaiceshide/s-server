@@ -43,6 +43,22 @@ sealed abstract class HttpChannelWrapper(
 
   private var finished = false
 
+  private[can] def writeWebSocketResponse(response: HttpResponse) = {
+    val wr = synchronized {
+
+      if (finished) {
+        throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
+      }
+
+      val r = new ByteArrayRendering(1024)
+      val ctx = new ResponsePartRenderingContext(responsePart = response)
+      val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
+
+      channelWrapper.write(r.get)
+    }
+
+    wr
+  }
   def writeResponse(response: HttpResponsePart) = {
     val (_finished, wr) = synchronized {
 
@@ -79,12 +95,12 @@ sealed abstract class HttpChannelWrapper(
   def toWebSocketChannelHandler(request: HttpRequest, extraHeaders: List[HttpHeader], max_payload_length: Int, born: WebSocketChannelWrapper => WebSocketChannelHandler) = {
     WebSocket13.showResponse(request) match {
       case WebSocketShow.Ok(response) => {
-        writeResponse(response)
+        writeWebSocketResponse(response)
         val channel = new WebSocketChannelWrapper(channelWrapper)
         LengthedWebSocketChannelHandler(born(channel), max_payload_length)
       }
       case WebSocketShow.Failed(response) => {
-        writeResponse(response)
+        writeWebSocketResponse(response)
         channelWrapper.closeChannel(false)
         null
       }

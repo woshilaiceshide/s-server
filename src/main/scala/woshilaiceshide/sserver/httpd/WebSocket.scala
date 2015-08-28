@@ -29,12 +29,12 @@ object WebSocket13 {
   val WS_HEADER_UPGRADE_VALUE = "websocket"
   val WS_HEADER_CONNECTION = "Connection"
   val WS_HEADER_CONNECTION_VALUE = "Upgrade"
-  val WS_HEADER_WEBSOCKET_VERSION = "Sec-Websocket-Version"
+  val WS_HEADER_WEBSOCKET_VERSION = "Sec-WebSocket-Version"
   //NOW I support websocket 13 only.
   val WS_HEADER_WEBSOCKET_VERSION_13_VALUE = "13"
-  val WS_HEADER_WEBSOCKET_KEY = "Sec-Websocket-Key"
-  val WS_HEADER_WEBSOCKET_ACCEPT = "Sec-Websocket-Accept"
-  val WS_HEADER_WEBSOCKET_PROTOCOL = "Sec-Websocket-Protocol"
+  val WS_HEADER_WEBSOCKET_KEY = "Sec-WebSocket-Key"
+  val WS_HEADER_WEBSOCKET_ACCEPT = "Sec-WebSocket-Accept"
+  val WS_HEADER_WEBSOCKET_PROTOCOL = "Sec-WebSocket-Protocol"
 
   import spray.http.HttpHeaders._
 
@@ -63,7 +63,10 @@ object WebSocket13 {
   def showResponse(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil): WebSocketShow = {
     if (!isAWebSocketRequest(request)) {
       WebSocketShow.Failed(HttpResponse(400, "not a websocket request"))
-    } else if (request.headers.exists { x => x.name == WS_HEADER_WEBSOCKET_VERSION && x.value == WS_HEADER_WEBSOCKET_VERSION_13_VALUE }) {
+    } else if (!request.headers.exists { x =>
+      x.name == WS_HEADER_WEBSOCKET_VERSION &&
+        x.value == WS_HEADER_WEBSOCKET_VERSION_13_VALUE
+    }) {
       WebSocketShow.Failed(HttpResponse(400, s"${WS_HEADER_WEBSOCKET_VERSION} should be ${WS_HEADER_WEBSOCKET_VERSION_13_VALUE}, other versions are not supported."))
     } else {
 
@@ -76,7 +79,8 @@ object WebSocket13 {
             val acceptedKey = getAcceptedKey(key1)
             val headers = RawHeader(WS_HEADER_WEBSOCKET_ACCEPT, acceptedKey) ::
               RawHeader(WS_HEADER_UPGRADE, WS_HEADER_UPGRADE_VALUE) ::
-              RawHeader(WS_HEADER_CONNECTION, WS_HEADER_CONNECTION_VALUE) ::
+              spray.http.HttpHeaders.Connection(WS_HEADER_CONNECTION_VALUE) ::
+              //RawHeader(WS_HEADER_CONNECTION, WS_HEADER_CONNECTION_VALUE) ::
               extraHeaders
             val headers1 = protocol match {
               case None    => headers
@@ -163,7 +167,6 @@ object WebSocket13 {
   def default_parser(max_payload_length: Int): WSFrameParser = parseSafe(_: ByteString, 0, max_payload_length)
 
   def needMoreData(input: ByteString, offset: Int)(next: (ByteString, Int) => WSResult): WSResult = {
-    val x = next(_: ByteString, 0)
     if (offset == input.length) WSResult.NeedMoreData(next(_, 0))
     else WSResult.NeedMoreData(more => next(input ++ more, offset))
   }
@@ -272,9 +275,9 @@ object WebSocket13 {
     }
     if (op == OpCode.TEXT) {
       val s = new String(payload, "utf-8")
-      WSResult.Emit(WSText(s, fin, payload, masked, mask_key), () => parseSafe(input, offset, max_payload_length))
+      WSResult.Emit(WSText(s, fin, payload, masked, mask_key), () => parseSafe(input, cursor, max_payload_length))
     } else if (op == OpCode.BINARY) {
-      WSResult.Emit(WSBytes(payload, fin, masked, mask_key), () => parseSafe(input, offset, max_payload_length))
+      WSResult.Emit(WSBytes(payload, fin, masked, mask_key), () => parseSafe(input, cursor, max_payload_length))
     } else if (op == OpCode.CLOSE) {
       val (closeCode, reason) = if (2 <= payload.length) {
         val code = try {
@@ -293,11 +296,11 @@ object WebSocket13 {
       }
       WSResult.Emit(WSClose(closeCode, reason, payload, fin, masked, mask_key), () => WSResult.End)
     } else if (op == OpCode.PING) {
-      WSResult.Emit(WSPing(payload, fin, masked, mask_key), () => parseSafe(input, offset, max_payload_length))
+      WSResult.Emit(WSPing(payload, fin, masked, mask_key), () => parseSafe(input, cursor, max_payload_length))
     } else if (op == OpCode.PONG) {
-      WSResult.Emit(WSPong(payload, fin, masked, mask_key), () => parseSafe(input, offset, max_payload_length))
+      WSResult.Emit(WSPong(payload, fin, masked, mask_key), () => parseSafe(input, cursor, max_payload_length))
     } else if (op == OpCode.CONTINUATION) {
-      WSResult.Emit(WSContinuation(payload, fin, masked, mask_key), () => parseSafe(input, offset, max_payload_length))
+      WSResult.Emit(WSContinuation(payload, fin, masked, mask_key), () => parseSafe(input, cursor, max_payload_length))
     } else {
       WSResult.Error(CloseCode.RESERVED, "a ghost???")
     }
