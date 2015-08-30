@@ -223,6 +223,8 @@ final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHa
 
 }
 trait WebSocketChannelHandler extends HttpChannelHandler {
+  def opened(): Unit = {}
+  def idled(): Unit = {}
   def pongReceived(frame: WebSocket13.WSFrame): Unit
   def frameReceived(frame: WebSocket13.WSFrame): Unit
   def fireClosed(code: WebSocket13.CloseCode.Value, reason: String): Unit
@@ -532,7 +534,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
     }
     process(result)
   }
-  def channelIdeled(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
+  def channelIdled(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
   def becomeWritable(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {
     if (null != processor) { processor.becomeWritable() }
   }
@@ -552,7 +554,7 @@ class ByteChannelToWebsocketChannel(
   private[this] var parser: WebSocket13.WSFrameParser)
     extends ChannelHandler {
 
-  def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
+  def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = { handler.opened() }
 
   def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper) = handler.inputEnded()
 
@@ -592,7 +594,7 @@ class ByteChannelToWebsocketChannel(
     bytesReceived(byteString, 0, channelWrapper)
 
   }
-  def channelIdeled(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
+  def channelIdled(channelWrapper: NioSocketServer#ChannelWrapper): Unit = { handler.idled() }
   def becomeWritable(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {
     if (null != handler) handler.becomeWritable()
   }

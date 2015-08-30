@@ -32,7 +32,7 @@ trait ChannelHandler {
   def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper): Unit
   def bytesReceived(byteBuffer: ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler
   //if the handler does not close the channel, then the channel will closed roughly. 
-  def channelIdeled(channelWrapper: NioSocketServer#ChannelWrapper): Unit
+  def channelIdled(channelWrapper: NioSocketServer#ChannelWrapper): Unit
   //too many bytes waiting for transport to stop sending previously, 
   //now please continue your transport.
   def becomeWritable(channelWrapper: NioSocketServer#ChannelWrapper): Unit
@@ -630,7 +630,7 @@ class NioSocketServer(interface: String,
       }
       if (should) {
         if (null != handler) {
-          handler.channelIdeled(this)
+          handler.channelIdled(this)
         }
         this.close(true, ChannelClosedCause.BECAUSE_IDLE)
       }
