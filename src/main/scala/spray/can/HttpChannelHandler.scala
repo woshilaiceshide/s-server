@@ -223,7 +223,6 @@ final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHa
 
 }
 trait WebSocketChannelHandler extends HttpChannelHandler {
-  def opened(): Unit = {}
   def idled(): Unit = {}
   def pongReceived(frame: WebSocket13.WSFrame): Unit
   def frameReceived(frame: WebSocket13.WSFrame): Unit
@@ -554,7 +553,7 @@ class ByteChannelToWebsocketChannel(
   private[this] var parser: WebSocket13.WSFrameParser)
     extends ChannelHandler {
 
-  def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = { handler.opened() }
+  def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
 
   def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper) = handler.inputEnded()
 
