@@ -101,6 +101,8 @@ object NioSocketServer {
     val WR_FAILED_BECAUSE_BYTES_TOO_BIG = Value
     val WR_FAILED_BECAUSE_SERVER_STOPING_STOPPED = Value
   }
+
+  private[nio] case class TimedTask(timestamp: Long, runnable: Runnable)
 }
 
 class NioSocketServer(interface: String,
@@ -108,7 +110,8 @@ class NioSocketServer(interface: String,
                       channel_hander_factory: ChannelHandlerFactory,
                       receive_buffer_size: Int = 1024,
                       socket_max_idle_time_in_seconds_0: Int = 60 * 5,
-                      max_bytes_waiting_for_written_per_channel: Int = 64 * 1024) {
+                      max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
+                      enable_fuzzy_scheduler: Boolean = false) {
 
   import NioSocketServer._
 
@@ -140,6 +143,16 @@ class NioSocketServer(interface: String,
       false
     } else {
       tasks = task :: tasks
+      true
+    }
+  }
+
+  private var timed_tasks: List[TimedTask] = Nil
+  def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = this.synchronized {
+    if (STARTED != status) {
+      false
+    } else {
+      timed_tasks = TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task) :: timed_tasks
       true
     }
   }
@@ -281,6 +294,20 @@ class NioSocketServer(interface: String,
 
     var tasks_to_do = this.synchronized { if (0 == tasks.size) Nil else { val tmp = tasks; tasks = Nil; tmp } }
     tasks_to_do.foreach { x => safeOp(x.run()) }
+
+    if (enable_fuzzy_scheduler) {
+      var timed_tasks_to_do = this.synchronized {
+        if (0 == timed_tasks.size) Nil
+        else {
+          val now = System.currentTimeMillis()
+          val tmp = timed_tasks.groupBy { x => x.timestamp >= now }
+          val timeout = tmp(true);
+          timed_tasks = tmp(false);
+          timeout
+        }
+      }
+      timed_tasks_to_do.foreach { x => safeOp { x.runnable.run() } }
+    }
 
     if (continue) {
       //check for idle channels and zombie channels

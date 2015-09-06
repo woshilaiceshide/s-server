@@ -5,7 +5,7 @@ It's targeted for small footprint when running, with extensibility for mulit-thr
 
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
-* only one single thread is needed for basic running, and this thread can be used as an external task runner.
+* only one single thread is needed for basic running, and this thread can be used as an external task runner and a fuzzy scheduler. (the builtin fuzzy scheduler may be disabled when constructing the server instance.)
 * support multi-threading when processing messages in bussiness codes
 * builtin checking for idle connections
 * builtin support for throttling messages
