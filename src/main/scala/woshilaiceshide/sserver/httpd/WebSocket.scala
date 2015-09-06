@@ -48,7 +48,12 @@ object WebSocket13 {
   def isAWebSocketRequest(request: HttpRequest) = {
     2 == request.headers.filter { x =>
       (x.name == WS_HEADER_UPGRADE && x.value == WS_HEADER_UPGRADE_VALUE) ||
-        (x.name == WS_HEADER_CONNECTION && x.value == WS_HEADER_CONNECTION_VALUE)
+        {
+          x match {
+            case x: spray.http.HttpHeaders.Connection => x.hasUpgrade
+            case _                                    => false
+          }
+        }
     }.size
   }
 
