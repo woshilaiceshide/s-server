@@ -144,6 +144,7 @@ class NioSocketServer(interface: String,
       false
     } else {
       tasks = task :: tasks
+      selector.wakeup()
       true
     }
   }
