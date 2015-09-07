@@ -344,7 +344,7 @@ class NioSocketServer(interface: String,
     }
   }
 
-  def process(key: SelectionKey) {
+  private def process(key: SelectionKey) {
     if (key.isAcceptable()) {
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
