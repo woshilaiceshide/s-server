@@ -111,13 +111,14 @@ class NioSocketServer(interface: String,
                       receive_buffer_size: Int = 1024,
                       socket_max_idle_time_in_seconds_0: Int = 60 * 5,
                       max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
+                      default_select_timeout: Int = 30 * 1000, 
                       enable_fuzzy_scheduler: Boolean = false) {
 
   import NioSocketServer._
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
   private val socket_max_idle_time_in_seconds = if (0 < socket_max_idle_time_in_seconds_0) socket_max_idle_time_in_seconds_0 else 60 * 1000
-  private val default_select_timeout = 30 * 1000
+  //private val default_select_timeout = 30 * 1000
   private var select_timeout = Math.min(socket_max_idle_time_in_seconds, default_select_timeout)
 
   private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
