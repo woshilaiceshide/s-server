@@ -111,7 +111,7 @@ class NioSocketServer(interface: String,
                       receive_buffer_size: Int = 1024,
                       socket_max_idle_time_in_seconds_0: Int = 60 * 5,
                       max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
-                      default_select_timeout: Int = 30 * 1000, 
+                      default_select_timeout: Int = 30 * 1000,
                       enable_fuzzy_scheduler: Boolean = false) {
 
   import NioSocketServer._
@@ -440,6 +440,8 @@ class NioSocketServer(interface: String,
     def remoteAddress = channel.getRemoteAddress
     def localAddress = channel.getLocalAddress
 
+    override def toString() = s"""${remoteAddress}->${localAddress}@@${hashCode}}"""
+
     private[nio] def closeDirectly() {
       val should = this.synchronized {
         val tmp = status
@@ -513,7 +515,7 @@ class NioSocketServer(interface: String,
     }
 
     private[nio] def bytesReceived(bytes: ByteBuffer) = {
-      //DO NOT take the received event into account!
+      //DO NOT take the received event into account for idle probing!
       //If ... then use resetIdel()
       /*this.synchronized {
         this.last_active_time = System.currentTimeMillis()
@@ -598,37 +600,40 @@ class NioSocketServer(interface: String,
       }
       if (null != tmp) {
         val remain = writing0(tmp.head, tmp.last, 0)
-        if (null == remain) {
-          pending_for_io_operation(this)
-        } else {
-          var become_writable = false
-          this.synchronized {
-            if (null == writes) {
-              writes = remain._1
-            } else {
-              remain._1.last.next = writes.head
-              writes = remain._1
-            }
 
-            if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
-              bytes_waiting_for_written = bytes_waiting_for_written - remain._2
-              become_writable = bytes_waiting_for_written < max_bytes_waiting_for_written_per_channel
-            } else {
-              bytes_waiting_for_written = bytes_waiting_for_written - remain._2
-            }
+        if (null == remain._1) {
+          pending_for_io_operation(this)
+        }
+
+        var become_writable = false
+        this.synchronized {
+
+          val prev_bytes_waiting_for_written = bytes_waiting_for_written
+          bytes_waiting_for_written = bytes_waiting_for_written - remain._2
+
+          if (null == writes) {
+            writes = remain._1
+          } else if (null != remain._1) {
+            remain._1.last.next = writes.head
+            writes = remain._1
           }
-          //invoked if needed only.
-          if (become_writable) {
-            if (handler != null) handler.becomeWritable(this)
+
+          if (prev_bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
+            become_writable = bytes_waiting_for_written < max_bytes_waiting_for_written_per_channel
           }
         }
+        //invoked if needed only.
+        if (become_writable) {
+          if (handler != null) handler.becomeWritable(this)
+        }
+
       }
 
     }
     @tailrec private[nio] final def writing0(head: BytesNode, last: BytesNode, written_bytes: Int): (BytesList, Int) = {
 
       head match {
-        case null => null
+        case null => (null, written_bytes)
         case node => {
           val written = channel.write(ByteBuffer.wrap(node.bytes))
           if (written == node.bytes.length) {
