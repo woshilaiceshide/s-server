@@ -18,6 +18,11 @@ It's targeted for small footprint when running, with extensibility for mulit-thr
 * test/main/scala/woshilaiceshide/sserver/EchoServer.scala
 * test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala
 
+## Optimizations & TODO
+* optimize socket i/o operations: reducing i/o operations, make i/o just carried out as directly as possible without repost them to the executor.
+* optimize the http parsing processes
+* ...
+
 ## Attention Please!
 When the input stream is shutdown by the client, the server will read "-1" bytes from the stream.
 But, "-1" can not determine among "the entire socket is broken" or "just the input is shutdown by peer, but the output is still alive".
