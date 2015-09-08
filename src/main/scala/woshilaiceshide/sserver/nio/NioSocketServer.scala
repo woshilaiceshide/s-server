@@ -109,7 +109,7 @@ class NioSocketServer(interface: String,
                       port: Int,
                       channel_hander_factory: ChannelHandlerFactory,
                       receive_buffer_size: Int = 1024,
-                      socket_max_idle_time_in_seconds_0: Int = 60 * 5,
+                      socket_max_idle_time_in_seconds_0: Int = 90,
                       max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
                       default_select_timeout: Int = 30 * 1000,
                       enable_fuzzy_scheduler: Boolean = false) {
@@ -117,9 +117,9 @@ class NioSocketServer(interface: String,
   import NioSocketServer._
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
-  private val socket_max_idle_time_in_seconds = if (0 < socket_max_idle_time_in_seconds_0) socket_max_idle_time_in_seconds_0 else 60 * 1000
+  private val socket_max_idle_time_in_seconds = if (0 < socket_max_idle_time_in_seconds_0) socket_max_idle_time_in_seconds_0 else 6
   //private val default_select_timeout = 30 * 1000
-  private var select_timeout = Math.min(socket_max_idle_time_in_seconds, default_select_timeout)
+  private var select_timeout = Math.min(socket_max_idle_time_in_seconds * 1000, default_select_timeout)
 
   private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
   private val ssc = ServerSocketChannel.open()
@@ -153,9 +153,11 @@ class NioSocketServer(interface: String,
   def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = this.synchronized {
     if (STARTED != status) {
       false
-    } else {
+    } else if(enable_fuzzy_scheduler){
       timed_tasks = TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task) :: timed_tasks
       true
+    }else{
+      false
     }
   }
 
@@ -302,7 +304,7 @@ class NioSocketServer(interface: String,
         if (0 == timed_tasks.size) Nil
         else {
           val now = System.currentTimeMillis()
-          val tmp = timed_tasks.groupBy { x => x.timestamp >= now }
+          val tmp = timed_tasks.groupBy { x => x.timestamp <= now }.withDefault { x => Nil }
           val timeout = tmp(true);
           timed_tasks = tmp(false);
           timeout
