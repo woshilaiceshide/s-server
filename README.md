@@ -19,8 +19,8 @@ It's targeted for small footprint when running, with extensibility for mulit-thr
 * test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala
 
 ## Optimizations & TODO
-* optimize socket i/o operations: reducing i/o operations, make i/o just carried out as directly as possible without repost them to the executor.
-* optimize the http parsing processes
+* optimize socket i/o operations: 1). reducing i/o operations, 2). make i/o just carried out as directly as possible without repost them to the executor.
+* optimize the http parsing processes. Spray's http parser is not good enough, and some tweaks needed.
 * ...
 
 ## Attention Please!
