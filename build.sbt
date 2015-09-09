@@ -4,6 +4,22 @@ name := "s-server"
 
 version := "1.0"
 
+description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
+
+licenses += ("Apache 2 license", url("http://www.apache.org/licenses/LICENSE-2.0"))
+
+publishMavenStyle := true
+
+enablePlugins(BintrayPlugin)
+
+bintrayRepository := "maven"
+
+bintrayOrganization := None
+
+bintrayVcsUrl := Some(s"git@github.com:woshilaiceshide/${name.value}.git")
+
+bintrayReleaseOnPublish in ThisBuild := false
+
 compileOrder in Compile := CompileOrder.Mixed
 
 transitiveClassifiers := Seq("sources")
