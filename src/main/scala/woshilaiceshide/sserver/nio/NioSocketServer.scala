@@ -109,7 +109,7 @@ class NioSocketServer(interface: String,
                       port: Int,
                       channel_hander_factory: ChannelHandlerFactory,
                       receive_buffer_size: Int = 1024,
-                      socket_max_idle_time_in_seconds_0: Int = 90,
+                      socket_max_idle_time_in_seconds: Int = 90,
                       max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
                       default_select_timeout: Int = 30 * 1000,
                       enable_fuzzy_scheduler: Boolean = false) {
@@ -117,9 +117,9 @@ class NioSocketServer(interface: String,
   import NioSocketServer._
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
-  private val socket_max_idle_time_in_seconds = if (0 < socket_max_idle_time_in_seconds_0) socket_max_idle_time_in_seconds_0 else 6
+  private val socket_max_idle_time_in_seconds_1 = if (0 < socket_max_idle_time_in_seconds) socket_max_idle_time_in_seconds else 60
   //private val default_select_timeout = 30 * 1000
-  private var select_timeout = Math.min(socket_max_idle_time_in_seconds * 1000, default_select_timeout)
+  private var select_timeout = Math.min(socket_max_idle_time_in_seconds_1 * 1000, default_select_timeout)
 
   private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
   private val ssc = ServerSocketChannel.open()
@@ -658,7 +658,7 @@ class NioSocketServer(interface: String,
     private[nio] def checkIdle(current: Long) = {
       val (should, status1) = this.synchronized {
         if (status == CHANNEL_NORMAL &&
-          current - this.last_active_time > NioSocketServer.this.socket_max_idle_time_in_seconds * 1000) {
+          current - this.last_active_time > NioSocketServer.this.socket_max_idle_time_in_seconds_1 * 1000) {
           (true, status)
         } else {
           (false, status)
