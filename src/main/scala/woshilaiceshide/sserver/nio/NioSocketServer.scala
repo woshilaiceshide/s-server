@@ -153,11 +153,22 @@ class NioSocketServer(interface: String,
   def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = this.synchronized {
     if (STARTED != status) {
       false
-    } else if(enable_fuzzy_scheduler){
+    } else if (enable_fuzzy_scheduler) {
       timed_tasks = TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task) :: timed_tasks
       true
-    }else{
+    } else {
       false
+    }
+  }
+
+  private var terminated = false
+  private var when_terminated: List[Runnable] = Nil
+  def registerOnTermination[T](code: => T) = this.synchronized {
+    if (terminated) {
+      false
+    } else {
+      when_terminated = new Runnable { def run = code } :: when_terminated
+      true
     }
   }
 
@@ -197,8 +208,11 @@ class NioSocketServer(interface: String,
           status = STOPPED_GRACEFULLY
           this.notifyAll()
         }
-
       }
+    } finally this.synchronized {
+      //disable registerOnTermination first, before executing the sinks.
+      terminated = true
+      when_terminated.foreach { x => safeOp(x.run()) }
     }
   }
 
