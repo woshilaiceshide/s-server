@@ -6,11 +6,13 @@ version := "1.1"
 
 description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
 
-licenses += ("Apache 2 license", url("http://www.apache.org/licenses/LICENSE-2.0"))
+licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
 
 publishMavenStyle := true
 
 enablePlugins(BintrayPlugin)
+
+pomIncludeRepository  := {_ => false}
 
 bintrayRepository := "maven"
 
