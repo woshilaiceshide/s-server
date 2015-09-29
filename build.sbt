@@ -65,5 +65,7 @@ libraryDependencies ++= {
 
 mappings in Universal ++= (baseDirectory.value / "conf" * "*" get) map (x => x -> ("conf/" + x.getName))
 
-mainClass in Compile := Some("woshilaiceshide.sserver.EchoServer")
+//mainClass in (Test, run) := Some("woshilaiceshide.sserver.EchoServer")
+
+mainClass in Test := Some("woshilaiceshide.sserver.EchoServer")
 

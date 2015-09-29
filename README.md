@@ -18,6 +18,10 @@ It's targeted for small footprint when running, with extensibility for mulit-thr
 * test/main/scala/woshilaiceshide/sserver/EchoServer.scala
 * test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala
 
+To test the above examples, just type the following command in your sbt console: 
+* `'test:run'` to run `'woshilaiceshide.sserver.EchoServer'`
+* `'test:runMain'` followed by a `'TAB'` to prompt you the valid choices
+
 ## Optimizations & TODO
 * optimize socket i/o operations: 1). reducing i/o operations, 2). making i/o just carried out as directly as possible without repost them to the executor.
 * optimize the http parsing processes. Spray's http parser is not good enough, and some tweaks needed.
