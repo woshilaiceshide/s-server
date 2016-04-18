@@ -25,6 +25,7 @@ To test the above examples, just type the following command in your sbt console:
 ## Optimizations & TODO
 * optimize socket i/o operations: 1). reducing i/o operations, 2). making i/o just carried out as directly as possible without repost them to the executor.
 * optimize the http parsing processes. Spray's http parser is not good enough, and some tweaks needed.
+* write test cases
 * ...
 
 ## Attention Please!
