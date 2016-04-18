@@ -45,7 +45,7 @@ unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "java" )
 unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "scala" )
 
 libraryDependencies ++= {
-  val akkaV = "2.3.12"
+  val akkaV = "2.3.14"
   val sprayV = "1.3.3"
   Seq(
   //"io.spray"            %%   "spray-routing" % sprayV,
