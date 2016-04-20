@@ -2,7 +2,7 @@ organization := "woshilaiceshide"
 
 name := "s-server"
 
-version := "1.1"
+version := "1.2-SNAPSHOT"
 
 description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
 
@@ -28,7 +28,7 @@ transitiveClassifiers := Seq("sources")
 
 EclipseKeys.withSource := true
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.8"
 
 scalacOptions := Seq("-unchecked", "-deprecation","-optimise", "-encoding", "utf8", "-Yno-adapted-args")
 
@@ -45,7 +45,7 @@ unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "java" )
 unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "scala" )
 
 libraryDependencies ++= {
-  val akkaV = "2.3.14"
+  val akkaV = "2.3.15"
   val sprayV = "1.3.3"
   Seq(
   //"io.spray"            %%   "spray-routing" % sprayV,
