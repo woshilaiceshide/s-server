@@ -38,8 +38,6 @@ retrieveManaged := false
 
 enablePlugins(JavaAppPackaging)
 
-net.virtualvoid.sbt.graph.Plugin.graphSettings
-
 unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "java" )
 
 unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "scala" )
