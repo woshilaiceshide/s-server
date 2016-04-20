@@ -2,5 +2,5 @@ package woshilaiceshide.sserver.httpd
 
 object HttpdInforamtion {
 
-  val VERSION = "S-SERVER/1.0-SNAPSHOT"
+  val VERSION = "S-SERVER/1.2-SNAPSHOT"
 }
