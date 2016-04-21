@@ -35,11 +35,11 @@ object WebSocket13 {
 
   import spray.http.HttpHeaders._
 
-  sealed trait WebSocketShow
-  object WebSocketShow {
-    case class Failed(response: HttpResponse) extends WebSocketShow
-    case class Ok(response: HttpResponse) extends WebSocketShow
-    case object ERROR extends WebSocketShow
+  sealed trait WebSocketAcceptance
+  object WebSocketAcceptance {
+    final case class Failed(response: HttpResponse) extends WebSocketAcceptance
+    final case class Ok(response: HttpResponse) extends WebSocketAcceptance
+    case object ERROR extends WebSocketAcceptance
   }
 
   def isAWebSocketRequest(request: HttpRequest) = {
@@ -62,19 +62,19 @@ object WebSocket13 {
     Base64.encode(sha1)
   }
 
-  def showResponse(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil): WebSocketShow = {
+  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil): WebSocketAcceptance = {
     if (!isAWebSocketRequest(request)) {
-      WebSocketShow.Failed(HttpResponse(400, "not a websocket request"))
+      WebSocketAcceptance.Failed(HttpResponse(400, "not a websocket request"))
     } else if (!request.headers.exists { x =>
       x.name == WS_HEADER_WEBSOCKET_VERSION &&
         x.value == WS_HEADER_WEBSOCKET_VERSION_13_VALUE
     }) {
-      WebSocketShow.Failed(HttpResponse(400, s"${WS_HEADER_WEBSOCKET_VERSION} should be ${WS_HEADER_WEBSOCKET_VERSION_13_VALUE}, other versions are not supported."))
+      WebSocketAcceptance.Failed(HttpResponse(400, s"${WS_HEADER_WEBSOCKET_VERSION} should be ${WS_HEADER_WEBSOCKET_VERSION_13_VALUE}, other versions are not supported."))
     } else {
 
       val key = request.headers.find { _.name == WS_HEADER_WEBSOCKET_KEY }.map(_.value)
       key match {
-        case None => WebSocketShow.Failed(HttpResponse(400, s"where is the ${WS_HEADER_WEBSOCKET_KEY}?"))
+        case None => WebSocketAcceptance.Failed(HttpResponse(400, s"where is the ${WS_HEADER_WEBSOCKET_KEY}?"))
         case Some(key1) => {
           try {
             val protocol = request.headers.find { _.name == WS_HEADER_WEBSOCKET_PROTOCOL }
@@ -88,10 +88,10 @@ object WebSocket13 {
               case None => headers
               case Some(p) => p :: headers
             }
-            WebSocketShow.Ok(HttpResponse(status = StatusCodes.SwitchingProtocols, headers = headers1))
+            WebSocketAcceptance.Ok(HttpResponse(status = StatusCodes.SwitchingProtocols, headers = headers1))
           } catch {
             case _: java.security.NoSuchAlgorithmException => {
-              WebSocketShow.Failed(HttpResponse(400, s"no sha1 on the server"))
+              WebSocketAcceptance.Failed(HttpResponse(400, s"no sha1 on the server"))
             }
           }
         }
@@ -102,35 +102,35 @@ object WebSocket13 {
   import scala.util.control.NoStackTrace
   object NoEnoughDataException extends RuntimeException with NoStackTrace
   //class ParsingException(msg: String) extends RuntimeException(msg)
-  case class WSParsingException(closeCode: CloseCode.Value) extends Exception //with scala.util.control.NoStackTrace
+  final case class WSParsingException(closeCode: CloseCode.Value) extends Exception //with scala.util.control.NoStackTrace
 
   sealed trait WSFrame { def op: OpCode.Value; def fin: Boolean; def bytes: Array[Byte]; def masked: Boolean; def mask_key: Array[Byte] }
-  case class WSText(text: String, fin: Boolean, bytes: Array[Byte], masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
+  final case class WSText(text: String, fin: Boolean, bytes: Array[Byte], masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
     def op = OpCode.TEXT
   }
-  case class WSBytes(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
+  final case class WSBytes(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
     def op = OpCode.BINARY
   }
-  case class WSClose(closeCode: CloseCode.Value, reason: String, bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
+  final case class WSClose(closeCode: CloseCode.Value, reason: String, bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
     def op = OpCode.CLOSE
   }
-  case class WSPing(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
+  final case class WSPing(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
     def op = OpCode.PING
   }
-  case class WSPong(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
+  final case class WSPong(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
     def op = OpCode.PONG
   }
-  case class WSContinuation(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
+  final case class WSContinuation(bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame {
     def op = OpCode.CONTINUATION
   }
   //case class WSRaw(op: OpCode.Value, bytes: Array[Byte], fin: Boolean, masked: Boolean, mask_key: Array[Byte]) extends WSFrame
 
   sealed trait WSResult
   object WSResult {
-    case class NeedMoreData(continue: WSFrameParser) extends WSResult
-    case class Emit(frame: WSFrame, continue: () => WSResult) extends WSResult
+    final case class NeedMoreData(continue: WSFrameParser) extends WSResult
+    final case class Emit(frame: WSFrame, continue: () => WSResult) extends WSResult
     case object End extends WSResult
-    case class Error(closeCode: CloseCode.Value, msg: String) extends WSResult
+    final case class Error(closeCode: CloseCode.Value, msg: String) extends WSResult
   }
   type WSFrameParser = ByteString => WSResult
 

@@ -36,7 +36,7 @@ object SampleHttpServer extends App {
           Future { Thread.sleep(3 * 1000); new HttpResponse(200, "pong0\r\n") }
         }
       case x @ HttpRequest(HttpMethods.GET, Uri.Path("/demo"), _, _, _) =>
-        channel.toWebSocketChannelHandler(x, Nil, 1024, c => {
+        channel.toWebSocketTransformer(x, Nil, 1024, c => {
           new WebSocketChannelHandler() {
 
             def inputEnded() = {

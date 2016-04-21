@@ -19,11 +19,11 @@ object EchoServer extends App {
         val s = new String(bytes.map(_.toChar))
         if (bytes.length >= quit.length && s.startsWith("quit")) {
           println("will quit")
-          channelWrapper.write("closed".map(_.toByte).toArray)
+          channelWrapper.write("closed".map(_.toByte).toArray, true)
           channelWrapper.closeChannel(false)
         } else {
           println(s"received: ${s}")
-          channelWrapper.write(bytes)
+          channelWrapper.write(bytes, true)
         }
 
         this
@@ -31,7 +31,7 @@ object EchoServer extends App {
       }
       def channelIdled(channelWrapper: ChannelWrapper): Unit = {
         println("idled")
-        channelWrapper.write("idle".map { _.toByte }.toArray)
+        channelWrapper.write("idle".map { _.toByte }.toArray, true)
         channelWrapper.closeChannel(false)
       }
       def channelWritable(channelWrapper: ChannelWrapper): Unit = {
