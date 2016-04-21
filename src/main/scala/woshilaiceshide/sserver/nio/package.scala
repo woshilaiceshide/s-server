@@ -11,7 +11,7 @@ import java.nio.channels._
 
 import scala.annotation.tailrec
 
-//public api here
+//public 'api's here
 package object nio {
 
   object ChannelClosedCause extends scala.Enumeration {
@@ -58,6 +58,7 @@ package object nio {
     //if bytes that are already waiting for written is more than max_bytes_waiting_for_written_per_channel, 
     //then no bytes will be written, except for write_even_if_too_busy is true.
     //buf after this method's execution, byte waiting for written may be more than max_bytes_waiting_for_written_per_channel.
+    //if you are a lazy coder, then use true for write_even_if_too_busy.
     //all bytes are written successfully, or none written(no partial written).
     def write(bytes: Array[Byte], write_even_if_too_busy: Boolean = false): WriteResult.Value
   }
@@ -77,6 +78,7 @@ package object nio {
     def channelIdled(channelWrapper: ChannelWrapper): Unit
     //the previous transport is paused because of too many bytes waiting for transport. 
     //now please continue your transport.
+    //this sink is important for throttling.
     def channelWritable(channelWrapper: ChannelWrapper): Unit
     def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit
   }

@@ -507,10 +507,7 @@ class NioSocketServer(interface: String,
 
     private var writes: BytesList = null
     private var bytes_waiting_for_written = 0
-    //if bytes that are already waiting for written is more than max_bytes_waiting_for_written_per_channel, 
-    //then no bytes will be written, except for write_even_if_too_busy is true.
-    //buf after this method's execution, byte waiting for written may be more than max_bytes_waiting_for_written_per_channel.
-    //all bytes are written successfully, or none written(no partial written).
+
     def write(bytes: Array[Byte], write_even_if_too_busy: Boolean = false): WriteResult.Value = {
       if (null != bytes && 0 < bytes.length) {
         write0(bytes, write_even_if_too_busy)
