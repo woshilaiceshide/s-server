@@ -14,6 +14,7 @@ import spray.can.HttpRequestProcessor
 import spray.can.HttpChannelWrapper
 import spray.can.HttpChannelHandlerFactory
 
+//to test, use `nc -C 127.0.0.1 8181 < ./http-requests.dos.txt`
 object SampleHttpServer extends App {
 
   val handler = new PlainHttpChannelHandler {
@@ -42,7 +43,7 @@ object SampleHttpServer extends App {
               c.close(WebSocket13.CloseCode.NORMAL_CLOSURE_OPTION)
             }
 
-            def becomeWritable() {
+            def channelWritable() {
 
             }
             def pongReceived(frame: WebSocket13.WSFrame): Unit = {

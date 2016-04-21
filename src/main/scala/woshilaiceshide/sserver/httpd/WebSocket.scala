@@ -11,10 +11,7 @@ import _root_.spray.http.HttpHeader
 import _root_.spray.can.rendering.ResponsePartRenderingContext
 import _root_.spray.can.rendering.ResponseRenderingComponent
 import _root_.spray.http.ByteArrayRendering
-import woshilaiceshide.sserver.nio.AChannel
-import woshilaiceshide.sserver.nio.NioSocketServer
-import woshilaiceshide.sserver.nio.ChannelHandler
-import woshilaiceshide.sserver.nio.ChannelHandlerFactory
+import woshilaiceshide.sserver.nio._
 import spray.can.rendering.ResponseRenderingComponent
 import java.security.MessageDigest
 import java.nio.charset.Charset
@@ -51,7 +48,7 @@ object WebSocket13 {
         {
           x match {
             case x: spray.http.HttpHeaders.Connection => x.hasUpgrade
-            case _                                    => false
+            case _ => false
           }
         }
     }.size
@@ -88,7 +85,7 @@ object WebSocket13 {
               //RawHeader(WS_HEADER_CONNECTION, WS_HEADER_CONNECTION_VALUE) ::
               extraHeaders
             val headers1 = protocol match {
-              case None    => headers
+              case None => headers
               case Some(p) => p :: headers
             }
             WebSocketShow.Ok(HttpResponse(status = StatusCodes.SwitchingProtocols, headers = headers1))
@@ -178,7 +175,7 @@ object WebSocket13 {
 
   @inline def why(s: String) = s match {
     case null | "" => "???"
-    case x         => x
+    case x => x
   }
   def parseSafe(input: ByteString, offset: Int = 0, max_payload_length: Int = 512): WSResult = {
     def needMoreData = this.needMoreData(input, offset)(parseSafe(_, _, max_payload_length))
@@ -186,9 +183,9 @@ object WebSocket13 {
       try parse(input, offset, max_payload_length)
       catch {
         case _: java.lang.ArrayIndexOutOfBoundsException => needMoreData
-        case _: UnsupportedEncodingException             => WSResult.Error(CloseCode.BAD_PAYLOAD, why(null))
-        case NoEnoughDataException                       => needMoreData
-        case ex: WSParsingException                      => WSResult.Error(ex.closeCode, why(ex.getMessage))
+        case _: UnsupportedEncodingException => WSResult.Error(CloseCode.BAD_PAYLOAD, why(null))
+        case NoEnoughDataException => needMoreData
+        case ex: WSParsingException => WSResult.Error(ex.closeCode, why(ex.getMessage))
       }
     else needMoreData
   }

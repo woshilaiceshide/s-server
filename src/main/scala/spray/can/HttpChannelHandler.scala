@@ -15,23 +15,18 @@ import _root_.spray.http.HttpRequestPart
 import _root_.spray.can.rendering.ResponsePartRenderingContext
 import _root_.spray.can.rendering.ResponseRenderingComponent
 import _root_.spray.can.rendering.ResponseRenderingComponent
-import woshilaiceshide.sserver.nio.AChannel
-import woshilaiceshide.sserver.nio.NioSocketServer
-import woshilaiceshide.sserver.nio.ChannelHandler
-import woshilaiceshide.sserver.nio.ChannelHandlerFactory
+import woshilaiceshide.sserver.nio._
 import woshilaiceshide.sserver.httpd.WebSocket13
 import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketShow
-
-import woshilaiceshide.sserver.nio.NioSocketServer._
 
 class HttpChannelHandlerFactory(plain_http_channel_handler: PlainHttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
 
   def handler = Some(new ByteChannelToHttpChannel(plain_http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
-  def getChannelHandler(aChannel: AChannel): Option[ChannelHandler] = handler
+  def getChannelHandler(aChannel: ChannelInformation): Option[ChannelHandler] = handler
 }
 
 sealed abstract class HttpChannelWrapper(
-    channelWrapper: NioSocketServer#ChannelWrapper,
+    channelWrapper: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     private[this] val httpChannelHandler: ByteChannelToHttpChannel) extends ResponseRenderingComponent {
 
@@ -66,9 +61,9 @@ sealed abstract class HttpChannelWrapper(
         throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
       }
       response match {
-        case _: HttpResponse      => finished = true
+        case _: HttpResponse => finished = true
         case _: ChunkedMessageEnd => finished = true
-        case _                    => {}
+        case _ => {}
       }
 
       val r = new ByteArrayRendering(1024)
@@ -118,7 +113,7 @@ sealed abstract class HttpChannelWrapper(
     def close() {}
     private var _finished = false
     def finished = _finished
-    def becomeWritable() = {
+    def channelWritable() = {
       if (!_finished) {
         _finished = HttpChannelWrapper.this.writeResponse(r1) == WriteResult.WR_OK
       }
@@ -134,14 +129,14 @@ sealed abstract class HttpChannelWrapper(
     r1.onSuccess {
       case response => synchronized {
         resp = response
-        becomeWritable()
+        channelWritable()
       }
     }
     private var resp: HttpResponse = null
     def close() {}
     private var _finished = false
     def finished = synchronized { _finished }
-    def becomeWritable() = synchronized {
+    def channelWritable() = synchronized {
       if (!_finished && resp != null) {
         _finished = HttpChannelWrapper.this.writeResponse(resp) == WriteResult.WR_OK
         _finished
@@ -154,14 +149,14 @@ sealed abstract class HttpChannelWrapper(
 }
 
 final class ChunkedHttpChannelWrapper(
-  channelWrapper: NioSocketServer#ChannelWrapper,
+  channelWrapper: ChannelWrapper,
   closeAfterEnd: Boolean,
   httpChannelHandler: ByteChannelToHttpChannel)
     extends HttpChannelWrapper(channelWrapper, closeAfterEnd, httpChannelHandler) {
   final override def chunked = true
 }
 final class PlainHttpChannelWrapper(
-  channelWrapper: NioSocketServer#ChannelWrapper,
+  channelWrapper: ChannelWrapper,
   closeAfterEnd: Boolean,
   httpChannelHandler: ByteChannelToHttpChannel)
     extends HttpChannelWrapper(channelWrapper, closeAfterEnd, httpChannelHandler) {
@@ -182,12 +177,12 @@ trait HttpRequestProcessor {
   def chunkEnded(x: ChunkedMessageEnd): Unit = {}
 
   //I's completed just now if I return true!
-  def becomeWritable(): Boolean
+  def channelWritable(): Boolean
   def close(): Unit
   def finished: Boolean
 }
 
-class WebSocketChannelWrapper(channelWarpper: NioSocketServer#ChannelWrapper) {
+class WebSocketChannelWrapper(channelWarpper: ChannelWrapper) {
   import WebSocket13._
   def writeString(s: String) = {
     val rendered = render(s)
@@ -209,7 +204,7 @@ class WebSocketChannelWrapper(channelWarpper: NioSocketServer#ChannelWrapper) {
   }
 }
 final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHandler,
-                                                 val max_payload_length: Int) extends HttpRequestProcessor {
+    val max_payload_length: Int) extends HttpRequestProcessor {
 
   def no = throw new RuntimeException("this method should not be invoked anywhere.")
   def channelWrapper: HttpChannelWrapper = no
@@ -217,7 +212,7 @@ final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHa
   override def chunkReceived(x: MessageChunk): Unit = no
   override def chunkEnded(x: ChunkedMessageEnd): Unit = no
 
-  def becomeWritable(): Boolean = no
+  def channelWritable(): Boolean = no
   def close(): Unit = no
   def finished: Boolean = no
 
@@ -232,7 +227,7 @@ trait WebSocketChannelHandler extends HttpChannelHandler {
   def channelWrapper: HttpChannelWrapper =
     throw new RuntimeException("this method should not be invoked anywhere.")
 
-  def becomeWritable(): Unit
+  def channelWritable(): Unit
   def close(): Unit =
     throw new RuntimeException("this method should not be invoked anywhere.")
   def finished: Boolean =
@@ -291,19 +286,19 @@ object ByteChannelToHttpChannel {
   def default_parser = new RevisedHttpRequestPartParser(default_parser_settings, false)
 }
 
-private[can] case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: NioSocketServer#ChannelWrapper, var next: Node)
-private[can] case class DataToSwitch(byteString: ByteString, offset: Int, channelWrapper: NioSocketServer#ChannelWrapper)
+private[can] case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper, var next: Node)
+private[can] case class DataToSwitch(byteString: ByteString, offset: Int, channelWrapper: ChannelWrapper)
 //please refer to spray.can.server.RequestParsing
 class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandler,
-                               val original_parser: ByteChannelToHttpChannel.RevisedHttpRequestPartParser = ByteChannelToHttpChannel.default_parser,
-                               max_request_in_pipeline: Int = 1)
+  val original_parser: ByteChannelToHttpChannel.RevisedHttpRequestPartParser = ByteChannelToHttpChannel.default_parser,
+  max_request_in_pipeline: Int = 1)
     extends ChannelHandler {
 
   import ByteChannelToHttpChannel._
 
   private val max_request_in_pipeline_1 = Math.max(1, max_request_in_pipeline)
 
-  private[can] def check(channelWrapper: NioSocketServer#ChannelWrapper, closeAfterEnd: Boolean): Unit = {
+  private[can] def check(channelWrapper: ChannelWrapper, closeAfterEnd: Boolean): Unit = {
     //use "post(...)" to keep things run on its way.
     if (channelWrapper.is_in_io_worker_thread()) {
       if (closeAfterEnd || (!has_next() && _inputEnded)) {
@@ -332,10 +327,10 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
   private var parser: _root_.spray.can.parsing.Parser = original_parser
   def lastOffset = original_parser.lastOffset
 
-  def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
+  def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
 
   private var _inputEnded = false
-  def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper) = {
+  def inputEnded(channelWrapper: ChannelWrapper) = {
     _inputEnded = true
     if (!has_next) {
       channelWrapper.closeChannel(false)
@@ -350,7 +345,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
 
   private var processor: HttpRequestProcessor = null
 
-  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
+  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
     if (null == byteBuffer) {
       check(channelWrapper)
     } else if (switching) {
@@ -370,7 +365,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
     }
   }
 
-  def check(channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
+  def check(channelWrapper: ChannelWrapper): ChannelHandler = {
     if (head != null) {
       val tmp = head
       head = head.next
@@ -403,7 +398,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
           }
         }
         case p: HttpRequestProcessor => {
-          if (!p.becomeWritable()) {
+          if (!p.channelWritable()) {
             processor = p
           }
           this
@@ -416,7 +411,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
       this
     }
   }
-  def bytesReceived1(byteBuffer: java.nio.ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
+  def bytesReceived1(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     val byteString = ByteString(byteBuffer)
 
@@ -483,7 +478,7 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
 
                   }
                   case p: HttpRequestProcessor => {
-                    if (!p.becomeWritable()) {
+                    if (!p.channelWritable()) {
                       processor = p
                     }
                     process(continue())
@@ -533,11 +528,11 @@ class ByteChannelToHttpChannel(private[this] var handler: PlainHttpChannelHandle
     }
     process(result)
   }
-  def channelIdled(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
-  def becomeWritable(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {
-    if (null != processor) { processor.becomeWritable() }
+  def channelIdled(channelWrapper: ChannelWrapper): Unit = {}
+  def channelWritable(channelWrapper: ChannelWrapper): Unit = {
+    if (null != processor) { processor.channelWritable() }
   }
-  def channelClosed(channelWrapper: NioSocketServer#ChannelWrapper, cause: NioSocketServer.ChannelClosedCause.Value, attachment: Option[_]): Unit = {
+  def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
     data_to_switching = null
     if (null != processor) { safeOp { processor.close() }; processor = null; }
     head = null
@@ -553,11 +548,11 @@ class ByteChannelToWebsocketChannel(
   private[this] var parser: WebSocket13.WSFrameParser)
     extends ChannelHandler {
 
-  def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {}
+  def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
 
-  def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper) = handler.inputEnded()
+  def inputEnded(channelWrapper: ChannelWrapper) = handler.inputEnded()
 
-  def bytesReceived(byteString: ByteString, offset: Int, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
+  def bytesReceived(byteString: ByteString, offset: Int, channelWrapper: ChannelWrapper): ChannelHandler = {
     import WebSocket13._
     val result = parser(byteString)
     @scala.annotation.tailrec def process(result: WSResult): ChannelHandler = {
@@ -581,33 +576,33 @@ class ByteChannelToWebsocketChannel(
           parser = parser1
           this
         }
-        case WSResult.End                      => { /* nothing to do */ null /*this*/ }
+        case WSResult.End => { /* nothing to do */ null /*this*/ }
         case WSResult.Error(closeCode, reason) => { channelWrapper.closeChannel(false); null /*this*/ }
       }
     }
     process(result)
   }
-  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler = {
+  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     val byteString = ByteString(byteBuffer)
     bytesReceived(byteString, 0, channelWrapper)
 
   }
-  def channelIdled(channelWrapper: NioSocketServer#ChannelWrapper): Unit = { handler.idled() }
-  def becomeWritable(channelWrapper: NioSocketServer#ChannelWrapper): Unit = {
-    if (null != handler) handler.becomeWritable()
+  def channelIdled(channelWrapper: ChannelWrapper): Unit = { handler.idled() }
+  def channelWritable(channelWrapper: ChannelWrapper): Unit = {
+    if (null != handler) handler.channelWritable()
   }
-  def channelClosed(channelWrapper: NioSocketServer#ChannelWrapper, cause: NioSocketServer.ChannelClosedCause.Value, attachment: Option[_]): Unit = {
+  def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
     cause match {
-      case NioSocketServer.ChannelClosedCause.BY_BIZ => {
+      case ChannelClosedCause.BY_BIZ => {
         val closeCode = attachment match {
           case Some(code: WebSocket13.CloseCode.Value) => code
-          case _                                       => WebSocket13.CloseCode.CLOSED_ABNORMALLY
+          case _ => WebSocket13.CloseCode.CLOSED_ABNORMALLY
         }
         handler.fireClosed(closeCode, cause.toString())
       }
 
-      case NioSocketServer.ChannelClosedCause.SERVER_STOPPING =>
+      case ChannelClosedCause.SERVER_STOPPING =>
         handler.fireClosed(WebSocket13.CloseCode.GOING_AWAY, cause.toString())
       case _ =>
         handler.fireClosed(WebSocket13.CloseCode.CLOSED_ABNORMALLY, cause.toString())

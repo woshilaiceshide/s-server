@@ -3,6 +3,8 @@ Some Small Servers written in Scala, including a nio server and a small httpd, w
 
 It's targeted for small footprint when running, with extensibility for mulit-threading when processing http requests' business.
 
+Note that I've refactored s-server very much since version 1.x. Version 2.x is not compatible with version 1.x, and the latter one will not be supported in the future. 
+
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
 * only one single thread is needed for basic running, and this thread can be used as an external task runner and a fuzzy scheduler. (the builtin fuzzy scheduler may be disabled when constructing the server instance.)
@@ -16,10 +18,12 @@ It's targeted for small footprint when running, with extensibility for mulit-thr
 
 ## Two Examples
 * test/main/scala/woshilaiceshide/sserver/EchoServer.scala
-* test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala
+
+* test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala <br> To play with SampleHttpServer, run `'nc -C 127.0.0.1 8181 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
 
 To test the above examples, just type the following command in your sbt console: 
 * `'test:run'` to run `'woshilaiceshide.sserver.EchoServer'`
+
 * `'test:runMain'` followed by a `'TAB'` to prompt you the valid choices
 
 ## Real Projects

@@ -8,63 +8,12 @@ import java.io.IOException
 
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
-import java.nio.channels.SelectionKey
-import java.nio.channels.Selector
-import java.nio.channels.ServerSocketChannel
-import java.nio.channels.SocketChannel
-import java.nio.channels.ClosedSelectorException
-import java.nio.charset.Charset
-import java.nio.charset.CharsetDecoder
-import java.nio.charset.CharsetEncoder
+import java.nio.channels._
+import java.nio.charset._
 
 import scala.annotation.tailrec
 
-trait ChannelHandler {
-
-  def toBytesArray(byteBuffer: ByteBuffer) = {
-    val count = byteBuffer.remaining()
-    val bytes = new Array[Byte](count)
-    byteBuffer.get(bytes)
-    bytes
-  }
-
-  def channelOpened(channelWrapper: NioSocketServer#ChannelWrapper): Unit
-  def inputEnded(channelWrapper: NioSocketServer#ChannelWrapper): Unit
-  def bytesReceived(byteBuffer: ByteBuffer, channelWrapper: NioSocketServer#ChannelWrapper): ChannelHandler
-  //if the handler does not close the channel, then the channel will closed roughly. 
-  def channelIdled(channelWrapper: NioSocketServer#ChannelWrapper): Unit
-  //too many bytes waiting for transport to stop sending previously, 
-  //now please continue your transport.
-  def becomeWritable(channelWrapper: NioSocketServer#ChannelWrapper): Unit
-  def channelClosed(channelWrapper: NioSocketServer#ChannelWrapper, cause: NioSocketServer.ChannelClosedCause.Value, attachment: Option[_]): Unit
-}
-trait ChannelHandlerFactory {
-  def getChannelHandler(aChannel: AChannel): Option[ChannelHandler]
-}
-
-final class AChannel(channel: SocketChannel) {
-  def remoteAddress = channel.getRemoteAddress
-  def localAddress = channel.getLocalAddress
-}
-
-private[nio] final class BytesNode(val bytes: Array[Byte], var next: BytesNode = null) {
-  def append(x: Array[Byte]) = {
-    if (null == x || 0 == x.length) {
-      this
-    } else {
-      this.next = new BytesNode(x)
-      this.next
-    }
-
-  }
-}
-private[nio] final class BytesList(val head: BytesNode, var last: BytesNode) {
-  def append(x: Array[Byte]) = {
-    last = last.append(x)
-  }
-}
-
-object NioSocketServer {
+private[nio] object NioSocketServer {
 
   def warn(ex: Throwable, msg: String = "empty message") = {
     Console.err.print(msg)
@@ -83,37 +32,18 @@ object NioSocketServer {
   val CHANNEL_CLOSING_RIGHT_NOW = 2
   val CHANNEL_CLOSED = 3
 
-  object ChannelClosedCause extends scala.Enumeration {
-    val UNKNOWN = Value
-    val BY_BIZ = Value
-    val SERVER_STOPPING = Value
-    val BY_PEER = Value
-    val BECUASE_INPUTSTREAM_ENDED = Value
-    val BECUASE_SOCKET_CLOSED_UNEXPECTED = Value
-    val BECAUSE_IDLE = Value
-  }
-
-  object WriteResult extends scala.Enumeration {
-    val WR_OK = Value
-    val WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED = Value
-    val WR_FAILED_BECAUSE_CHANNEL_CLOSED = Value
-    val WR_FAILED_BECAUSE_EMPTY_BYTES_TO_WRITTEN = Value
-    val WR_FAILED_BECAUSE_BYTES_TOO_BIG = Value
-    val WR_FAILED_BECAUSE_SERVER_STOPING_STOPPED = Value
-  }
-
-  private[nio] case class TimedTask(timestamp: Long, runnable: Runnable)
 }
 
 class NioSocketServer(interface: String,
-                      port: Int,
-                      channel_hander_factory: ChannelHandlerFactory,
-                      receive_buffer_size: Int = 1024,
-                      socket_max_idle_time_in_seconds: Int = 90,
-                      max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
-                      default_select_timeout: Int = 30 * 1000,
-                      enable_fuzzy_scheduler: Boolean = false) {
+    port: Int,
+    channel_hander_factory: ChannelHandlerFactory,
+    receive_buffer_size: Int = 1024,
+    socket_max_idle_time_in_seconds: Int = 90,
+    max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
+    default_select_timeout: Int = 30 * 1000,
+    enable_fuzzy_scheduler: Boolean = false) {
 
+  import Auxiliary._
   import NioSocketServer._
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
@@ -121,40 +51,43 @@ class NioSocketServer(interface: String,
   //private val default_select_timeout = 30 * 1000
   private var select_timeout = Math.min(socket_max_idle_time_in_seconds_1 * 1000, default_select_timeout)
 
+  //this only client buffer will become read only before it's given to the handler
   private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
   private val ssc = ServerSocketChannel.open()
   private val selector = Selector.open()
 
-  private def safeClose(x: Closeable) = try { x.close(); } catch { case _: Throwable => {} }
-  private def safeOp[T](x: => T) = try { x } catch { case _: Throwable => {} }
+  private def safeClose(x: Closeable) = try { x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
+  private def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
 
   private var workerThread: Thread = null
 
-  private var channels = List[ChannelWrapper]()
-  private var pending_io_operations = List[ChannelWrapper]()
-  private def pending_for_io_operation(channelWrapper: ChannelWrapper) = this.synchronized {
-    pending_io_operations = channelWrapper :: pending_io_operations
+  private var channels = List[MyChannelWrapper]()
+  //some i/o operations related to those channels are pending
+  //note that those operations will be checked in the order they are pended as soon as possible.
+  private var pending_io_operations = LinkedList.newEmpty[MyChannelWrapper]()
+  private def pend_for_io_operation(channelWrapper: MyChannelWrapper) = this.synchronized {
+    pending_io_operations.append(channelWrapper)
   }
 
-  private var status = 0
+  private var status = INITIALIZED
 
-  private var tasks: List[Runnable] = Nil
+  private var tasks: LinkedList[Runnable] = LinkedList.newEmpty()
   def post(task: Runnable) = this.synchronized {
     if (STARTED != status) {
       false
     } else {
-      tasks = task :: tasks
+      tasks.append(task)
       selector.wakeup()
       true
     }
   }
 
-  private var timed_tasks: List[TimedTask] = Nil
+  private var timed_tasks: LinkedList[TimedTask] = LinkedList.newEmpty()
   def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = this.synchronized {
     if (STARTED != status) {
       false
     } else if (enable_fuzzy_scheduler) {
-      timed_tasks = TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task) :: timed_tasks
+      timed_tasks.append(TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task))
       true
     } else {
       false
@@ -162,12 +95,12 @@ class NioSocketServer(interface: String,
   }
 
   private var terminated = false
-  private var when_terminated: List[Runnable] = Nil
+  private var when_terminated: LinkedList[Runnable] = LinkedList.newEmpty()
   def registerOnTermination[T](code: => T) = this.synchronized {
     if (terminated) {
       false
     } else {
-      when_terminated = new Runnable { def run = code } :: when_terminated
+      when_terminated.append(new Runnable { def run = code })
       true
     }
   }
@@ -197,15 +130,16 @@ class NioSocketServer(interface: String,
   }
 
   private def safe_listen() {
-    try { listen() }
-    catch {
+    try {
+      listen()
+    } catch {
       case _: Throwable => {
         safeClose(selector)
         safeClose(ssc)
         channels.foreach { _.closeDirectly() }
         channels = Nil
         this.synchronized {
-          status = STOPPED_GRACEFULLY
+          status = STOPPED_ROUGHLY
           this.notifyAll()
         }
       }
@@ -213,17 +147,21 @@ class NioSocketServer(interface: String,
       //disable registerOnTermination first, before executing the sinks.
       terminated = true
       when_terminated.foreach { x => safeOp(x.run()) }
+      when_terminated = null
     }
   }
 
   private var stop_deadline: Long = 0
+  //the status is returned
   def stop(timeout: Int) = {
     if (workerThread == Thread.currentThread()) this.synchronized {
       if (STARTED == status) {
         status = STOPPING
         select_timeout = Math.min(Math.max(0, timeout), select_timeout)
+        //stop_deadline is neccessary.
         stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
       }
+      status
     }
     else this.synchronized {
       if (STARTED == status) {
@@ -241,7 +179,7 @@ class NioSocketServer(interface: String,
     }
   }
   def join(timeout: Long) = {
-    if (workerThread == Thread.currentThread()) this.synchronized {
+    if (workerThread != Thread.currentThread()) {
       workerThread.join(timeout)
     }
   }
@@ -277,7 +215,7 @@ class NioSocketServer(interface: String,
       channels.foreach { _.closeDirectly() }
       channels = Nil
       this.synchronized {
-        status = STOPPED_GRACEFULLY
+        status = STOPPED_ROUGHLY
         this.notifyAll()
       }
       false
@@ -310,21 +248,32 @@ class NioSocketServer(interface: String,
       true
     }
 
-    var tasks_to_do = this.synchronized { if (0 == tasks.size) Nil else { val tmp = tasks; tasks = Nil; tmp } }
-    tasks_to_do.foreach { x => safeOp(x.run()) }
+    var tasks_to_do = this.synchronized {
+      if (tasks.isEmpty) {
+        //LinkedList.newEmpty()
+        null
+      } else {
+        val tmp = tasks;
+        tasks = LinkedList.newEmpty();
+        tmp
+      }
+    }
+    if (null != tasks_to_do)
+      tasks_to_do.foreach { x => safeOp(x.run()) }
 
     if (enable_fuzzy_scheduler) {
       var timed_tasks_to_do = this.synchronized {
-        if (0 == timed_tasks.size) Nil
-        else {
+        if (timed_tasks.isEmpty) {
+          null
+        } else {
           val now = System.currentTimeMillis()
-          val tmp = timed_tasks.groupBy { x => x.timestamp <= now }.withDefault { x => Nil }
-          val timeout = tmp(true);
-          timed_tasks = tmp(false);
-          timeout
+          val tmp = timed_tasks.group_by_fitler { x => x.when_to_run <= now }
+          timed_tasks = tmp.unfiltered;
+          tmp.filtered
         }
       }
-      timed_tasks_to_do.foreach { x => safeOp { x.runnable.run() } }
+      if (null != timed_tasks_to_do)
+        timed_tasks_to_do.foreach { x => safeOp { x.runnable.run() } }
     }
 
     if (continue) {
@@ -333,7 +282,7 @@ class NioSocketServer(interface: String,
       val now = System.currentTimeMillis()
       if (now - last_check_for_idle_zombie > select_timeout && !already_in_stopping) {
         last_check_for_idle_zombie = now
-        var newChannels: List[ChannelWrapper] = Nil
+        var newChannels: List[MyChannelWrapper] = Nil
         channels.foreach { channelWrapper =>
           if (channelWrapper.checkIdle(now) != CHANNEL_CLOSED && channelWrapper.checkZombie(now) == CHANNEL_CLOSED) {
             newChannels = channelWrapper :: newChannels
@@ -344,12 +293,16 @@ class NioSocketServer(interface: String,
 
       //check for pending i/o, and just no deadlocks
       @tailrec def check_for_pending_io() {
-        var tmp: List[ChannelWrapper] = Nil
-        this.synchronized {
-          tmp = pending_io_operations
-          pending_io_operations = Nil
+        var tmp = this.synchronized {
+          if (pending_io_operations.isEmpty)
+            null
+          else {
+            val swap = pending_io_operations
+            pending_io_operations = LinkedList.newEmpty()
+            swap
+          }
         }
-        if (0 < tmp.size) {
+        if (null != tmp) {
           val current = System.currentTimeMillis()
           tmp.foreach { _.check(current) }
           check_for_pending_io()
@@ -365,15 +318,15 @@ class NioSocketServer(interface: String,
     if (key.isAcceptable()) {
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
-      var channelWrapper: ChannelWrapper = null
+      var channelWrapper: MyChannelWrapper = null
       try {
         channel.configureBlocking(false)
-        channel_hander_factory.getChannelHandler(new AChannel(channel)) match {
+        channel_hander_factory.getChannelHandler(new ChannelInformation(channel)) match {
           case None => {
             safeClose(channel)
           }
           case Some(handler) => {
-            channelWrapper = new ChannelWrapper(channel, handler)
+            channelWrapper = new MyChannelWrapper(channel, handler)
             channel.register(selector, SelectionKey.OP_READ, channelWrapper)
             channelWrapper.open()
             if (!key.isValid()) {
@@ -397,7 +350,7 @@ class NioSocketServer(interface: String,
     } else {
 
       val channel = key.channel().asInstanceOf[SocketChannel]
-      val channelWrapper = key.attachment().asInstanceOf[ChannelWrapper]
+      val channelWrapper = key.attachment().asInstanceOf[MyChannelWrapper]
 
       if (key.isReadable()) {
         try {
@@ -414,7 +367,7 @@ class NioSocketServer(interface: String,
             } else {
               //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
               //I tried much, but did not catch it!
-              //Business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
+              //business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
               channelWrapper.clearOpRead()
               channelWrapper.inputEnded()
             }
@@ -445,7 +398,7 @@ class NioSocketServer(interface: String,
     }
   }
 
-  class ChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) {
+  private[NioSocketServer] class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper {
 
     import NioSocketServer._
 
@@ -453,10 +406,8 @@ class NioSocketServer(interface: String,
 
     private var status = CHANNEL_NORMAL
 
-    def remoteAddress = channel.getRemoteAddress
-    def localAddress = channel.getLocalAddress
-
-    override def toString() = s"""${remoteAddress}->${localAddress}@@${hashCode}}"""
+    def remoteAddress: java.net.SocketAddress = channel.getRemoteAddress
+    def localAddress: java.net.SocketAddress = channel.getLocalAddress
 
     private[nio] def closeDirectly() {
       val should = this.synchronized {
@@ -480,13 +431,13 @@ class NioSocketServer(interface: String,
     }
 
     //I'm intended for usage by business codes if needed.
-    def closeChannel(rightNow: Boolean = false, attachment: Option[_] = None) = {
+    def closeChannel(rightNow: Boolean = false, attachment: Option[_] = None): Unit = {
       close(rightNow, ChannelClosedCause.BY_BIZ, attachment)
     }
 
     private var closed_cause = ChannelClosedCause.UNKNOWN
     private var attachment_for_closed: Option[_] = None
-    private[NioSocketServer] def close(rightNow: Boolean = false, cause: ChannelClosedCause.Value, attachment: Option[_] = None) = {
+    private[NioSocketServer] def close(rightNow: Boolean = false, cause: ChannelClosedCause.Value, attachment: Option[_] = None): Unit = {
       val should_pending = this.synchronized {
         val rightNow1 = if (rightNow) true else writes == null
         if (CHANNEL_CLOSING_RIGHT_NOW != status) {
@@ -507,7 +458,7 @@ class NioSocketServer(interface: String,
 
       }
       if (should_pending) {
-        pending_for_io_operation(this)
+        pend_for_io_operation(this)
         //if in workerThread, no need for wakeup
         if (Thread.currentThread() != NioSocketServer.this.workerThread)
           NioSocketServer.this.selector.wakeup()
@@ -517,12 +468,12 @@ class NioSocketServer(interface: String,
 
     //Only the writing to the channel is taken into account when calculating the idle-time-out by default.
     //So if transferring big files, such as in http chunking requests that last long time, use resetIdle(). 
-    def resetIdle() = this.synchronized {
+    def resetIdle(): Unit = this.synchronized {
       this.last_active_time = System.currentTimeMillis()
     }
 
     def post(task: Runnable): Boolean = NioSocketServer.this.post(task)
-    def is_in_io_worker_thread() = Thread.currentThread() == NioSocketServer.this.workerThread
+    def is_in_io_worker_thread(): Boolean = Thread.currentThread() == NioSocketServer.this.workerThread
 
     private[nio] def inputEnded() = {
       if (null != handler) {
@@ -556,25 +507,25 @@ class NioSocketServer(interface: String,
 
     private var writes: BytesList = null
     private var bytes_waiting_for_written = 0
-    //if bytes waiting for written is more than max_bytes_waiting_for_written_per_channel and write_if_too_busy is true, 
-    //then no bytes will be written.
-    def write(bytes: Array[Byte], write_if_too_busy: Boolean = false): WriteResult.Value = {
+    //if bytes that are already waiting for written is more than max_bytes_waiting_for_written_per_channel, 
+    //then no bytes will be written, except for write_even_if_too_busy is true.
+    //buf after this method's execution, byte waiting for written may be more than max_bytes_waiting_for_written_per_channel.
+    //all bytes are written successfully, or none written(no partial written).
+    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean = false): WriteResult.Value = {
       if (null != bytes && 0 < bytes.length) {
-        write0(bytes)
+        write0(bytes, write_even_if_too_busy)
       } else {
         WriteResult.WR_FAILED_BECAUSE_EMPTY_BYTES_TO_WRITTEN
       }
     }
     private var already_pending = false
-    private def write0(bytes: Array[Byte], write_if_too_busy: Boolean = false): WriteResult.Value = {
+    private def write0(bytes: Array[Byte], write_even_if_too_busy: Boolean = false): WriteResult.Value = {
       this.synchronized {
         if (CHANNEL_NORMAL == status) {
 
           this.last_active_time = System.currentTimeMillis()
 
-          if (bytes.length >= max_bytes_waiting_for_written_per_channel) {
-            WriteResult.WR_FAILED_BECAUSE_BYTES_TOO_BIG
-          } else if (!write_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
+          if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
             WriteResult.WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED
           } else {
             val should_pending = {
@@ -593,11 +544,17 @@ class NioSocketServer(interface: String,
               }
             }
             if (should_pending) {
-              pending_for_io_operation(this)
+              pend_for_io_operation(this)
               //if in workerThread, no need for wakeup, or processor will be wasted for one more "listen()" 
               if (Thread.currentThread() != NioSocketServer.this.workerThread)
                 NioSocketServer.this.selector.wakeup()
             }
+
+            /*if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
+              WriteResult.WR_OK_BUT_OVERFLOWED
+            } else {
+              WriteResult.WR_OK
+            }*/
             WriteResult.WR_OK
 
           }
@@ -618,7 +575,7 @@ class NioSocketServer(interface: String,
         val remain = writing0(tmp.head, tmp.last, 0)
 
         if (null == remain._1) {
-          pending_for_io_operation(this)
+          pend_for_io_operation(this)
         }
 
         var become_writable = false
@@ -640,7 +597,7 @@ class NioSocketServer(interface: String,
         }
         //invoked if needed only.
         if (become_writable) {
-          if (handler != null) handler.becomeWritable(this)
+          if (handler != null) handler.channelWritable(this)
         }
 
       }
@@ -699,7 +656,7 @@ class NioSocketServer(interface: String,
         case _: Throwable => { safeClose(channel); status = CHANNEL_CLOSED; true; }
       }
     }
-    private[nio] def check(current: Long) = {
+    private[nio] def check(current_timestamp: Long) = {
       var closedCause: ChannelClosedCause.Value = null
       var attachmentForClosed: Option[_] = None
       val (should, status1) = this.synchronized {
