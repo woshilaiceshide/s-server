@@ -21,16 +21,50 @@ import woshilaiceshide.sserver.nio._
 import woshilaiceshide.sserver.httpd.WebSocket13
 import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
+class WebSocketChannelWrapper(channelWarpper: ChannelWrapper) {
+  import WebSocket13._
+  def writeString(s: String) = {
+    val rendered = render(s)
+    channelWarpper.write(rendered.toArray)
+  }
+  def writeBytes(bytes: Array[Byte]) = {
+    val rendered = render(bytes, WebSocket13.OpCode.BINARY)
+    channelWarpper.write(rendered.toArray)
+  }
+  def close(closeCode: Option[CloseCode.Value] = CloseCode.NORMAL_CLOSURE_OPTION) = {
+    val frame = WSClose(closeCode.getOrElse(CloseCode.NORMAL_CLOSURE), why(null), EMPTY_BYTE_ARRAY, true, false, EMPTY_BYTE_ARRAY)
+    val rendered = render(frame)
+    channelWarpper.write(rendered.toArray)
+    channelWarpper.closeChannel(false, closeCode)
+  }
+  def ping() = {
+    val rendered = render(WebSocket13.EMPTY_BYTE_ARRAY, WebSocket13.OpCode.PING)
+    channelWarpper.write(rendered.toArray)
+  }
+}
+
+trait WebSocketChannelHandler {
+
+  def idled(): Unit = {}
+  def pongReceived(frame: WebSocket13.WSFrame): Unit
+  def frameReceived(frame: WebSocket13.WSFrame): Unit
+  def fireClosed(code: WebSocket13.CloseCode.Value, reason: String): Unit
+  def inputEnded(): Unit
+
+  def channelWritable(): Unit
+}
+
 class WebsocketTransformer(
   handler: WebSocketChannelHandler, channel: WebSocketChannelWrapper,
   private[this] var parser: WebSocket13.WSFrameParser)
     extends ChannelHandler {
 
+  //already opened
   def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
 
   def inputEnded(channelWrapper: ChannelWrapper) = handler.inputEnded()
 
-  def bytesReceived(byteString: ByteString, offset: Int, channelWrapper: ChannelWrapper): ChannelHandler = {
+  private[can] def bytesReceived(byteString: ByteString, offset: Int, channelWrapper: ChannelWrapper): ChannelHandler = {
     import WebSocket13._
     val result = parser(byteString)
     @scala.annotation.tailrec def process(result: WSResult): ChannelHandler = {
@@ -60,16 +94,20 @@ class WebsocketTransformer(
     }
     process(result)
   }
+
   def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     val byteString = ByteString(byteBuffer)
     bytesReceived(byteString, 0, channelWrapper)
 
   }
+
   def channelIdled(channelWrapper: ChannelWrapper): Unit = { handler.idled() }
+
   def channelWritable(channelWrapper: ChannelWrapper): Unit = {
     if (null != handler) handler.channelWritable()
   }
+
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
     cause match {
       case ChannelClosedCause.BY_BIZ => {

@@ -88,6 +88,7 @@ final class HttpChannelWrapper(
     wr
   }
 
+  //??? born could be optimized
   def toWebSocketTransformer(request: HttpRequest, extraHeaders: List[HttpHeader], max_payload_length: Int, born: WebSocketChannelWrapper => WebSocketChannelHandler) = {
     WebSocket13.tryAccept(request) match {
       case WebSocketAcceptance.Ok(response) => {
@@ -154,27 +155,6 @@ trait PlainHttpChannelHandler {
   def channelClosed(channel: HttpChannelWrapper): Unit
 }
 
-class WebSocketChannelWrapper(channelWarpper: ChannelWrapper) {
-  import WebSocket13._
-  def writeString(s: String) = {
-    val rendered = render(s)
-    channelWarpper.write(rendered.toArray)
-  }
-  def writeBytes(bytes: Array[Byte]) = {
-    val rendered = render(bytes, WebSocket13.OpCode.BINARY)
-    channelWarpper.write(rendered.toArray)
-  }
-  def close(closeCode: Option[CloseCode.Value] = CloseCode.NORMAL_CLOSURE_OPTION) = {
-    val frame = WSClose(closeCode.getOrElse(CloseCode.NORMAL_CLOSURE), why(null), EMPTY_BYTE_ARRAY, true, false, EMPTY_BYTE_ARRAY)
-    val rendered = render(frame)
-    channelWarpper.write(rendered.toArray)
-    channelWarpper.closeChannel(false, closeCode)
-  }
-  def ping() = {
-    val rendered = render(WebSocket13.EMPTY_BYTE_ARRAY, WebSocket13.OpCode.PING)
-    channelWarpper.write(rendered.toArray)
-  }
-}
 final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHandler,
     val max_payload_length: Int) extends HttpRequestProcessor {
 
@@ -189,20 +169,5 @@ final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHa
   def finished: Boolean = no
 
 }
-trait WebSocketChannelHandler {
-  def idled(): Unit = {}
-  def pongReceived(frame: WebSocket13.WSFrame): Unit
-  def frameReceived(frame: WebSocket13.WSFrame): Unit
-  def fireClosed(code: WebSocket13.CloseCode.Value, reason: String): Unit
-  def inputEnded(): Unit
 
-  def channelWrapper: HttpChannelWrapper =
-    throw new RuntimeException("this method should not be invoked anywhere.")
-
-  def channelWritable(): Unit
-  def close(): Unit =
-    throw new RuntimeException("this method should not be invoked anywhere.")
-  def finished: Boolean =
-    throw new RuntimeException("this method should not be invoked anywhere.")
-}
 
