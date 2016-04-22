@@ -23,7 +23,14 @@ import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
 object HttpTransformer {
 
-  private def safeOp[T](x: => T) = try { x } catch { case _: Throwable => {} }
+  private def safeOp[T](x: => T) =
+    try {
+      x
+    } catch {
+      case ex: Throwable => {
+        ex.printStackTrace()
+      }
+    }
 
   private[HttpTransformer] final case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper, var next: Node)
   private[HttpTransformer] final case class DataToSwitch(byteString: ByteString, offset: Int, channelWrapper: ChannelWrapper)
@@ -130,8 +137,6 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
   private var tail: Node = null
   private var pipeline_size = 0
 
-  @inline private def chunking = if (null == processor) { false } else { processor.channelWrapper.chunked }
-
   private var processor: HttpRequestProcessor = null
 
   def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
@@ -160,8 +165,8 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
       head = head.next
       if (null == head) tail = head
       pipeline_size = pipeline_size - 1
-      //it should be PlainHttpChannelWrapper
-      val channel = new PlainHttpChannelWrapper(tmp.channelWrapper, tmp.closeAfterResponseCompletion, this)
+      //it should be HttpChannelWrapper
+      val channel = new HttpChannelWrapper(tmp.channelWrapper, tmp.closeAfterResponseCompletion, this)
       handler.requestReceived(tmp.value, channel) match {
         case null => {
           tmp.channelWrapper.closeChannel(true)
@@ -212,7 +217,7 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
           request match {
             case x: ChunkedRequestStart => {
               if (processor == null) {
-                val channel = new ChunkedHttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
+                val channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
                 processor = handler.requestReceived(request, channel)
               } else {
                 if (null == head) {
@@ -246,7 +251,7 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
 
               //it's not strict enough!
               if (processor == null) {
-                val channel = new PlainHttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
+                val channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
                 handler.requestReceived(x, channel) match {
                   case null => {
                     channelWrapper.closeChannel(true)

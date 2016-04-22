@@ -23,11 +23,12 @@ import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
 class HttpChannelHandlerFactory(plain_http_channel_handler: PlainHttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
 
-  def handler = Some(new HttpTransformer(plain_http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
+  val handler = Some(new HttpTransformer(plain_http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
   def getChannelHandler(aChannel: ChannelInformation): Option[ChannelHandler] = handler
+
 }
 
-sealed abstract class HttpChannelWrapper(
+final class HttpChannelWrapper(
     channelWrapper: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     private[this] val httpChannelHandler: HttpTransformer) extends ResponseRenderingComponent {
@@ -35,8 +36,6 @@ sealed abstract class HttpChannelWrapper(
   def serverHeaderValue: String = woshilaiceshide.sserver.httpd.HttpdInforamtion.VERSION
   def chunklessStreaming: Boolean = false
   def transparentHeadRequests: Boolean = false
-
-  def chunked: Boolean = false
 
   private var finished = false
 
@@ -150,24 +149,7 @@ sealed abstract class HttpChannelWrapper(
 
 }
 
-final class ChunkedHttpChannelWrapper(
-  channelWrapper: ChannelWrapper,
-  closeAfterEnd: Boolean,
-  httpChannelHandler: HttpTransformer)
-    extends HttpChannelWrapper(channelWrapper, closeAfterEnd, httpChannelHandler) {
-  final override def chunked = true
-}
-final class PlainHttpChannelWrapper(
-  channelWrapper: ChannelWrapper,
-  closeAfterEnd: Boolean,
-  httpChannelHandler: HttpTransformer)
-    extends HttpChannelWrapper(channelWrapper, closeAfterEnd, httpChannelHandler) {
-  final override def chunked = true
-}
-
-sealed trait AbstractHttpChannelHandler
-
-trait PlainHttpChannelHandler extends AbstractHttpChannelHandler {
+trait PlainHttpChannelHandler {
   def requestReceived(request: HttpRequestPart, channel: HttpChannelWrapper): HttpRequestProcessor
   def channelClosed(channel: HttpChannelWrapper): Unit
 }
@@ -207,7 +189,7 @@ final case class LengthedWebSocketChannelHandler(val handler: WebSocketChannelHa
   def finished: Boolean = no
 
 }
-trait WebSocketChannelHandler extends AbstractHttpChannelHandler {
+trait WebSocketChannelHandler {
   def idled(): Unit = {}
   def pongReceived(frame: WebSocket13.WSFrame): Unit
   def frameReceived(frame: WebSocket13.WSFrame): Unit
