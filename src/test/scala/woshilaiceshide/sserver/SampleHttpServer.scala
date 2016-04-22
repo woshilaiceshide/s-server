@@ -9,7 +9,7 @@ import spray.http.StatusCode.int2StatusCode
 import woshilaiceshide.sserver.httpd.WebSocket13
 import woshilaiceshide.sserver.nio.NioSocketServer
 import spray.can.WebSocketChannelHandler
-import spray.can.PlainHttpChannelHandler
+import spray.can.HttpChannelHandler
 import spray.can.HttpRequestProcessor
 import spray.can.HttpChannelWrapper
 import spray.can.HttpChannelHandlerFactory
@@ -17,7 +17,7 @@ import spray.can.HttpChannelHandlerFactory
 //to test, use `nc -C 127.0.0.1 8181 < ./http-requests.dos.txt`
 object SampleHttpServer extends App {
 
-  val handler = new PlainHttpChannelHandler {
+  val handler = new HttpChannelHandler {
 
     import scala.concurrent.ExecutionContext.Implicits.global
     import scala.concurrent._

@@ -21,13 +21,14 @@ import woshilaiceshide.sserver.nio._
 import woshilaiceshide.sserver.httpd.WebSocket13
 import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
-class HttpChannelHandlerFactory(plain_http_channel_handler: PlainHttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
+class HttpChannelHandlerFactory(plain_http_channel_handler: HttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
 
   val handler = Some(new HttpTransformer(plain_http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
   def getChannelHandler(aChannel: ChannelInformation): Option[ChannelHandler] = handler
 
 }
 
+//won't be reused internally
 final class HttpChannelWrapper(
     channelWrapper: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
@@ -83,12 +84,12 @@ final class HttpChannelWrapper(
     }
 
     if (finished) {
-      httpChannelHandler.check(channelWrapper, closeAfterEnd)
+      httpChannelHandler.check_pipelining(channelWrapper, closeAfterEnd)
     }
     wr
   }
 
-  //??? born could be optimized
+  //TODO born could be optimized, WebSocketChannelWrapper may be supplied in each sink.
   def toWebSocketTransformer(request: HttpRequest, extraHeaders: List[HttpHeader], max_payload_length: Int, born: WebSocketChannelWrapper => WebSocketChannelHandler) = {
     WebSocket13.tryAccept(request) match {
       case WebSocketAcceptance.Ok(response) => {
@@ -150,7 +151,7 @@ final class HttpChannelWrapper(
 
 }
 
-trait PlainHttpChannelHandler {
+trait HttpChannelHandler {
   def requestReceived(request: HttpRequestPart, channel: HttpChannelWrapper): HttpRequestProcessor
   def channelClosed(channel: HttpChannelWrapper): Unit
 }

@@ -71,7 +71,7 @@ object HttpTransformer {
     sslSessionInfoHeader = false,
     headerValueCacheLimits = headerValueCacheLimits)
 
-  class RevisedHttpRequestPartParser(parser_setting: ParserSettings, rawRequestUriHeader: Boolean)
+  private[can] class RevisedHttpRequestPartParser(parser_setting: ParserSettings, rawRequestUriHeader: Boolean)
       extends HttpRequestPartParser(parser_setting, rawRequestUriHeader)() {
     var lastOffset = -1
     override def parseMessageSafe(input: ByteString, offset: Int = 0): Result = {
@@ -85,7 +85,7 @@ object HttpTransformer {
 
 //please refer to spray.can.server.RequestParsing
 //transform bytes to http
-class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
+class HttpTransformer(private[this] var handler: HttpChannelHandler,
   val original_parser: HttpTransformer.RevisedHttpRequestPartParser = HttpTransformer.default_parser,
   max_request_in_pipeline: Int = 1)
     extends ChannelHandler {
@@ -94,7 +94,7 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
 
   private val max_request_in_pipeline_1 = Math.max(1, max_request_in_pipeline)
 
-  private[can] def check(channelWrapper: ChannelWrapper, closeAfterEnd: Boolean): Unit = {
+  private[can] def check_pipelining(channelWrapper: ChannelWrapper, closeAfterEnd: Boolean): Unit = {
     //use "post(...)" to keep things run on its way.
     if (channelWrapper.is_in_io_worker_thread()) {
       if (closeAfterEnd || (!has_next() && _inputEnded)) {
@@ -108,7 +108,7 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
       }
     } else {
       channelWrapper.post(new Runnable() {
-        def run() { check(channelWrapper, closeAfterEnd) }
+        def run() { check_pipelining(channelWrapper, closeAfterEnd) }
       })
     }
   }
@@ -205,7 +205,8 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
       this
     }
   }
-  def bytesReceived1(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
+
+  private def bytesReceived1(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     val byteString = ByteString(byteBuffer)
 
@@ -296,6 +297,7 @@ class HttpTransformer(private[this] var handler: PlainHttpChannelHandler,
                 if (WebSocket13.isAWebSocketRequest(x)) {
                   continue() match {
                     //switching protocol
+                    //TODO optimize for EMPTY data_to_switching
                     case Result.ParsingError(_, _) | Result.NeedMoreData(_) => {
                       if (lastOffset < byteString.length) {
                         data_to_switching = DataToSwitch(byteString, lastOffset, channelWrapper)

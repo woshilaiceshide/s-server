@@ -14,7 +14,7 @@ Note that I've refactored s-server very much since version 1.x. Version 2.x is n
 * support http pipelining
 * support http chunking
 * support websocket(v13 only)
-* plain http connections can be switched to websocket connections. (but not vice versus)
+* plain http connections can be switched to websocket connections. (but not vice versus)(NO practical use???)
 
 ## Model
 1.
