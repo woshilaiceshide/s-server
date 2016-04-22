@@ -73,6 +73,7 @@ package object nio {
     //byteBuffer can not be changed by the method body's point of view(aka, readonly in the its point of view), 
     //but may be changed by the underlying socket server, 
     //because byteBuffer's inner array is shared with the writable buffer used by the underlying socket server. 
+    //the returned handler will be used next time.
     def bytesReceived(byteBuffer: ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler
     //if the handler does not close the channel, then the channel will closed roughly. 
     def channelIdled(channelWrapper: ChannelWrapper): Unit

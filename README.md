@@ -16,6 +16,16 @@ Note that I've refactored s-server very much since version 1.x. Version 2.x is n
 * support websocket(v13 only)
 * plain http connections can be switched to websocket connections. (but not vice versus)
 
+## Model
+1.
+requests flow in `'channel`'s,
+ 
+2.
+and handled by `'channel handler`'s,
+ 
+3.
+and `'channel handlers`' may use `'channel wrapper`'s to write responses. 
+
 ## Two Examples
 * test/main/scala/woshilaiceshide/sserver/EchoServer.scala
 
