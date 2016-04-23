@@ -91,6 +91,7 @@ package object nio {
   }
 
   trait ChannelHandlerFactory {
+    //if asynchronization is needed, put your asynchronization in the returned ChannelHandler.
     def getChannelHandler(aChannel: ChannelInformation): Option[ChannelHandler]
   }
 
