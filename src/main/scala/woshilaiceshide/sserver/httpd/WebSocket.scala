@@ -62,8 +62,9 @@ object WebSocket13 {
     Base64.encode(sha1)
   }
 
-  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil): WebSocketAcceptance = {
-    if (!isAWebSocketRequest(request)) {
+  //is_already_seen_as_websocket: the caller has known this is a websocket request definitely. this is a small hint for optimization.
+  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, is_already_seen_as_websocket: Boolean = false): WebSocketAcceptance = {
+    if (!is_already_seen_as_websocket && !isAWebSocketRequest(request)) {
       WebSocketAcceptance.Failed(HttpResponse(400, "not a websocket request"))
     } else if (!request.headers.exists { x =>
       x.name == WS_HEADER_WEBSOCKET_VERSION &&

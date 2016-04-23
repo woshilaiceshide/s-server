@@ -43,6 +43,8 @@ class WebSocketChannelWrapper(channelWarpper: ChannelWrapper) {
   }
 }
 
+//you would WebSocketChannelWrapper may be supplied in each sink, 
+//but factory should not be optimized in this way, in which situation, api will be ugly.
 trait WebSocketChannelHandler {
 
   def idled(): Unit = {}
@@ -60,7 +62,7 @@ class WebsocketTransformer(
     extends ChannelHandler {
 
   //already opened
-  def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
+  final def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
 
   def inputEnded(channelWrapper: ChannelWrapper) = handler.inputEnded()
 

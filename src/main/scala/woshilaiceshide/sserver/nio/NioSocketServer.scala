@@ -321,7 +321,7 @@ class NioSocketServer(interface: String,
       var channelWrapper: MyChannelWrapper = null
       try {
         channel.configureBlocking(false)
-        channel_hander_factory.getChannelHandler(new ChannelInformation(channel)) match {
+        channel_hander_factory.getHandler(new ChannelInformation(channel)) match {
           case None => {
             safeClose(channel)
           }

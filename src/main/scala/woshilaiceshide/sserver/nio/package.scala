@@ -38,6 +38,7 @@ package object nio {
     val WR_FAILED_BECAUSE_EMPTY_BYTES_TO_WRITTEN = Value
   }
 
+  //all operations are thread safe
   trait ChannelWrapper {
 
     //if rightNow is false, then close gracefully.
@@ -92,7 +93,7 @@ package object nio {
 
   trait ChannelHandlerFactory {
     //if asynchronization is needed, put your asynchronization in the returned ChannelHandler.
-    def getChannelHandler(aChannel: ChannelInformation): Option[ChannelHandler]
+    def getHandler(channel: ChannelInformation): Option[ChannelHandler]
   }
 
 }

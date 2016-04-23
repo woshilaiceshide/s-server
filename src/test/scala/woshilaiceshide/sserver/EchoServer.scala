@@ -42,7 +42,7 @@ object EchoServer extends App {
       }
 
     })
-    def getChannelHandler(aChannel: ChannelInformation): Option[ChannelHandler] = handler
+    def getChannelHandler(channel: ChannelInformation): Option[ChannelHandler] = handler
   }
 
   val server = new NioSocketServer("127.0.0.1", 8181, factory)
