@@ -3,7 +3,7 @@ Some Small Servers written in Scala, including a nio server and a small httpd, w
 
 It's targeted for small footprint when running, with extensibility for mulit-threading when processing http requests' business.
 
-Note that I've refactored s-server very much since version 1.x. Version 2.x is not compatible with version 1.x, and the latter one will not be supported in the future. 
+Note that I've refactored s-server very much since version 1.x. Version 2.x is not compatible with version 1.x, and the latter one will not be supported any more. 
 
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
@@ -49,7 +49,7 @@ If your development touches `'s-server'`, you may tell me to write your project 
 
 ## Optimizations & TODO
 * optimize socket i/o operations: 1). reducing i/o operations, 2). making i/o just carried out as directly as possible without repost them to the executor.
-* optimize the http parsing processes. Spray's http parser is not good enough, and some tweaks needed.
+* optimize the http parsing processes. Spray's http parser is not good enough, and some tweaks are needed.
 * write test cases
 * ...
 

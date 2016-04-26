@@ -25,21 +25,21 @@ class WebSocketChannelWrapper(channelWarpper: ChannelWrapper) {
   import WebSocket13._
   def writeString(s: String) = {
     val rendered = render(s)
-    channelWarpper.write(rendered.toArray)
+    channelWarpper.write(rendered.toArray, true, false)
   }
   def writeBytes(bytes: Array[Byte]) = {
     val rendered = render(bytes, WebSocket13.OpCode.BINARY)
-    channelWarpper.write(rendered.toArray)
+    channelWarpper.write(rendered.toArray, true, false)
   }
   def close(closeCode: Option[CloseCode.Value] = CloseCode.NORMAL_CLOSURE_OPTION) = {
     val frame = WSClose(closeCode.getOrElse(CloseCode.NORMAL_CLOSURE), why(null), EMPTY_BYTE_ARRAY, true, false, EMPTY_BYTE_ARRAY)
     val rendered = render(frame)
-    channelWarpper.write(rendered.toArray)
+    channelWarpper.write(rendered.toArray, true, false)
     channelWarpper.closeChannel(false, closeCode)
   }
   def ping() = {
     val rendered = render(WebSocket13.EMPTY_BYTE_ARRAY, WebSocket13.OpCode.PING)
-    channelWarpper.write(rendered.toArray)
+    channelWarpper.write(rendered.toArray, true, false)
   }
 }
 
@@ -59,17 +59,21 @@ trait WebSocketChannelHandler {
 class WebsocketTransformer(
   handler: WebSocketChannelHandler, channel: WebSocketChannelWrapper,
   private[this] var parser: WebSocket13.WSFrameParser)
-    extends ChannelHandler {
+    extends TrampledChannelHandler {
 
   //already opened
   final def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
 
   def inputEnded(channelWrapper: ChannelWrapper) = handler.inputEnded()
 
-  private[can] def bytesReceived(byteString: ByteString, offset: Int, channelWrapper: ChannelWrapper): ChannelHandler = {
+  def customizedObjectReceived(obj: AnyRef, channelWrapper: ChannelWrapper): Unit = {}
+
+  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): HandledResult = {
+
+    val byteString = ByteString(byteBuffer)
     import WebSocket13._
     val result = parser(byteString)
-    @scala.annotation.tailrec def process(result: WSResult): ChannelHandler = {
+    @scala.annotation.tailrec def process(result: WSResult): HandledResult = {
       result match {
         case WSResult.Emit(frame, continue) => {
           frame match {
@@ -80,7 +84,7 @@ class WebsocketTransformer(
             case x: WSClose => {
               handler.frameReceived(x)
               channelWrapper.closeChannel(false, CloseCode.NORMAL_CLOSURE_OPTION)
-              this
+              HandledResult(this, null)
             }
             case x => { handler.frameReceived(x); process(continue()) }
           }
@@ -88,19 +92,13 @@ class WebsocketTransformer(
         }
         case WSResult.NeedMoreData(parser1) => {
           parser = parser1
-          this
+          HandledResult(this, null)
         }
         case WSResult.End => { /* nothing to do */ null /*this*/ }
         case WSResult.Error(closeCode, reason) => { channelWrapper.closeChannel(false); null /*this*/ }
       }
     }
     process(result)
-  }
-
-  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
-
-    val byteString = ByteString(byteBuffer)
-    bytesReceived(byteString, 0, channelWrapper)
 
   }
 
@@ -108,6 +106,11 @@ class WebsocketTransformer(
 
   def channelWritable(channelWrapper: ChannelWrapper): Unit = {
     if (null != handler) handler.channelWritable()
+  }
+
+  def writtenHappened(channelWrapper: ChannelWrapper): TrampledChannelHandler = {
+    //nothing else
+    this
   }
 
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {

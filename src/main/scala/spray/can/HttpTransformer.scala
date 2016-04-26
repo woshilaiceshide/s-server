@@ -72,25 +72,46 @@ object HttpTransformer {
     sslSessionInfoHeader = false,
     headerValueCacheLimits = headerValueCacheLimits)
 
+  private[can] object FakeException extends Exception with scala.util.control.NoStackTrace
   private[can] class RevisedHttpRequestPartParser(parser_setting: ParserSettings, rawRequestUriHeader: Boolean)
       extends HttpRequestPartParser(parser_setting, rawRequestUriHeader)() {
-    //TODO is its logic right?
+
+    //this instance will be used from the very beginning to the end fo this channel
     var lastOffset = -1
+    var lastInput: ByteString = _
+    var just_check_positions = false
+
+    //1. method invocation is lay binding in java/scala
+    //2. super.parseMessageSafe will invoke parseMessageSafe, which is RevisedHttpRequestPartParser's parseMessageSafe.
     override def parseMessageSafe(input: ByteString, offset: Int = 0): Result = {
-      lastOffset = offset
-      super.parseMessageSafe(input, offset)
+      if (just_check_positions) {
+        lastOffset = offset
+        lastInput = input
+        throw FakeException
+      } else {
+        super.parseMessageSafe(input, offset)
+      }
     }
+
+    //I've seen that 'copyWith' will be invoked in spray-scan's pipeline only, and not in this project.
+    override def copyWith(warnOnIllegalHeader: ErrorInfo ⇒ Unit): HttpRequestPartParser = throw new UnsupportedOperationException()
   }
 
   def default_parser = new RevisedHttpRequestPartParser(default_parser_settings, false)
+
+  final class MyChannelInformation(channel: HttpChannelWrapper) extends ChannelInformation {
+    def remoteAddress = channel.remoteAddress
+    def localAddress = channel.localAddress
+  }
 }
 
 //please refer to spray.can.server.RequestParsing
 //transform bytes to http
+//TODO counting requests is wrong in pipelining
 class HttpTransformer(plain_handler: PlainHttpChannelHandler,
   val original_parser: HttpTransformer.RevisedHttpRequestPartParser = HttpTransformer.default_parser,
   max_request_in_pipeline: Int = 1)
-    extends ChannelHandler {
+    extends TrampledChannelHandler {
 
   import HttpTransformer._
 
@@ -98,153 +119,29 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
 
   private val max_request_in_pipeline_1 = Math.max(1, max_request_in_pipeline)
 
-  private[can] def check_pipelining(http_channel: HttpChannelWrapper, closeAfterEnd: Boolean): Unit = {
-    //use "post(...)" to keep things run on its way.
-    if (http_channel.channel.is_in_io_worker_thread()) {
-
-      current_http_channel = null
-
-      if (closeAfterEnd || (!has_next() && _inputEnded)) {
-        http_channel.channel.closeChannel(false)
-      } else if (has_next()) {
-        http_channel.channel.post(new Runnable() {
-          def run() {
-            bytesReceived(null, http_channel.channel)
-          }
-        })
-      }
-    } else {
-      http_channel.channel.post(new Runnable() {
-        def run() { check_pipelining(http_channel, closeAfterEnd) }
-      })
-    }
-  }
-
   private[this] var current_http_channel: HttpChannelWrapper = _
 
   @inline private def has_next(): Boolean = null != head
 
-  //am i switching to websocket?
-  private def switching = data_to_switching != null
-  //if too many bytes here??? close it! the max is 1024 bytes.
-  private var bytes_to_switching: ByteString = null
-  private var data_to_switching: DataToSwitch = null
   private var parser: _root_.spray.can.parsing.Parser = original_parser
+
   def lastOffset = original_parser.lastOffset
+  def lastInput = original_parser.lastInput
 
   def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
-
-  private var _inputEnded = false
-  def inputEnded(channelWrapper: ChannelWrapper) = {
-    _inputEnded = true
-    if (!has_next) {
-      channelWrapper.closeChannel(false)
-    }
-  }
 
   private var head: Node = null
   private var tail: Node = null
   private var pipeline_size = 0
 
-  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
-    if (null == byteBuffer) {
-      check(channelWrapper)
-    } else if (switching) {
-      if (128 < byteBuffer.remaining()) {
-        throw new RuntimeException("too many bytes in the websocket channel")
-      } else if (null == bytes_to_switching)
-        bytes_to_switching = ByteString(byteBuffer)
-      else if (bytes_to_switching.length + byteBuffer.remaining() > 1024) {
-        //channelWrapper.closeChannel(true)
-        throw new RuntimeException("too many bytes in the websocket channel")
-      } else {
-        bytes_to_switching = bytes_to_switching ++ ByteString(byteBuffer)
-      }
-      this
-    } else {
-      bytesReceived1(byteBuffer, channelWrapper)
-    }
-  }
+  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): HandledResult = {
 
-  def check(channelWrapper: ChannelWrapper): ChannelHandler = {
-    if (head != null) {
-      val tmp = head
-      head = head.next
-      if (null == head) tail = head
-      pipeline_size = pipeline_size - 1
-      //it should be HttpChannelWrapper
-      val channel = new HttpChannelWrapper(tmp.channelWrapper, tmp.closeAfterResponseCompletion, this)
-      handler.requestReceived(tmp.value, channel) match {
-        case null => {
-          tmp.channelWrapper.closeChannel(true)
-          this
-        }
-        case h: LengthedWebSocketChannelHandler => {
-          if (switching) {
-            //switching protocol
-            val btw = new WebsocketTransformer(h.handler, new WebSocketChannelWrapper(data_to_switching.channelWrapper), WebSocket13.default_parser(h.max_payload_length))
-            if (null != data_to_switching)
-              btw.bytesReceived(data_to_switching.byteString, data_to_switching.offset, data_to_switching.channelWrapper)
+    val result = parser.apply(ByteString(byteBuffer))
 
-            if (null != bytes_to_switching) {
-              val bytes = bytes_to_switching
-              bytes_to_switching = null
-              data_to_switching = null
-              btw.bytesReceived(bytes, 0, tmp.channelWrapper)
-            }
-            btw
-          } else {
-            tmp.channelWrapper.closeChannel(true)
-            this
-          }
-        }
-        case p: HttpRequestProcessor => {
-          if (!p.channelWritable()) {
-            processor = p
-          }
-          this
-        }
-      }
-    } else {
-      if (_inputEnded) {
-        channelWrapper.closeChannel(false)
-      }
-      this
-    }
-  }
-
-  private def toWebSocketTransformer(http_channel: HttpChannelWrapper,
-    request: HttpRequest,
-    extra_headers: List[HttpHeader],
-    max_payload_length: Int, factory: WebSocketChannelWrapper => WebsocketTransformer): WebsocketTransformer = {
-
-    WebSocket13.tryAccept(request, extra_headers, true) match {
-      case WebSocketAcceptance.Ok(response) => {
-        http_channel.writeWebSocketResponse(response)
-        val websocket_channel = new WebSocketChannelWrapper(http_channel.channel)
-        factory(websocket_channel)
-      }
-      case WebSocketAcceptance.Failed(response) => {
-        http_channel.writeWebSocketResponse(response)
-        http_channel.channel.closeChannel(false)
-        null
-      }
-      case WebSocketAcceptance.ERROR => {
-        http_channel.channel.closeChannel(false)
-        null
-      }
-    }
-
-  }
-
-  private def bytesReceived1(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
-
-    val byteString = ByteString(byteBuffer)
-
-    val result = parser.apply(byteString)
-
-    @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
+    @scala.annotation.tailrec def process(result: Result): HandledResult = {
       result match {
+
+        //closeAfterResponseCompletion will be fine even if it's a 'MessageChunk'
         case Result.Emit(request: HttpRequestPart, closeAfterResponseCompletion, continue) => {
 
           request match {
@@ -272,7 +169,7 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
                 }
                 process(continue())
               } else {
-                current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
+                current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion)
                 plain_handler.chunkedStarted(x, current_http_channel) match {
                   case None => {
                     channelWrapper.closeChannel(false)
@@ -297,8 +194,8 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
                   process(continue())
                 } else {
                   chunked_handler.messageReceived(x)
+                  process(continue())
                 }
-                process(continue())
               }
 
             }
@@ -314,9 +211,10 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
                   process(continue())
                 } else {
                   chunked_handler.ended(x)
-                  chunked_handler = null
+                  //TODO
+                  //chunked_handler = null
+                  process(continue())
                 }
-                process(continue())
               }
 
             }
@@ -344,9 +242,48 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
                 }
                 process(continue())
               } else {
-                current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
-                plain_handler.requestReceived(x, current_http_channel)
-                process(continue())
+                current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion)
+                plain_handler.websocketStarted(x, new MyChannelInformation(current_http_channel)) match {
+                  case None => {
+                    channelWrapper.closeChannel(true)
+                    null
+                  }
+                  case Some(factory) => {
+
+                    //!!! optimization
+                    original_parser.just_check_positions = true
+                    try { continue() } catch { case FakeException => {} }
+                    //!!!
+                    original_parser.just_check_positions = false
+
+                    val websocket_channel = new WebSocketChannelWrapper(channelWrapper)
+                    val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
+
+                    WebSocket13.tryAccept(x, Nil, true) match {
+                      case WebSocketAcceptance.Ok(response) => {
+                        current_http_channel.writeWebSocketResponse(response)
+                        val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
+
+                        if (null != lastInput && lastInput.length > lastOffset) {
+                          //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+                          HandledResult(websocket, lastInput.drop(lastOffset).asByteBuffer)
+                        } else {
+                          HandledResult(websocket, null)
+                        }
+                      }
+                      case WebSocketAcceptance.Failed(response) => {
+                        current_http_channel.writeWebSocketResponse(response)
+                        current_http_channel.channel.closeChannel(false)
+                        null
+                      }
+                      case WebSocketAcceptance.ERROR => {
+                        current_http_channel.channel.closeChannel(false)
+                        null
+                      }
+                    }
+
+                  }
+                }
               }
             }
             case x: HttpRequest => {
@@ -373,70 +310,8 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
                 }
                 process(continue())
               } else {
-                current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
+                current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion)
                 plain_handler.requestReceived(x, current_http_channel)
-                process(continue())
-              }
-            }
-            case x: HttpRequest => {
-
-              //it's not strict enough!
-              if (processor == null) {
-                val channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion, this)
-                handler.requestReceived(x, channel) match {
-                  case null => {
-                    channelWrapper.closeChannel(true)
-                    this
-                  }
-                  case h: LengthedWebSocketChannelHandler => {
-                    //use a http parser for websocket data
-                    continue() match {
-                      case Result.ParsingError(_, _) | Result.NeedMoreData(_) => {
-                        //TODO optimize for EMPTY data_to_switching
-                        val tmp = new WebsocketTransformer(h.handler, new WebSocketChannelWrapper(channelWrapper), WebSocket13.default_parser(h.max_payload_length))
-                        if (null != byteString && byteString.length > lastOffset)
-                          tmp.bytesReceived(byteString, lastOffset, channelWrapper)
-                        tmp
-                      }
-                      case _ => { channelWrapper.closeChannel(true); this }
-                    }
-
-                  }
-                  case p: HttpRequestProcessor => {
-                    if (!p.channelWritable()) {
-                      processor = p
-                    }
-                    process(continue())
-                  }
-                }
-
-              } else {
-                if (null == head) {
-                  head = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                  tail = head
-                  pipeline_size = 1
-                } else {
-                  if (pipeline_size >= max_request_in_pipeline_1) {
-                    throw new RuntimeException("too many requests in pipeline!")
-                  } else {
-                    tail.next = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                    tail = tail.next
-                    pipeline_size = pipeline_size + 1
-                  }
-                }
-                if (WebSocket13.isAWebSocketRequest(x)) {
-                  continue() match {
-                    //switching protocol
-                    //TODO optimize for EMPTY data_to_switching
-                    case Result.ParsingError(_, _) | Result.NeedMoreData(_) => {
-                      if (lastOffset < byteString.length) {
-                        data_to_switching = DataToSwitch(byteString, lastOffset, channelWrapper)
-                      }
-                    }
-                    case _ => { channelWrapper.closeChannel(true); this }
-                  }
-                }
-
                 process(continue())
               }
             }
@@ -444,27 +319,52 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
         }
         case Result.NeedMoreData(parser1) => {
           parser = parser1
-          this
+          HandledResult(this, null)
         }
         case x => {
           channelWrapper.closeChannel(true)
-          this
+          HandledResult(this, null)
         }
       }
     }
+
     process(result)
   }
-  def channelIdled(channelWrapper: ChannelWrapper): Unit = {}
-  def channelWritable(channelWrapper: ChannelWrapper): Unit = {
-    if (null != handler) { handler.channelWritable(channelWrapper) }
+
+  //TODO
+  def writtenHappened(channelWrapper: ChannelWrapper): TrampledChannelHandler = {
+
+    if (null == current_http_channel || (current_http_channel != null && current_http_channel.isCompleted)) {
+
+      current_http_channel = null
+      chunked_handler = null
+
+    } else {
+
+    }
+
+    this
   }
+
+  def channelIdled(channelWrapper: ChannelWrapper): Unit = {}
+
+  def channelWritable(channelWrapper: ChannelWrapper): Unit = {
+    //TODO
+  }
+
+  def inputEnded(channelWrapper: ChannelWrapper): Unit = {
+    //TODO
+  }
+
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
-    data_to_switching = null
-    if (null != handler) { safeOp { handler.close(channelWrapper) }; processor = null; }
+
     head = null
     tail = null
     pipeline_size = 0
-    handler = null
+    //plain_handler = null
+    current_http_channel = null
+    //TODO
+    //chunked_handler = null
     parser = null
   }
 }

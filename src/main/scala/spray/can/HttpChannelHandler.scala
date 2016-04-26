@@ -23,23 +23,33 @@ import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
 class HttpChannelHandlerFactory(plain_http_channel_handler: PlainHttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
 
-  //should be "def", because the handler is stateful.
-  def handler = Some(new HttpTransformer(plain_http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
-  def getHandler(channel: ChannelInformation): Option[ChannelHandler] = handler
+  //HttpTransformer is instantiated every time because the handler is stateful.
+  def getHandler(channel: ChannelInformation): Option[ChannelHandler] = {
+
+    val trampling = new Trampling(new HttpTransformer(plain_http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
+    Some(trampling)
+
+  }
 
 }
 
 //won't be reused internally
 final class HttpChannelWrapper(
     private[can] val channel: ChannelWrapper,
-    private[this] var closeAfterEnd: Boolean,
-    private[this] val httpChannelHandler: HttpTransformer) extends ResponseRenderingComponent {
+    private[this] var closeAfterEnd: Boolean) extends ResponseRenderingComponent {
+
+  def remoteAddress: java.net.SocketAddress = channel.remoteAddress
+  def localAddress: java.net.SocketAddress = channel.localAddress
 
   def serverHeaderValue: String = woshilaiceshide.sserver.httpd.HttpdInforamtion.VERSION
   def chunklessStreaming: Boolean = false
   def transparentHeadRequests: Boolean = false
 
   private var finished = false
+
+  def isCompleted = this.synchronized {
+    finished
+  }
 
   private[can] def writeWebSocketResponse(response: HttpResponse) = {
     val wr = synchronized {
@@ -52,13 +62,13 @@ final class HttpChannelWrapper(
       val ctx = new ResponsePartRenderingContext(responsePart = response)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
 
-      channel.write(r.get)
+      channel.write(r.get, true, false)
     }
 
     wr
   }
   def writeResponse(response: HttpResponsePart) = {
-    val (_finished, wr) = synchronized {
+    val (_finished, wr, should_close) = synchronized {
 
       if (finished) {
         throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
@@ -73,20 +83,17 @@ final class HttpChannelWrapper(
       val ctx = new ResponsePartRenderingContext(responsePart = response)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
 
-      val write_result = channel.write(r.get)
+      //if finished, continue the next request in the pipelining(if existed)
+      val write_result = channel.write(r.get, true, finished)
 
       val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
       if (closeMode == CloseMode.CloseAfterEnd) closeAfterEnd = true
-      if (closeNow) {
-        //closeAfterEnd = false
-        channel.closeChannel(false)
-      }
-      (finished, write_result)
+
+      (finished, write_result, closeNow)
     }
 
-    if (_finished) {
-      httpChannelHandler.check_pipelining(this, closeAfterEnd)
-    }
+    if (should_close) channel.closeChannel(false)
+
     wr
   }
 
@@ -96,6 +103,7 @@ trait ChunkedHttpChannelHandler {
 
   def messageReceived(chunk: MessageChunk): Unit
   def ended(end: ChunkedMessageEnd): Unit
+  def inputEnded(): Unit
 
 }
 
@@ -109,7 +117,9 @@ trait PlainHttpChannelHandler {
 
   def chunkedStarted(start: ChunkedRequestStart, channel: HttpChannelWrapper): Option[ChunkedHttpChannelHandler]
 
-  def websocketStarted(start: HttpRequest, channel: ChannelInformation): Option[WebSocketChannelWrapper => WebsocketTransformer]
+  //return a websocket handler instead of websocket transformer, 
+  //because the transformer need to be instantiated every time, which will be coded incorrectly by coders.
+  def websocketStarted(start: HttpRequest, channel: ChannelInformation): Option[WebSocketChannelWrapper => (WebSocketChannelHandler, WebSocket13.WSFrameParser)]
 
   def channelWritable(channel: HttpChannelWrapper): Unit
 

@@ -32,6 +32,11 @@ private[nio] object NioSocketServer {
   val CHANNEL_CLOSING_RIGHT_NOW = 2
   val CHANNEL_CLOSED = 3
 
+  final class MyChannelInformation(channel: SocketChannel) extends ChannelInformation {
+    def remoteAddress = channel.getRemoteAddress
+    def localAddress = channel.getLocalAddress
+  }
+
 }
 
 class NioSocketServer(interface: String,
@@ -72,7 +77,7 @@ class NioSocketServer(interface: String,
   private var status = INITIALIZED
 
   private var tasks: LinkedList[Runnable] = LinkedList.newEmpty()
-  def post(task: Runnable) = this.synchronized {
+  def post_to_io_thread(task: Runnable) = this.synchronized {
     if (STARTED != status) {
       false
     } else {
@@ -81,6 +86,8 @@ class NioSocketServer(interface: String,
       true
     }
   }
+  //please invoke this method after you start the nio socket server.
+  def is_in_io_worker_thread(): Boolean = Thread.currentThread() == this.workerThread
 
   private var timed_tasks: LinkedList[TimedTask] = LinkedList.newEmpty()
   def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = this.synchronized {
@@ -321,7 +328,7 @@ class NioSocketServer(interface: String,
       var channelWrapper: MyChannelWrapper = null
       try {
         channel.configureBlocking(false)
-        channel_hander_factory.getHandler(new ChannelInformation(channel)) match {
+        channel_hander_factory.getHandler(new MyChannelInformation(channel)) match {
           case None => {
             safeClose(channel)
           }
@@ -472,8 +479,7 @@ class NioSocketServer(interface: String,
       this.last_active_time = System.currentTimeMillis()
     }
 
-    def post(task: Runnable): Boolean = NioSocketServer.this.post(task)
-    def is_in_io_worker_thread(): Boolean = Thread.currentThread() == NioSocketServer.this.workerThread
+    def post_to_io_thread(task: Runnable): Boolean = NioSocketServer.this.post_to_io_thread(task)
 
     private[nio] def inputEnded() = {
       if (null != handler) {
@@ -508,24 +514,31 @@ class NioSocketServer(interface: String,
     private var writes: BytesList = null
     private var bytes_waiting_for_written = 0
 
-    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean = false): WriteResult.Value = {
-      if (null != bytes && 0 < bytes.length) {
-        write0(bytes, write_even_if_too_busy)
-      } else {
-        WriteResult.WR_FAILED_BECAUSE_EMPTY_BYTES_TO_WRITTEN
-      }
-    }
+    //use a (byte)flag to store the following two fields?
     private var already_pending = false
-    private def write0(bytes: Array[Byte], write_even_if_too_busy: Boolean = false): WriteResult.Value = {
+    private var should_generate_writing_event = false
+    //if generate_writing_event is true, then 'bytesWritten' will be fired. 
+    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
+
       this.synchronized {
         if (CHANNEL_NORMAL == status) {
 
+          var force_pending = false
+          if (should_generate_writing_event == false && generate_writing_event == true) {
+            should_generate_writing_event = generate_writing_event
+            force_pending = true
+          }
+
           this.last_active_time = System.currentTimeMillis()
 
-          if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
-            WriteResult.WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED
+          val (wr, should_pending) = if (null == bytes || 0 == bytes.length) {
+            (WriteResult.WR_FAILED_BECAUSE_EMPTY_CONTENT_TO_WRITTEN, false)
+
+          } else if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
+            (WriteResult.WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED, false)
+
           } else {
-            val should_pending = {
+            val should_pending_1 = {
               if (null == writes) {
                 val node = new BytesNode(bytes)
                 writes = new BytesList(node, node)
@@ -540,21 +553,25 @@ class NioSocketServer(interface: String,
                 true
               }
             }
-            if (should_pending) {
-              pend_for_io_operation(this)
-              //if in workerThread, no need for wakeup, or processor will be wasted for one more "listen()" 
-              if (Thread.currentThread() != NioSocketServer.this.workerThread)
-                NioSocketServer.this.selector.wakeup()
-            }
 
             /*if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
               WriteResult.WR_OK_BUT_OVERFLOWED
             } else {
               WriteResult.WR_OK
             }*/
-            WriteResult.WR_OK
+            (WriteResult.WR_OK, should_pending_1)
 
           }
+
+          if (should_pending || force_pending) {
+            pend_for_io_operation(this)
+            //if in workerThread, no need for wakeup, or processor will be wasted for one more "listen()" 
+            if (Thread.currentThread() != NioSocketServer.this.workerThread)
+              NioSocketServer.this.selector.wakeup()
+          }
+
+          wr
+
         } else {
           WriteResult.WR_FAILED_BECAUSE_CHANNEL_CLOSED
         }
@@ -654,8 +671,10 @@ class NioSocketServer(interface: String,
       }
     }
     private[nio] def check(current_timestamp: Long) = {
+
       var closedCause: ChannelClosedCause.Value = null
       var attachmentForClosed: Option[_] = None
+
       val (should, status1) = this.synchronized {
 
         closedCause = closed_cause
@@ -684,7 +703,15 @@ class NioSocketServer(interface: String,
           (false, status)
         }
       }
-      if (should) safeOp { if (null != handler) handler.channelClosed(this, closedCause, attachmentForClosed) }
+      if (should) {
+        safeOp { if (null != handler) handler.channelClosed(this, closedCause, attachmentForClosed) }
+      } else {
+        if (null != this.handler) {
+          val newHandler = this.handler.writtenHappened(this)
+          //nothing to do with oldHandler
+          this.handler = newHandler
+        }
+      }
       status1
     }
 

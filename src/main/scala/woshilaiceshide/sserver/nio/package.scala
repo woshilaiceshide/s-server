@@ -35,7 +35,7 @@ package object nio {
 
     val WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED = Value
     val WR_FAILED_BECAUSE_CHANNEL_CLOSED = Value
-    val WR_FAILED_BECAUSE_EMPTY_BYTES_TO_WRITTEN = Value
+    val WR_FAILED_BECAUSE_EMPTY_CONTENT_TO_WRITTEN = Value
   }
 
   //all operations are thread safe
@@ -44,8 +44,7 @@ package object nio {
     //if rightNow is false, then close gracefully.
     def closeChannel(rightNow: Boolean = false, attachment: Option[_] = None): Unit
 
-    def is_in_io_worker_thread(): Boolean
-    def post(task: Runnable): Boolean
+    def post_to_io_thread(task: Runnable): Boolean
 
     def remoteAddress: java.net.SocketAddress
     def localAddress: java.net.SocketAddress
@@ -56,12 +55,18 @@ package object nio {
 
     override def toString() = s"""${remoteAddress}->${localAddress}@@${hashCode}}"""
 
-    //if bytes that are already waiting for written is more than max_bytes_waiting_for_written_per_channel, 
-    //then no bytes will be written, except for write_even_if_too_busy is true.
-    //buf after this method's execution, byte waiting for written may be more than max_bytes_waiting_for_written_per_channel.
-    //if you are a lazy coder, then use true for write_even_if_too_busy.
-    //all bytes are written successfully, or none written(no partial written).
-    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean = false): WriteResult.Value
+    //1. 
+    //  if bytes that are already waiting for written is more than max_bytes_waiting_for_written_per_channel, 
+    //  then no bytes will be written, except for write_even_if_too_busy is true.
+    //  buf after this method's execution, byte waiting for written may be more than max_bytes_waiting_for_written_per_channel.
+    //  if you are a lazy coder, then use true for write_even_if_too_busy.
+    //2. 
+    //  all bytes are written successfully, or none written(no partial written).
+    //3. 
+    //  if generate_writing_event is true, then 'writtenHappend' will be fired. 
+    //  note that 'writtenHappened' means just an "writing' event, and zero byte may be written.
+    //  multiple 'generate_writing_event' may be folded into one. 
+    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean = false, generate_writing_event: Boolean): WriteResult.Value
   }
 
   //this trait is full of sinks. Every sink receives a channel wrapper, 
@@ -82,13 +87,18 @@ package object nio {
     //now please continue your transport.
     //this sink is important for throttling.
     def channelWritable(channelWrapper: ChannelWrapper): Unit
+
+    //this sink may be used when some continuation should start after some writes happened.
+    //see 'ChannelWrapper.write(...)' for more inforamtion.
+    def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler
+
     def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit
   }
 
   //information about channels. DO NOT use me to execute operations on channels.
-  final class ChannelInformation(channel: SocketChannel) {
-    def remoteAddress = channel.getRemoteAddress
-    def localAddress = channel.getLocalAddress
+  trait ChannelInformation {
+    def remoteAddress: java.net.SocketAddress
+    def localAddress: java.net.SocketAddress
   }
 
   trait ChannelHandlerFactory {
