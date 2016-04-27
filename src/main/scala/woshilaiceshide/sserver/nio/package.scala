@@ -28,14 +28,16 @@ package object nio {
   object WriteResult extends scala.Enumeration {
     val WR_OK = Value
 
-    //commented, this value makes no sense in practice.
+    //commented. this value makes no sense in practice.
     //written succeeded, but the inner buffer pool is full(overflowed in fact), which will make the next writing failed definitely.
     //wait for 'def channelWritable(...)' if this value encountered.
     //val WR_OK_BUT_OVERFLOWED = Value
 
     val WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED = Value
     val WR_FAILED_BECAUSE_CHANNEL_CLOSED = Value
-    val WR_FAILED_BECAUSE_EMPTY_CONTENT_TO_WRITTEN = Value
+
+    //commented. this value makes no sense in practice, but make things more complicated.
+    //val WR_FAILED_BECAUSE_EMPTY_CONTENT_TO_BE_WRITTEN = Value
   }
 
   //all operations are thread safe
@@ -66,7 +68,7 @@ package object nio {
     //  if generate_writing_event is true, then 'writtenHappend' will be fired. 
     //  note that 'writtenHappened' means just an "writing' event, and zero byte may be written.
     //  multiple 'generate_writing_event' may be folded into one. 
-    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean = false, generate_writing_event: Boolean): WriteResult.Value
+    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value
   }
 
   //this trait is full of sinks. Every sink receives a channel wrapper, 

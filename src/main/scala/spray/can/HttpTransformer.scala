@@ -170,14 +170,19 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
                 process(continue())
               } else {
                 current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion)
-                plain_handler.chunkedStarted(x, current_http_channel) match {
-                  case None => {
+                plain_handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart) match {
+                  case ResponseAction.AcceptChunking(None) => {
                     channelWrapper.closeChannel(false)
                     null
                   }
-                  case Some(h) => {
+                  case ResponseAction.AcceptChunking(Some(h)) => {
                     chunked_handler = h
                     process(continue())
+                  }
+
+                  case _ => {
+                    channelWrapper.closeChannel(false)
+                    null
                   }
                 }
               }
@@ -218,74 +223,6 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
               }
 
             }
-            case x: HttpRequest if WebSocket13.isAWebSocketRequest(x) => {
-
-              if (chunked_handler != null) {
-                //i'm already in chunked mode.
-                channelWrapper.closeChannel(true)
-                null
-
-              } else if (current_http_channel != null) {
-                //the previous request's handlement is not finished.
-                if (null == head) {
-                  head = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                  tail = head
-                  pipeline_size = 1
-                } else {
-                  if (pipeline_size >= max_request_in_pipeline_1) {
-                    throw new RuntimeException("too many requests in pipeline!")
-                  } else {
-                    tail.next = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                    tail = tail.next
-                    pipeline_size = pipeline_size + 1
-                  }
-                }
-                process(continue())
-              } else {
-                current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion)
-                plain_handler.websocketStarted(x, new MyChannelInformation(current_http_channel)) match {
-                  case None => {
-                    channelWrapper.closeChannel(true)
-                    null
-                  }
-                  case Some(factory) => {
-
-                    //!!! optimization
-                    original_parser.just_check_positions = true
-                    try { continue() } catch { case FakeException => {} }
-                    //!!!
-                    original_parser.just_check_positions = false
-
-                    val websocket_channel = new WebSocketChannelWrapper(channelWrapper)
-                    val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
-
-                    WebSocket13.tryAccept(x, Nil, true) match {
-                      case WebSocketAcceptance.Ok(response) => {
-                        current_http_channel.writeWebSocketResponse(response)
-                        val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
-
-                        if (null != lastInput && lastInput.length > lastOffset) {
-                          //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
-                          HandledResult(websocket, lastInput.drop(lastOffset).asByteBuffer)
-                        } else {
-                          HandledResult(websocket, null)
-                        }
-                      }
-                      case WebSocketAcceptance.Failed(response) => {
-                        current_http_channel.writeWebSocketResponse(response)
-                        current_http_channel.channel.closeChannel(false)
-                        null
-                      }
-                      case WebSocketAcceptance.ERROR => {
-                        current_http_channel.channel.closeChannel(false)
-                        null
-                      }
-                    }
-
-                  }
-                }
-              }
-            }
             case x: HttpRequest => {
 
               if (chunked_handler != null) {
@@ -309,10 +246,66 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
                   }
                 }
                 process(continue())
+
               } else {
                 current_http_channel = new HttpChannelWrapper(channelWrapper, closeAfterResponseCompletion)
-                plain_handler.requestReceived(x, current_http_channel)
-                process(continue())
+                val classifier = DynamicRequestClassifier(x)
+                val action = plain_handler.requestReceived(x, current_http_channel, classifier)
+                action match {
+                  case ResponseAction.Normal => {
+                    process(continue())
+                  }
+                  case ResponseAction.AcceptWebsocket(factory) => {
+                    factory match {
+                      case None => {
+                        channelWrapper.closeChannel(true)
+                        null
+                      }
+                      case Some(born) => {
+
+                        //!!! optimization
+                        original_parser.just_check_positions = true
+                        try { continue() } catch { case FakeException => {} }
+                        //!!!
+                        original_parser.just_check_positions = false
+
+                        val websocket_channel = new WebSocketChannelWrapper(channelWrapper)
+                        val (websocket_channel_handler, wsframe_parser) = born(websocket_channel)
+
+                        WebSocket13.tryAccept(x, Nil) match {
+
+                          case WebSocketAcceptance.Ok(response) => {
+                            current_http_channel.writeWebSocketResponse(response)
+                            val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
+
+                            if (null != lastInput && lastInput.length > lastOffset) {
+                              //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+                              HandledResult(websocket, lastInput.drop(lastOffset).asByteBuffer)
+                            } else {
+                              HandledResult(websocket, null)
+                            }
+                          }
+                          case WebSocketAcceptance.Failed(response) => {
+                            current_http_channel.writeWebSocketResponse(response)
+                            current_http_channel.channel.closeChannel(false)
+                            null
+                          }
+                          case WebSocketAcceptance.ERROR => {
+                            current_http_channel.channel.closeChannel(false)
+                            null
+                          }
+                        }
+
+                      }
+                    }
+                    process(continue())
+                  }
+                  case _ => {
+                    channelWrapper.closeChannel(false)
+                    null
+                  }
+                }
+
               }
             }
           }
@@ -346,7 +339,9 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
     this
   }
 
-  def channelIdled(channelWrapper: ChannelWrapper): Unit = {}
+  def channelIdled(channelWrapper: ChannelWrapper): Unit = {
+    //TODO
+  }
 
   def channelWritable(channelWrapper: ChannelWrapper): Unit = {
     //TODO
@@ -357,6 +352,7 @@ class HttpTransformer(plain_handler: PlainHttpChannelHandler,
   }
 
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
+    //TODO
 
     head = null
     tail = null

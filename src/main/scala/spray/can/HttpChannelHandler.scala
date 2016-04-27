@@ -68,6 +68,7 @@ final class HttpChannelWrapper(
     wr
   }
   def writeResponse(response: HttpResponsePart) = {
+
     val (_finished, wr, should_close) = synchronized {
 
       if (finished) {
@@ -107,19 +108,61 @@ trait ChunkedHttpChannelHandler {
 
 }
 
+sealed abstract class ResponseAction
+
 //three cases: 
 //1. plain http request, not stateful
 //2. chunked request, statueful, but the same parser
-//3. websocket, stateful and a different parser/handler needed 
-trait PlainHttpChannelHandler {
+//3. websocket, stateful and a different parser/handler needed
+object ResponseAction {
 
-  def requestReceived(request: HttpRequest, channel: HttpChannelWrapper): Unit
+  private[can] object Normal extends ResponseAction
+  private[can] final case class AcceptWebsocket(factory: Option[WebSocketChannelWrapper => (WebSocketChannelHandler, WebSocket13.WSFrameParser)]) extends ResponseAction
+  private[can] final case class AcceptChunking(handler: Option[ChunkedHttpChannelHandler]) extends ResponseAction
 
-  def chunkedStarted(start: ChunkedRequestStart, channel: HttpChannelWrapper): Option[ChunkedHttpChannelHandler]
+  def normal: ResponseAction = Normal
 
   //return a websocket handler instead of websocket transformer, 
   //because the transformer need to be instantiated every time, which will be coded incorrectly by coders.
-  def websocketStarted(start: HttpRequest, channel: ChannelInformation): Option[WebSocketChannelWrapper => (WebSocketChannelHandler, WebSocket13.WSFrameParser)]
+  def acceptWebsocket(factory: Option[WebSocketChannelWrapper => (WebSocketChannelHandler, WebSocket13.WSFrameParser)]): ResponseAction = {
+    new AcceptWebsocket(factory)
+  }
+
+  def acceptChunking(handler: Option[ChunkedHttpChannelHandler]): ResponseAction = {
+    new AcceptChunking(handler)
+  }
+
+}
+
+object RequestClassification extends scala.Enumeration {
+
+  val PlainHttp = Value
+  val ChunkedHttpStart = Value
+  val WebsocketStart = Value
+}
+
+sealed abstract class RequestClassifier {
+  def classification: RequestClassification.Value
+}
+
+object AChunkedRequestStart extends RequestClassifier {
+  def classification: RequestClassification.Value = RequestClassification.ChunkedHttpStart
+}
+
+final case class DynamicRequestClassifier private[can] (request: HttpRequest) extends RequestClassifier {
+
+  lazy val classification: RequestClassification.Value = {
+    request match {
+      case x if WebSocket13.isAWebSocketRequest(x) => RequestClassification.WebsocketStart
+      case _ => RequestClassification.PlainHttp
+    }
+  }
+
+}
+
+trait PlainHttpChannelHandler {
+
+  def requestReceived(request: HttpRequest, channel: HttpChannelWrapper, classifier: RequestClassifier): ResponseAction
 
   def channelWritable(channel: HttpChannelWrapper): Unit
 

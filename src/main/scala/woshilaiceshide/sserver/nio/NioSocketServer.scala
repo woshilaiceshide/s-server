@@ -532,7 +532,7 @@ class NioSocketServer(interface: String,
           this.last_active_time = System.currentTimeMillis()
 
           val (wr, should_pending) = if (null == bytes || 0 == bytes.length) {
-            (WriteResult.WR_FAILED_BECAUSE_EMPTY_CONTENT_TO_WRITTEN, false)
+            (WriteResult.WR_OK, false)
 
           } else if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
             (WriteResult.WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED, false)
@@ -675,7 +675,7 @@ class NioSocketServer(interface: String,
       var closedCause: ChannelClosedCause.Value = null
       var attachmentForClosed: Option[_] = None
 
-      val (should, status1) = this.synchronized {
+      val (should_close, status1) = this.synchronized {
 
         closedCause = closed_cause
         attachmentForClosed = attachment_for_closed
@@ -703,7 +703,8 @@ class NioSocketServer(interface: String,
           (false, status)
         }
       }
-      if (should) {
+      //close outside, not in the "synchronization". keep locks clean.
+      if (should_close) {
         safeOp { if (null != handler) handler.channelClosed(this, closedCause, attachmentForClosed) }
       } else {
         if (null != this.handler) {

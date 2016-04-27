@@ -63,8 +63,8 @@ object WebSocket13 {
   }
 
   //is_already_seen_as_websocket: the caller has known this is a websocket request definitely. this is a small hint for optimization.
-  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, is_already_seen_as_websocket: Boolean = false): WebSocketAcceptance = {
-    if (!is_already_seen_as_websocket && !isAWebSocketRequest(request)) {
+  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil): WebSocketAcceptance = {
+    if (!isAWebSocketRequest(request)) {
       WebSocketAcceptance.Failed(HttpResponse(400, "not a websocket request"))
     } else if (!request.headers.exists { x =>
       x.name == WS_HEADER_WEBSOCKET_VERSION &&
@@ -306,13 +306,6 @@ object WebSocket13 {
       WSResult.Emit(WSContinuation(payload, fin, masked, mask_key), () => parseSafe(input, cursor, max_payload_length))
     } else {
       WSResult.Error(CloseCode.RESERVED, "a ghost???")
-    }
-  }
-
-  class ContinuationComposer(max_payload_length: Int) {
-    //TODO
-    def addFragment(frame: WSFrame): Option[WSFrame] = {
-      None
     }
   }
 
