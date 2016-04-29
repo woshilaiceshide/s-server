@@ -20,7 +20,6 @@ package object nio {
     val BY_BIZ = Value
     val SERVER_STOPPING = Value
     val BY_PEER = Value
-    val BECUASE_INPUTSTREAM_ENDED = Value
     val BECUASE_SOCKET_CLOSED_UNEXPECTED = Value
     val BECAUSE_IDLE = Value
   }
@@ -76,6 +75,7 @@ package object nio {
   trait ChannelHandler {
 
     def channelOpened(channelWrapper: ChannelWrapper): Unit
+    //input ended but output may be still open. 
     //business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation.
     def inputEnded(channelWrapper: ChannelWrapper): Unit
     //byteBuffer can not be changed by the method body's point of view(aka, readonly in the its point of view), 
@@ -91,7 +91,7 @@ package object nio {
     def channelWritable(channelWrapper: ChannelWrapper): Unit
 
     //this sink may be used when some continuation should start after some writes happened.
-    //see 'ChannelWrapper.write(...)' for more inforamtion.
+    //see 'ChannelWrapper.write(...)' for more information.
     def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler
 
     def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit

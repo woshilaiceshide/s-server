@@ -694,7 +694,11 @@ class NioSocketServer(interface: String,
           (true, status)
         } else if (status == CHANNEL_CLOSING_GRACEFULLY) {
           //(closeIfFailed { setOpWrite() }, status)
-          (closeIfFailed { justOpWriteIfNeededOrNoOp() }, status)
+          (closeIfFailed {
+            justOpWriteIfNeededOrNoOp()
+            //TODO tell the peer not to send data??? is it harmful to the peer if the peer can not response correctly?
+            channel.shutdownInput()
+          }, status)
         } else if (status == CHANNEL_NORMAL && null == writes) {
           (closeIfFailed { clearOpWrite() }, status)
         } else if (status == CHANNEL_NORMAL) {

@@ -21,7 +21,7 @@ import woshilaiceshide.sserver.nio._
 import woshilaiceshide.sserver.httpd.WebSocket13
 import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
-class WebSocketChannelWrapper(channelWarpper: ChannelWrapper) {
+class WebSocketChannel(channelWarpper: ChannelWrapper) {
   import WebSocket13._
   def writeString(s: String) = {
     val rendered = render(s)
@@ -43,7 +43,7 @@ class WebSocketChannelWrapper(channelWarpper: ChannelWrapper) {
   }
 }
 
-//you would WebSocketChannelWrapper may be supplied in each sink, 
+//you would WebSocketChannel may be supplied in each sink, 
 //but factory should not be optimized in this way, in which situation, api will be ugly.
 trait WebSocketChannelHandler {
 
@@ -57,7 +57,7 @@ trait WebSocketChannelHandler {
 }
 
 class WebsocketTransformer(
-  handler: WebSocketChannelHandler, channel: WebSocketChannelWrapper,
+  handler: WebSocketChannelHandler, channel: WebSocketChannel,
   private[this] var parser: WebSocket13.WSFrameParser)
     extends TrampledChannelHandler {
 

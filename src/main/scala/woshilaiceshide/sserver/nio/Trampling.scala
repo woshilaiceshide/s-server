@@ -4,7 +4,7 @@ import woshilaiceshide.sserver.nio._
 import java.nio._
 
 //0. "handler" is the handler that will be used next time
-//1. "remaining" is the un-consumed bytes those should be fed to "handler"
+//1. "remaining" is the un-consumed bytes those should be fed to "handler" immediately
 final case class HandledResult(handler: TrampledChannelHandler, remaining: ByteBuffer)
 
 trait TrampledChannelHandler {
@@ -53,7 +53,7 @@ class Trampling(private var inner: TrampledChannelHandler) extends ChannelHandle
       null
     } else {
       //first set the current handler
-      //keep all the contexts for all the "received events" the same.
+      //keep all the "received events" running in the same contexts.
       inner = result.handler
 
       if (null != result.remaining && 0 < result.remaining.remaining()) {
