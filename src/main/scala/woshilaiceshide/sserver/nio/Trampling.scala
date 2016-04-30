@@ -101,6 +101,7 @@ class Trampling(private var inner: TrampledChannelHandler) extends ChannelHandle
 
     if (null != inner) {
       inner.channelClosed(channelWrapper, cause, attachment)
+      inner = null
     }
   }
 }

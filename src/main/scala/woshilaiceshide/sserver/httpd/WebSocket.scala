@@ -8,6 +8,7 @@ import _root_.spray.http.HttpRequest
 import _root_.spray.http.HttpResponse
 import _root_.spray.http.StatusCodes
 import _root_.spray.http.HttpHeader
+import _root_.spray.http.HttpCookie
 import _root_.spray.can.rendering.ResponsePartRenderingContext
 import _root_.spray.can.rendering.ResponseRenderingComponent
 import _root_.spray.http.ByteArrayRendering
@@ -39,7 +40,6 @@ object WebSocket13 {
   object WebSocketAcceptance {
     final case class Failed(response: HttpResponse) extends WebSocketAcceptance
     final case class Ok(response: HttpResponse) extends WebSocketAcceptance
-    case object ERROR extends WebSocketAcceptance
   }
 
   def isAWebSocketRequest(request: HttpRequest) = {
@@ -63,9 +63,9 @@ object WebSocket13 {
   }
 
   //is_already_seen_as_websocket: the caller has known this is a websocket request definitely. this is a small hint for optimization.
-  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil): WebSocketAcceptance = {
+  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, cookies: List[HttpCookie]): WebSocketAcceptance = {
     if (!isAWebSocketRequest(request)) {
-      WebSocketAcceptance.Failed(HttpResponse(400, "not a websocket request"))
+      WebSocketAcceptance.Failed(HttpResponse(400, "not a websocket request", headers = extraHeaders ++ cookies.map { `Set-Cookie`(_) }))
     } else if (!request.headers.exists { x =>
       x.name == WS_HEADER_WEBSOCKET_VERSION &&
         x.value == WS_HEADER_WEBSOCKET_VERSION_13_VALUE
@@ -89,10 +89,11 @@ object WebSocket13 {
               case None => headers
               case Some(p) => p :: headers
             }
-            WebSocketAcceptance.Ok(HttpResponse(status = StatusCodes.SwitchingProtocols, headers = headers1))
+            WebSocketAcceptance.Ok(HttpResponse(status = StatusCodes.SwitchingProtocols, headers = headers1 ++ cookies.map { `Set-Cookie`(_) }))
           } catch {
             case _: java.security.NoSuchAlgorithmException => {
-              WebSocketAcceptance.Failed(HttpResponse(400, s"no sha1 on the server"))
+              //no sha1 on the server
+              WebSocketAcceptance.Failed(HttpResponse(500, "internal server error"))
             }
           }
         }

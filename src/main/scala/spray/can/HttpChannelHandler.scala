@@ -53,23 +53,6 @@ final class HttpChannel(
     finished
   }
 
-  private[can] def writeWebSocketResponse(response: HttpResponse) = {
-    val wr = synchronized {
-
-      if (finished) {
-        throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
-      }
-
-      val r = new ByteArrayRendering(1024)
-      val ctx = new ResponsePartRenderingContext(responsePart = response)
-      val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
-
-      channel.write(r.get, true, false)
-    }
-
-    wr
-  }
-
   //TODO test chunked responding
   def writeResponse(response: HttpResponsePart) = {
 
@@ -85,7 +68,7 @@ final class HttpChannel(
       }
 
       val r = new ByteArrayRendering(1024)
-      val ctx = new ResponsePartRenderingContext(responsePart = response)
+      val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
 
       //if finished, jump to the next request in the pipelining(if existed)
@@ -107,13 +90,15 @@ final class HttpChannel(
 //see 'woshilaiceshide.sserver.nio.ChannelHandler'
 trait ResponseSink {
 
-  def channelIdled(channel: HttpChannel): Unit
-  def channelWritable(channel: HttpChannel): Unit
-  def channelClosed(channel: HttpChannel): Unit
+  //no channel in sinks as intended
+  def channelIdled(): Unit
+  def channelWritable(): Unit
+  def channelClosed(): Unit
 }
 
 trait ChunkedRequestHandler extends ResponseSink {
 
+  //no channel in sinks as intended
   def chunkReceived(chunk: MessageChunk): Unit
   def chunkEnded(end: ChunkedMessageEnd): Unit
 }

@@ -93,7 +93,9 @@ object HttpTransformer {
       }
     }
 
-    //I've seen that 'copyWith' will be invoked in spray-scan's pipeline only, and not in this project.
+    /**
+     * I've seen that 'copyWith' will be invoked in spray-scan's pipeline only, and not in this project.
+     */
     override def copyWith(warnOnIllegalHeader: ErrorInfo ⇒ Unit): HttpRequestPartParser = throw new UnsupportedOperationException()
   }
 
@@ -105,9 +107,11 @@ object HttpTransformer {
   }
 }
 
-//please refer to spray.can.server.RequestParsing
-//transform bytes to http
-//TODO counting requests is wrong in pipelining
+/**
+ * transform bytes to http.
+ * please refer to spray.can.server.RequestParsing.
+ * when counting messages in the pipeline(see "http pipelining"), i take every chunked message into account as intended.
+ */
 class HttpTransformer(handler: HttpChannelHandler,
   val original_parser: HttpTransformer.RevisedHttpRequestPartParser = HttpTransformer.default_parser,
   max_request_in_pipeline: Int = 1)
@@ -134,9 +138,33 @@ class HttpTransformer(handler: HttpChannelHandler,
   private var tail: Node = null
   private var pipeline_size = 0
 
-  //TODO
+  @inline private def en_queue(request: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper) = {
+    if (null == head) {
+      head = Node(request, closeAfterResponseCompletion, channelWrapper, null)
+      tail = head
+      pipeline_size = 1
+    } else {
+      if (pipeline_size >= max_request_in_pipeline_1) {
+        throw new RuntimeException("too many requests in pipeline!")
+      } else {
+        tail.next = Node(request, closeAfterResponseCompletion, channelWrapper, null)
+        tail = tail.next
+        pipeline_size = pipeline_size + 1
+      }
+    }
+  }
+  @inline private def de_queue() = {
+
+  }
+  @inline private def clear_queue() = {
+    head = null
+    tail = null
+    pipeline_size = 0
+  }
+
   def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): HandledResult = {
 
+    //a reasonable request flow is produced
     val result = parser.apply(ByteString(byteBuffer))
 
     @scala.annotation.tailrec def process(result: Result): HandledResult = {
@@ -147,144 +175,22 @@ class HttpTransformer(handler: HttpChannelHandler,
 
           request match {
             case x: ChunkedRequestStart => {
-
-              if (current_sink != null) {
-                //i'm already in chunked mode.
-                channelWrapper.closeChannel(true)
-                null
-
-              } else if (current_http_channel != null) {
-                //the previous request's handlement is not finished.
-                if (null == head) {
-                  head = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                  tail = head
-                  pipeline_size = 1
-                } else {
-                  if (pipeline_size >= max_request_in_pipeline_1) {
-                    throw new RuntimeException("too many requests in pipeline!")
-                  } else {
-                    tail.next = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                    tail = tail.next
-                    pipeline_size = pipeline_size + 1
-                  }
-                }
+              if (current_http_channel != null) {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
                 process(continue())
               } else {
+                if (current_sink != null) {
+                  current_sink = null
+                }
+
                 current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol)
-                val ResponseAction.AcceptChunking(h) = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
-                current_sink = h
-                process(continue())
-              }
-            }
-            case x: MessageChunk => {
-              if (current_sink == null) {
-                //not in chunked mode currently
-                channelWrapper.closeChannel(true)
-                null
-
-              } else {
-                if (null == current_http_channel) {
-                  //current request is completed already before every chunk received.
-                  process(continue())
-                } else {
-                  current_sink match {
-                    case c: ChunkedRequestHandler => c.chunkReceived(x)
-                    case _ => channelWrapper.closeChannel(true)
-                  }
-                  process(continue())
-                }
-              }
-
-            }
-            case x: ChunkedMessageEnd => {
-              if (current_sink == null) {
-                //not in chunked mode currently
-                channelWrapper.closeChannel(true)
-                null
-
-              } else {
-                if (null == current_http_channel) {
-                  //current request is completed already before every chunk received.
-                  process(continue())
-                } else {
-                  current_sink match {
-                    case c: ChunkedRequestHandler => c.chunkEnded(x)
-                    case _ => channelWrapper.closeChannel(true)
-                  }
-                  //TODO
-                  //current_sink = null
-                  process(continue())
-                }
-              }
-
-            }
-            case x: HttpRequest => {
-
-              if (current_sink != null) {
-                //i'm already in chunked mode.
-                channelWrapper.closeChannel(true)
-                null
-
-              } else if (current_http_channel != null) {
-                //the previous request's handlement is not finished.
-                if (null == head) {
-                  head = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                  tail = head
-                  pipeline_size = 1
-                } else {
-                  if (pipeline_size >= max_request_in_pipeline_1) {
-                    throw new RuntimeException("too many requests in pipeline!")
-                  } else {
-                    tail.next = Node(x, closeAfterResponseCompletion, channelWrapper, null)
-                    tail = tail.next
-                    pipeline_size = pipeline_size + 1
-                  }
-                }
-                process(continue())
-
-              } else {
-                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
-                val classifier = DynamicRequestClassifier(x)
-                val action = handler.requestReceived(x, current_http_channel, classifier)
+                val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
                 action match {
-                  case ResponseAction.ResponseNormally => {
+                  case ResponseAction.AcceptChunking(h) => {
+                    current_sink = h
                     process(continue())
                   }
-                  case ResponseAction.AcceptWebsocket(factory) => {
-
-                    //!!! optimization
-                    original_parser.just_check_positions = true
-                    try { continue() } catch { case FakeException => {} }
-                    //!!!
-                    original_parser.just_check_positions = false
-
-                    val websocket_channel = new WebSocketChannel(channelWrapper)
-                    val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
-
-                    WebSocket13.tryAccept(x, Nil) match {
-
-                      case WebSocketAcceptance.Ok(response) => {
-                        current_http_channel.writeWebSocketResponse(response)
-                        val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
-
-                        if (null != lastInput && lastInput.length > lastOffset) {
-                          //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
-                          HandledResult(websocket, lastInput.drop(lastOffset).asByteBuffer)
-                        } else {
-                          HandledResult(websocket, null)
-                        }
-                      }
-                      case WebSocketAcceptance.Failed(response) => {
-                        current_http_channel.writeWebSocketResponse(response)
-                        current_http_channel.channel.closeChannel(false)
-                        null
-                      }
-                      case WebSocketAcceptance.ERROR => {
-                        current_http_channel.channel.closeChannel(false)
-                        null
-                      }
-                    }
-
+                  case ResponseAction.ResponseNormally => {
                     process(continue())
                   }
                   case _ => {
@@ -294,6 +200,84 @@ class HttpTransformer(handler: HttpChannelHandler,
                 }
 
               }
+            }
+            case x: MessageChunk => {
+
+              if (head == null) {
+                if (current_sink != null) {
+                  current_sink match {
+                    case c: ChunkedRequestHandler => c.chunkReceived(x)
+                    case _ => channelWrapper.closeChannel(true)
+                  }
+                }
+                process(continue())
+              } else {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue())
+              }
+            }
+            case x: ChunkedMessageEnd => {
+
+              if (head == null) {
+                if (current_sink != null) {
+                  current_sink match {
+                    case c: ChunkedRequestHandler => c.chunkEnded(x)
+                    case _ => channelWrapper.closeChannel(true)
+                  }
+                  //do not make it null now!!!
+                  //current_sink = null
+                }
+                process(continue())
+              } else {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue())
+              }
+            }
+            case x: HttpRequest => {
+
+              if (current_http_channel != null) {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue())
+              } else {
+                if (current_sink != null) {
+                  current_sink = null
+                }
+
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+                val classifier = DynamicRequestClassifier(x)
+                val action = handler.requestReceived(x, current_http_channel, classifier)
+                action match {
+                  case ResponseAction.ResponseNormally => {
+                    process(continue())
+                  }
+                  case ResponseAction.AcceptWebsocket(factory) => {
+
+                    //unnecessary??? no data should be here???
+                    //!!! optimization
+                    original_parser.just_check_positions = true
+                    try { continue() } catch { case FakeException => {} }
+                    //!!!
+                    original_parser.just_check_positions = false
+
+                    val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+                    val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
+                    val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
+
+                    if (null != lastInput && lastInput.length > lastOffset) {
+                      //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+                      HandledResult(websocket, lastInput.drop(lastOffset).asByteBuffer)
+                    } else {
+                      HandledResult(websocket, null)
+                    }
+                  }
+                  case _ => {
+                    channelWrapper.closeChannel(false)
+                    null
+                  }
+                }
+
+              }
+
             }
           }
         }
@@ -327,27 +311,28 @@ class HttpTransformer(handler: HttpChannelHandler,
   }
 
   def channelIdled(channelWrapper: ChannelWrapper): Unit = {
-    if (null != current_sink) current_sink.channelIdled(current_http_channel)
+    if (null != current_sink) current_sink.channelIdled()
   }
 
   def channelWritable(channelWrapper: ChannelWrapper): Unit = {
-    if (null != current_sink) current_sink.channelIdled(current_http_channel)
+    if (null != current_sink) current_sink.channelIdled()
   }
 
   def inputEnded(channelWrapper: ChannelWrapper): Unit = {
-    //nothing
+    //nothing else
   }
 
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
-    //TODO
 
-    head = null
-    tail = null
-    pipeline_size = 0
-    //handler = null
+    clear_queue()
+
     current_http_channel = null
-    //TODO
-    //current_sink = null
+
+    if (null != current_sink) {
+      current_sink.channelClosed()
+      current_sink = null
+    }
+
     parser = null
   }
 }

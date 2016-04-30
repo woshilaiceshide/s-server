@@ -21,25 +21,133 @@ import woshilaiceshide.sserver.nio._
 import woshilaiceshide.sserver.httpd.WebSocket13
 import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
-class WebSocketChannel(channelWarpper: ChannelWrapper) {
+object WebSocketChannel {
+  private val ResponseStatus_Init: Byte = 0
+  private val ResponseStatus_Accepted: Byte = 1
+  private val ResponseStatus_Failed: Byte = 2
+  private val ResponseStatus_Refused: Byte = 4
+  private val ResponseStatus_Ended: Byte = 8
+}
+
+class WebSocketChannel(channel: ChannelWrapper,
+    private[this] var closeAfterEnd: Boolean,
+    requestMethod: HttpMethod,
+    requestProtocol: HttpProtocol, maxResponseSize: Int = 2048) extends ResponseRenderingComponent {
+
+  def serverHeaderValue: String = woshilaiceshide.sserver.httpd.HttpdInforamtion.VERSION
+  def chunklessStreaming: Boolean = false
+  def transparentHeadRequests: Boolean = false
+
+  import WebSocketChannel._
   import WebSocket13._
+
+  private var response_status: Byte = 0
+
+  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, cookies: List[HttpCookie]): Boolean = {
+
+    WebSocket13.tryAccept(request, extraHeaders, cookies) match {
+      case WebSocketAcceptance.Failed(response) => {
+
+        val continued = this.synchronized {
+          if (this.response_status == ResponseStatus_Init) {
+            this.response_status = ResponseStatus_Failed
+            true
+          } else {
+            false
+          }
+        }
+        if (continued) {
+          writeWebSocketResponse(response)
+          //just close it
+          //if (closeAfterEnd) {
+          channel.closeChannel(false)
+          //}
+        }
+        false
+      }
+      case WebSocketAcceptance.Ok(response) => {
+
+        val continued = this.synchronized {
+          if (this.response_status == ResponseStatus_Init) {
+            this.response_status = ResponseStatus_Accepted
+            true
+          } else {
+            false
+          }
+        }
+        if (continued) {
+          writeWebSocketResponse(response)
+          //if (closeAfterEnd) {
+          //  channel.closeChannel(false)
+          //}
+        }
+        true
+
+      }
+    }
+
+  }
+
+  def refuse(response: HttpResponse) = {
+    val continued = this.synchronized {
+      if (this.response_status == ResponseStatus_Init) {
+        this.response_status = ResponseStatus_Refused
+        true
+      } else {
+        false
+      }
+    }
+
+    if (continued) {
+      writeWebSocketResponse(response)
+      //just close it
+      //if (closeAfterEnd) {
+      channel.closeChannel(false)
+      //}
+    }
+  }
+
+  private def writeWebSocketResponse(response: HttpResponse) = {
+
+    val r = new ByteArrayRendering(maxResponseSize)
+    val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
+    val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
+
+    val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
+    if (closeMode == CloseMode.CloseAfterEnd) closeAfterEnd = true
+
+    channel.write(r.get, true, false)
+  }
+
   def writeString(s: String) = {
     val rendered = render(s)
-    channelWarpper.write(rendered.toArray, true, false)
+    channel.write(rendered.toArray, true, false)
   }
   def writeBytes(bytes: Array[Byte]) = {
     val rendered = render(bytes, WebSocket13.OpCode.BINARY)
-    channelWarpper.write(rendered.toArray, true, false)
+    channel.write(rendered.toArray, true, false)
   }
   def close(closeCode: Option[CloseCode.Value] = CloseCode.NORMAL_CLOSURE_OPTION) = {
-    val frame = WSClose(closeCode.getOrElse(CloseCode.NORMAL_CLOSURE), why(null), EMPTY_BYTE_ARRAY, true, false, EMPTY_BYTE_ARRAY)
-    val rendered = render(frame)
-    channelWarpper.write(rendered.toArray, true, false)
-    channelWarpper.closeChannel(false, closeCode)
+
+    val continued = this.synchronized {
+      if (this.response_status == ResponseStatus_Accepted) {
+        this.response_status = ResponseStatus_Ended
+        true
+      } else {
+        false
+      }
+    }
+
+    if (continued) {
+      val frame = WSClose(closeCode.getOrElse(CloseCode.NORMAL_CLOSURE), why(null), EMPTY_BYTE_ARRAY, true, false, EMPTY_BYTE_ARRAY)
+      val rendered = render(frame)
+      channel.write(rendered.toArray, true, false)
+      channel.closeChannel(false, closeCode)
+    }
   }
   def ping() = {
     val rendered = render(WebSocket13.EMPTY_BYTE_ARRAY, WebSocket13.OpCode.PING)
-    channelWarpper.write(rendered.toArray, true, false)
+    channel.write(rendered.toArray, true, false)
   }
 }
 
@@ -83,6 +191,7 @@ class WebsocketTransformer(
             }
             case x: WSClose => {
               handler.frameReceived(x)
+              //just close it!
               channelWrapper.closeChannel(false, CloseCode.NORMAL_CLOSURE_OPTION)
               HandledResult(this, null)
             }
@@ -102,16 +211,11 @@ class WebsocketTransformer(
 
   }
 
-  def channelIdled(channelWrapper: ChannelWrapper): Unit = { handler.idled() }
+  def channelIdled(channelWrapper: ChannelWrapper): Unit = handler.idled()
 
-  def channelWritable(channelWrapper: ChannelWrapper): Unit = {
-    if (null != handler) handler.channelWritable()
-  }
+  def channelWritable(channelWrapper: ChannelWrapper): Unit = handler.channelWritable()
 
-  def writtenHappened(channelWrapper: ChannelWrapper): TrampledChannelHandler = {
-    //nothing else
-    this
-  }
+  def writtenHappened(channelWrapper: ChannelWrapper): TrampledChannelHandler = this //nothing else
 
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
     cause match {
