@@ -19,22 +19,31 @@ import java.nio.charset.Charset
 import java.nio.ByteBuffer
 import java.io.UnsupportedEncodingException
 
+/**
+ * see https://en.wikipedia.org/wiki/WebSocket
+ */
 object WebSocket13 {
+
+  import spray.http.HttpHeaders._
 
   val W_WEBSOCKET_KEY_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
   val WS_HEADER_UPGRADE = "Upgrade"
   val WS_HEADER_UPGRADE_VALUE = "websocket"
+
+  private val WS_UPGRADE_HEADER = RawHeader(WS_HEADER_UPGRADE, WS_HEADER_UPGRADE_VALUE)
+
   val WS_HEADER_CONNECTION = "Connection"
   val WS_HEADER_CONNECTION_VALUE = "Upgrade"
+
+  private val WS_CONNECTION_HEADER = spray.http.HttpHeaders.Connection(WS_HEADER_CONNECTION_VALUE)
+
   val WS_HEADER_WEBSOCKET_VERSION = "Sec-WebSocket-Version"
   //NOW I support websocket 13 only.
   val WS_HEADER_WEBSOCKET_VERSION_13_VALUE = "13"
   val WS_HEADER_WEBSOCKET_KEY = "Sec-WebSocket-Key"
   val WS_HEADER_WEBSOCKET_ACCEPT = "Sec-WebSocket-Accept"
   val WS_HEADER_WEBSOCKET_PROTOCOL = "Sec-WebSocket-Protocol"
-
-  import spray.http.HttpHeaders._
 
   sealed trait WebSocketAcceptance
   object WebSocketAcceptance {
@@ -81,8 +90,10 @@ object WebSocket13 {
             val protocol = request.headers.find { _.name == WS_HEADER_WEBSOCKET_PROTOCOL }
             val acceptedKey = getAcceptedKey(key1)
             val headers = RawHeader(WS_HEADER_WEBSOCKET_ACCEPT, acceptedKey) ::
-              RawHeader(WS_HEADER_UPGRADE, WS_HEADER_UPGRADE_VALUE) ::
-              spray.http.HttpHeaders.Connection(WS_HEADER_CONNECTION_VALUE) ::
+              WS_UPGRADE_HEADER ::
+              //RawHeader(WS_HEADER_UPGRADE, WS_HEADER_UPGRADE_VALUE) ::
+              WS_CONNECTION_HEADER ::
+              //spray.http.HttpHeaders.Connection(WS_HEADER_CONNECTION_VALUE) ::
               //RawHeader(WS_HEADER_CONNECTION, WS_HEADER_CONNECTION_VALUE) ::
               extraHeaders
             val headers1 = protocol match {

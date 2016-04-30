@@ -28,8 +28,10 @@ trait TrampledChannelHandler {
 
 }
 
-//i am a utility for constructing complicated handlers, and you may avoid dead locks, too deep recursions by using me.  
-//note that this class is not thread-safe, and should be instantiated every time.
+/**
+ * i am a utility for constructing complicated handlers, and you may avoid dead locks, too deep recursions by using me.
+ * note that this class is not thread-safe, and should be instantiated every time.
+ */
 class Trampling(private var inner: TrampledChannelHandler) extends ChannelHandler {
 
   def channelOpened(channelWrapper: ChannelWrapper): Unit = {

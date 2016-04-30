@@ -111,11 +111,13 @@ object HttpTransformer {
  * transform bytes to http.
  * please refer to spray.can.server.RequestParsing.
  * when counting messages in the pipeline(see "http pipelining"), i take every chunked message into account as intended.
+ *
+ * TODO need to limit the un-processed bytes(related to the messages in pipeline).
  */
 class HttpTransformer(handler: HttpChannelHandler,
   val original_parser: HttpTransformer.RevisedHttpRequestPartParser = HttpTransformer.default_parser,
   max_request_in_pipeline: Int = 1)
-    extends TrampledChannelHandler {
+    extends ChannelHandler {
 
   import HttpTransformer._
 
@@ -154,20 +156,28 @@ class HttpTransformer(handler: HttpChannelHandler,
     }
   }
   @inline private def de_queue() = {
-
+    if (head == null) {
+      null
+    } else {
+      val tmp = head
+      head = head.next
+      pipeline_size = pipeline_size - 1
+      tmp
+    }
   }
   @inline private def clear_queue() = {
     head = null
     tail = null
     pipeline_size = 0
   }
+  @inline private def is_queue_empty() = pipeline_size == 0
 
-  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): HandledResult = {
+  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     //a reasonable request flow is produced
     val result = parser.apply(ByteString(byteBuffer))
 
-    @scala.annotation.tailrec def process(result: Result): HandledResult = {
+    @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
       result match {
 
         //closeAfterResponseCompletion will be fine even if it's a 'MessageChunk'
@@ -252,8 +262,6 @@ class HttpTransformer(handler: HttpChannelHandler,
                   }
                   case ResponseAction.AcceptWebsocket(factory) => {
 
-                    //unnecessary??? no data should be here???
-                    //!!! optimization
                     original_parser.just_check_positions = true
                     try { continue() } catch { case FakeException => {} }
                     //!!!
@@ -265,10 +273,14 @@ class HttpTransformer(handler: HttpChannelHandler,
 
                     if (null != lastInput && lastInput.length > lastOffset) {
                       //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
-                      HandledResult(websocket, lastInput.drop(lastOffset).asByteBuffer)
-                    } else {
-                      HandledResult(websocket, null)
+                      //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
+                      throw new RuntimeException("no data should be here because handshake does not complete.")
                     }
+                    websocket
+                  }
+                  case ResponseAction.ResponseWithASink(sink) => {
+                    current_sink = sink
+                    process(continue())
                   }
                   case _ => {
                     channelWrapper.closeChannel(false)
@@ -283,11 +295,11 @@ class HttpTransformer(handler: HttpChannelHandler,
         }
         case Result.NeedMoreData(parser1) => {
           parser = parser1
-          HandledResult(this, null)
+          this
         }
         case x => {
           channelWrapper.closeChannel(true)
-          HandledResult(this, null)
+          this
         }
       }
     }
@@ -295,19 +307,85 @@ class HttpTransformer(handler: HttpChannelHandler,
     process(result)
   }
 
-  //TODO
-  def writtenHappened(channelWrapper: ChannelWrapper): TrampledChannelHandler = {
+  def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler = {
 
     if (null == current_http_channel || (current_http_channel != null && current_http_channel.isCompleted)) {
 
       current_http_channel = null
       current_sink = null
 
-    } else {
+      val next = de_queue()
+      if (null != next) {
+        val request = next.value
+        val closeAfterResponseCompletion = next.closeAfterResponseCompletion
+        next.value match {
 
+          case x: ChunkedRequestStart => {
+
+            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol)
+            val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
+            action match {
+              case ResponseAction.AcceptChunking(h) => {
+                current_sink = h
+                this
+              }
+              case ResponseAction.ResponseNormally => {
+                this
+              }
+              case _ => {
+                channelWrapper.closeChannel(false)
+                null
+              }
+            }
+
+          }
+
+          case x: MessageChunk => this
+          case x: ChunkedMessageEnd => this
+
+          case x: HttpRequest => {
+
+            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+            val classifier = DynamicRequestClassifier(x)
+            val action = handler.requestReceived(x, current_http_channel, classifier)
+            action match {
+              case ResponseAction.ResponseNormally => {
+                this
+              }
+              case ResponseAction.AcceptWebsocket(factory) => {
+
+                val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+                val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
+                val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
+
+                if (!is_queue_empty()) {
+                  //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+                  //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
+                  throw new RuntimeException("no data should be here because handshake does not complete.")
+                }
+                websocket
+              }
+              case ResponseAction.ResponseWithASink(sink) => {
+                current_sink = sink
+                this
+              }
+              case _ => {
+                channelWrapper.closeChannel(false)
+                null
+              }
+            }
+
+          }
+
+        }
+      } else {
+        this
+      }
+
+    } else {
+      this
     }
 
-    this
   }
 
   def channelIdled(channelWrapper: ChannelWrapper): Unit = {

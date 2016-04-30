@@ -26,8 +26,8 @@ class HttpChannelHandlerFactory(http_channel_handler: HttpChannelHandler, max_re
   //HttpTransformer is instantiated every time because the handler is stateful.
   def getHandler(channel: ChannelInformation): Option[ChannelHandler] = {
 
-    val trampling = new Trampling(new HttpTransformer(http_channel_handler, max_request_in_pipeline = max_request_in_pipeline))
-    Some(trampling)
+    val transformer = new HttpTransformer(http_channel_handler, max_request_in_pipeline = max_request_in_pipeline)
+    Some(transformer)
 
   }
 

@@ -43,10 +43,11 @@ object SampleHttpServer extends App {
       (handler, WebSocket13.default_parser(2048))
     }
 
+    private val ping1 = new HttpResponse(200, "pong1\r\n")
     def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping1"), _, _, _) => {
         channel.writeResponse {
-          new HttpResponse(200, "pong1\r\n")
+          ping1
         }
         ResponseAction.responseNormally
       }

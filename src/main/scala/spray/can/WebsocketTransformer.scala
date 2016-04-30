@@ -167,7 +167,7 @@ trait WebSocketChannelHandler {
 class WebsocketTransformer(
   handler: WebSocketChannelHandler, channel: WebSocketChannel,
   private[this] var parser: WebSocket13.WSFrameParser)
-    extends TrampledChannelHandler {
+    extends ChannelHandler {
 
   //already opened
   final def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
@@ -176,12 +176,12 @@ class WebsocketTransformer(
 
   def customizedObjectReceived(obj: AnyRef, channelWrapper: ChannelWrapper): Unit = {}
 
-  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): HandledResult = {
+  def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     val byteString = ByteString(byteBuffer)
     import WebSocket13._
     val result = parser(byteString)
-    @scala.annotation.tailrec def process(result: WSResult): HandledResult = {
+    @scala.annotation.tailrec def process(result: WSResult): ChannelHandler = {
       result match {
         case WSResult.Emit(frame, continue) => {
           frame match {
@@ -193,7 +193,7 @@ class WebsocketTransformer(
               handler.frameReceived(x)
               //just close it!
               channelWrapper.closeChannel(false, CloseCode.NORMAL_CLOSURE_OPTION)
-              HandledResult(this, null)
+              this
             }
             case x => { handler.frameReceived(x); process(continue()) }
           }
@@ -201,7 +201,7 @@ class WebsocketTransformer(
         }
         case WSResult.NeedMoreData(parser1) => {
           parser = parser1
-          HandledResult(this, null)
+          this
         }
         case WSResult.End => { /* nothing to do */ null /*this*/ }
         case WSResult.Error(closeCode, reason) => { channelWrapper.closeChannel(false); null /*this*/ }
@@ -215,7 +215,7 @@ class WebsocketTransformer(
 
   def channelWritable(channelWrapper: ChannelWrapper): Unit = handler.channelWritable()
 
-  def writtenHappened(channelWrapper: ChannelWrapper): TrampledChannelHandler = this //nothing else
+  def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler = this //nothing else
 
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
     cause match {
