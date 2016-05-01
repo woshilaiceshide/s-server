@@ -1,6 +1,5 @@
 package woshilaiceshide.sserver.nio
 
-import woshilaiceshide.sserver.nio._
 import java.nio._
 
 //0. "handler" is the handler that will be used next time

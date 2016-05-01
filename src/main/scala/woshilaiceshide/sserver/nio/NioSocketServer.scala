@@ -13,35 +13,49 @@ import java.nio.charset._
 
 import scala.annotation.tailrec
 
-private[nio] object NioSocketServer {
+object NioSocketServer {
 
-  def warn(ex: Throwable, msg: String = "empty message") = {
+  private[nio] def warn(ex: Throwable, msg: String = "empty message") = {
     Console.err.print(msg)
     Console.err.print(" ")
     ex.printStackTrace(Console.err)
   }
 
-  val INITIALIZED = 0
-  val STARTED = 1
-  val STOPPING = 2
-  val STOPPED_GRACEFULLY = 4
-  val STOPPED_ROUGHLY = 8
+  private[nio] val INITIALIZED = 0
+  private[nio] val STARTED = 1
+  private[nio] val STOPPING = 2
+  private[nio] val STOPPED_GRACEFULLY = 4
+  private[nio] val STOPPED_ROUGHLY = 8
 
-  val CHANNEL_NORMAL = 0
-  val CHANNEL_CLOSING_GRACEFULLY = 1
-  val CHANNEL_CLOSING_RIGHT_NOW = 2
-  val CHANNEL_CLOSED = 3
+  private[nio] val CHANNEL_NORMAL = 0
+  private[nio] val CHANNEL_CLOSING_GRACEFULLY = 1
+  private[nio] val CHANNEL_CLOSING_RIGHT_NOW = 2
+  private[nio] val CHANNEL_CLOSED = 3
 
-  final class MyChannelInformation(channel: SocketChannel) extends ChannelInformation {
+  private[nio] final class MyChannelInformation(channel: SocketChannel) extends ChannelInformation {
     def remoteAddress = channel.getRemoteAddress
     def localAddress = channel.getLocalAddress
   }
 
+  final case class SOption[T](name: java.net.SocketOption[T], value: T)
+
 }
 
+/**
+ * a nio socket server.
+ *
+ * @param listening_socket_options
+ * options for the listening port.
+ *
+ * @param accepted_socket_options
+ * when a connection is accepted, these options will given to the accepted connection.
+ */
 class NioSocketServer(interface: String,
     port: Int,
     channel_hander_factory: ChannelHandlerFactory,
+    backlog: Int = -1,
+    listening_socket_options: List[NioSocketServer.SOption[_]] = Nil,
+    accepted_socket_options: List[NioSocketServer.SOption[_]] = Nil,
     receive_buffer_size: Int = 1024,
     socket_max_idle_time_in_seconds: Int = 90,
     max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
@@ -116,7 +130,12 @@ class NioSocketServer(interface: String,
     var listenInCurrentThread = false
     this.synchronized {
       if (INITIALIZED == status) {
-        ssc.socket().bind(new InetSocketAddress(interface, port))
+        if (-1 == backlog) {
+          ssc.socket().bind(new InetSocketAddress(interface, port))
+        } else {
+          ssc.socket().bind(new InetSocketAddress(interface, port), backlog)
+        }
+
         ssc.configureBlocking(false)
         ssc.register(selector, SelectionKey.OP_ACCEPT)
         status = STARTED

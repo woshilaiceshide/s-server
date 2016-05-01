@@ -74,8 +74,8 @@ object SampleHttpServer extends App {
 
   }
   val factory = new HttpChannelHandlerFactory(handler, 8)
-
-  val server = new NioSocketServer("127.0.0.1", 8181, factory)
+  val reuse_addr = NioSocketServer.SOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
+  val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_socket_options = List(reuse_addr))
   server.start(false)
 
 }

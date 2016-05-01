@@ -29,7 +29,11 @@ object HttpTransformer {
       x
     } catch {
       case ex: Throwable => {
-        ex.printStackTrace()
+
+        Console.err.print(ex.getMessage)
+        Console.err.print(" ")
+        ex.printStackTrace(Console.err)
+
       }
     }
 
