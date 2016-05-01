@@ -106,6 +106,8 @@ package object nio {
   trait ChannelHandlerFactory {
     //if asynchronization is needed, put your asynchronization in the returned ChannelHandler.
     def getHandler(channel: ChannelInformation): Option[ChannelHandler]
+
+    def close() = {}
   }
 
 }

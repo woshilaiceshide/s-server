@@ -75,7 +75,17 @@ object SampleHttpServer extends App {
   }
   val factory = new HttpChannelHandlerFactory(handler, 8)
   val reuse_addr = NioSocketServer.SOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
-  val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_socket_options = List(reuse_addr))
+
+  //val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_socket_options = List(reuse_addr))
+
+  val threadFactory = new java.util.concurrent.ThreadFactory() {
+    def newThread(r: Runnable) = {
+      new Thread(r)
+    }
+  }
+  val mt = new MultipleThreadHandlerFactory(2, threadFactory, Integer.MAX_VALUE, factory)
+  val server = new NioSocketServer("127.0.0.1", 8181, mt, listening_socket_options = List(reuse_addr))
+
   server.start(false)
 
 }

@@ -117,6 +117,7 @@ class NioSocketServer(interface: String,
 
   private var terminated = false
   private var when_terminated: LinkedList[Runnable] = LinkedList.newEmpty()
+  when_terminated.append(new Runnable() { def run() { channel_hander_factory.close() } })
   def registerOnTermination[T](code: => T) = this.synchronized {
     if (terminated) {
       false
@@ -335,7 +336,10 @@ class NioSocketServer(interface: String,
         }
 
       }
+      //!!!after checking the selected keys, the following statement is necessary!!! 
       check_for_pending_io()
+      //!!!
+
       listen()
     }
   }
@@ -383,10 +387,12 @@ class NioSocketServer(interface: String,
           val readCount = channel.read(CLIENT_BUFFER)
           if (readCount > 0) {
             CLIENT_BUFFER.flip()
-            channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
-            if (!key.isValid()) {
+            //!!!check before bytesReceived, or errors may occur in the overall control flow!!!
+            //especially some action(sink) is abandoned flowed by 'close', then 'bytesReceived' should not be fired definitely. 
+            if (!key.isValid() || !channel.isOpen()) {
               channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
             }
+            channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
           } else {
             if (!key.isValid() || !channel.isOpen()) {
               channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
