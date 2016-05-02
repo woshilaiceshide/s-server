@@ -13,49 +13,23 @@ import java.nio.charset._
 
 import scala.annotation.tailrec
 
-/**
- * a nio socket server.
- *
- * @param listening_channel_configurator
- * congfigure the listening port.
- *
- * @param accepted_channel_configurator
- * when a connection is accepted, configure the accepted connection.
- */
-class NioSocketServer(interface: String,
-    port: Int,
-    channel_hander_factory: ChannelHandlerFactory,
-    listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
-    accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
+import woshilaiceshide.sserver.utility.Utility
+
+class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     receive_buffer_size: Int = 1024,
     socket_max_idle_time_in_seconds: Int = 90,
     max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
     default_select_timeout: Int = 30 * 1000,
-    enable_fuzzy_scheduler: Boolean = false) {
+    enable_fuzzy_scheduler: Boolean = false) extends SelectorRunner(default_select_timeout, enable_fuzzy_scheduler) {
 
   import Auxiliary._
-  import SelectorRunner._
+
+  private val socket_max_idle_time_in_seconds_1 = if (0 < socket_max_idle_time_in_seconds) socket_max_idle_time_in_seconds else 60
+  select_timeout = Math.min(socket_max_idle_time_in_seconds_1 * 1000, default_select_timeout)
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
-  private val socket_max_idle_time_in_seconds_1 = if (0 < socket_max_idle_time_in_seconds) socket_max_idle_time_in_seconds else 60
-  //private val default_select_timeout = 30 * 1000
-  private var select_timeout = Math.min(socket_max_idle_time_in_seconds_1 * 1000, default_select_timeout)
-
   //this only client buffer will become read only before it's given to the handler
   private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
-  private val selector = Selector.open()
-  private val ssc = ServerSocketChannel.open()
-
-  private def close_selector() = {
-    safeClose(selector)
-    //when 'selector' is closed, 'ssc' should be close too.
-    safeClose(ssc)
-  }
-
-  def safeClose(x: Closeable) = try { x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
-  def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
-
-  private var workerThread: Thread = null
 
   private var channels = List[MyChannelWrapper]()
   //some i/o operations related to those channels are pending
@@ -65,352 +39,159 @@ class NioSocketServer(interface: String,
     pending_io_operations.append(channelWrapper)
   }
 
-  private var status = INITIALIZED
+  private var waiting_for_register = List[SocketChannel]()
+  def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread {
+    waiting_for_register = target :: waiting_for_register
+  }
 
-  private var tasks: LinkedList[Runnable] = LinkedList.newEmpty()
-  def post_to_io_thread(task: Runnable) = this.synchronized {
-    if (STARTED != status) {
-      false
-    } else {
-      tasks.append(task)
-      selector.wakeup()
+  protected def do_start(): Unit = {}
+  protected def stop_roughly(): Unit = {
+
+    waiting_for_register.map { safeClose(_) }
+    waiting_for_register = Nil
+
+    channels.foreach { _.closeDirectly() }
+    channels = Nil
+
+  }
+  protected def stop_gracefully(): Boolean = {
+
+    waiting_for_register.map { safeClose(_) }
+    waiting_for_register = Nil
+
+    if (channels.size == 0) {
       true
-    }
-  }
-  //please invoke this method after you start the nio socket server.
-  def is_in_io_worker_thread(): Boolean = Thread.currentThread() == this.workerThread
-
-  private var timed_tasks: LinkedList[TimedTask] = LinkedList.newEmpty()
-  def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = this.synchronized {
-    if (STARTED != status) {
-      false
-    } else if (enable_fuzzy_scheduler) {
-      timed_tasks.append(TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task))
-      true
     } else {
+      channels.foreach { _.close(false, ChannelClosedCause.SERVER_STOPPING) }
+      channels.foreach(x => safeOp { x.justOpWriteIfNeededOrNoOp() })
       false
     }
   }
-
-  private var terminated = false
-  private var when_terminated: LinkedList[Runnable] = LinkedList.newEmpty()
-  when_terminated.append(new Runnable() { def run() { channel_hander_factory.close() } })
-  def registerOnTermination[T](code: => T) = this.synchronized {
-    if (terminated) {
-      false
-    } else {
-      when_terminated.append(new Runnable { def run = code })
-      true
-    }
+  protected def has_remaining_work(): Boolean = {
+    channels.size == 0
   }
 
-  def start(asynchronously: Boolean = true) = {
-    val continued = this.synchronized {
-      if (INITIALIZED == status) {
-        status = STARTED
-        true
-      } else {
-        false
+  protected def add_a_new_socket_channel(channel: SocketChannel) = {
+
+    channel_hander_factory.getHandler(new MyChannelInformation(channel)) match {
+      case None => {
+        safeClose(channel)
       }
-    }
-    if (continued) {
-
-      val wrapper = new ServerSocketChannelWrapper(ssc)
-      listening_channel_configurator(wrapper)
-      if (-1 == wrapper.backlog) {
-        ssc.socket().bind(new InetSocketAddress(interface, port))
-      } else {
-        ssc.socket().bind(new InetSocketAddress(interface, port), wrapper.backlog)
-      }
-
-      ssc.configureBlocking(false)
-      ssc.register(selector, SelectionKey.OP_ACCEPT)
-
-      if (asynchronously) {
-        //workerThread should not be assigned in the new thread's running.
-        workerThread = new Thread(s"sserver-selector-${hashCode()}-${System.currentTimeMillis()}") {
-          override def run() = safe_loop()
-        }
-        workerThread.start()
-      } else {
-        workerThread = Thread.currentThread()
-        safe_loop()
-      }
-    }
-  }
-
-  private def safe_loop() {
-    try {
-      loop()
-    } catch {
-      case _: Throwable => {
-        close_selector()
-        channels.foreach { _.closeDirectly() }
-        channels = Nil
-        this.synchronized {
-          status = STOPPED_ROUGHLY
-          this.notifyAll()
+      case Some(handler) => {
+        val channelWrapper = new MyChannelWrapper(channel, handler)
+        Utility.closeIfFailed(channel) { channel.register(selector, SelectionKey.OP_READ, channelWrapper) }
+        channels = channelWrapper :: channels
+        channelWrapper.open()
+        if (!channel.isOpen()) {
+          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       }
-    } finally this.synchronized {
-      //disable registerOnTermination first, before executing the sinks.
-      terminated = true
-      when_terminated.foreach { x => safeOp(x.run()) }
-      when_terminated = null
     }
+
   }
 
-  private var stop_deadline: Long = 0
-  //the status is returned
-  def stop(timeout: Int) = {
-    if (workerThread == Thread.currentThread()) this.synchronized {
-      if (STARTED == status) {
-        status = STOPPING
-        select_timeout = Math.min(Math.max(0, timeout), select_timeout)
-        //stop_deadline is neccessary.
-        stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
-      }
-      status
-    }
-    else this.synchronized {
-      if (STARTED == status) {
-        status = STOPPING
-        stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
-        selector.wakeup()
-        this.wait(if (0 > timeout) 0 else timeout)
-        if (status == STOPPING) {
-          close_selector()
-          status == STOPPED_ROUGHLY
-        }
-      }
-      status
-    }
-  }
-  def join(timeout: Long) = {
-    if (workerThread != Thread.currentThread()) {
-      workerThread.join(timeout)
-    }
-  }
-
-  def getStatus() = this.synchronized { status }
-
-  private var already_in_stopping = false
   private var last_check_for_idle_zombie: Long = 0
-  @tailrec private def loop() {
+  protected def before_next_loop(): Unit = {
 
-    try {
-      val selected = selector.select(select_timeout)
+    if (!is_stopping() && waiting_for_register.size > 0) {
+      val tmp = waiting_for_register
+      waiting_for_register = Nil
+      tmp.map { channel =>
+        safeOp { add_a_new_socket_channel(channel) }
+      }
+    }
 
-      if (selected > 0) {
-        val iterator = selector.selectedKeys().iterator()
-        while (iterator.hasNext()) {
-          val key = iterator.next()
-          iterator.remove()
-          process(key)
+    //check for idle channels and zombie channels
+    //(sometimes a channel will be closed unexpectedly and the corresponding selector will not report it.)
+    val now = System.currentTimeMillis()
+    if (now - last_check_for_idle_zombie > select_timeout && !is_stopping()) {
+      last_check_for_idle_zombie = now
+      var newChannels: List[MyChannelWrapper] = Nil
+      channels.foreach { channelWrapper =>
+        if (channelWrapper.checkIdle(now) != CHANNEL_CLOSED && channelWrapper.checkZombie(now) == CHANNEL_CLOSED) {
+          newChannels = channelWrapper :: newChannels
         }
       }
-    } catch {
-      case _: ClosedSelectorException => {}
-      case _: Throwable => { close_selector() }
+      channels = newChannels
     }
 
-    val continued = if ((!selector.isOpen()) || this.synchronized { status == STOPPING && stop_deadline < System.currentTimeMillis() }) {
-      //closed
-      close_selector()
-      channels.foreach { _.closeDirectly() }
-      channels = Nil
-      this.synchronized {
-        status = STOPPED_ROUGHLY
-        this.notifyAll()
-      }
-      false
-    } else if (!already_in_stopping && this.synchronized { status == STOPPING }) {
-      //stopping
-      already_in_stopping = true
-      if (channels.size == 0) {
-        close_selector()
-        this.synchronized {
-          status = STOPPED_GRACEFULLY
-          this.notifyAll()
-        }
-        false
-      } else {
-        channels.foreach { _.close(false, ChannelClosedCause.SERVER_STOPPING) }
-        safeOp { ssc.keyFor(selector).interestOps(0) }
-        channels.foreach(x => safeOp { x.justOpWriteIfNeededOrNoOp() })
-        true
-      }
-    } else if (already_in_stopping && channels.size == 0) {
-      close_selector()
-      this.synchronized {
-        status = STOPPED_GRACEFULLY
-        this.notifyAll()
-      }
-      false
-    } else {
-      true
-    }
-
-    var tasks_to_do = this.synchronized {
-      if (tasks.isEmpty) {
-        //LinkedList.newEmpty()
-        null
-      } else {
-        val tmp = tasks;
-        tasks = LinkedList.newEmpty();
-        tmp
-      }
-    }
-    if (null != tasks_to_do)
-      tasks_to_do.foreach { x => safeOp(x.run()) }
-
-    if (enable_fuzzy_scheduler) {
-      var timed_tasks_to_do = this.synchronized {
-        if (timed_tasks.isEmpty) {
+    //check for pending i/o, and just no deadlocks
+    @tailrec def check_for_pending_io() {
+      var tmp = this.synchronized {
+        if (pending_io_operations.isEmpty)
           null
-        } else {
-          val now = System.currentTimeMillis()
-          val tmp = timed_tasks.group_by_fitler { x => x.when_to_run <= now }
-          timed_tasks = tmp.unfiltered;
-          tmp.filtered
+        else {
+          val swap = pending_io_operations
+          pending_io_operations = LinkedList.newEmpty()
+          swap
         }
       }
-      if (null != timed_tasks_to_do)
-        timed_tasks_to_do.foreach { x => safeOp { x.runnable.run() } }
+      if (null != tmp) {
+        val current = System.currentTimeMillis()
+        tmp.foreach { _.check(current) }
+        check_for_pending_io()
+      }
+
     }
-
-    if (continued) {
-      //check for idle channels and zombie channels
-      //(sometimes a channel will be closed unexpectedly and the corresponding selector will not report it.)
-      val now = System.currentTimeMillis()
-      if (now - last_check_for_idle_zombie > select_timeout && !already_in_stopping) {
-        last_check_for_idle_zombie = now
-        var newChannels: List[MyChannelWrapper] = Nil
-        channels.foreach { channelWrapper =>
-          if (channelWrapper.checkIdle(now) != CHANNEL_CLOSED && channelWrapper.checkZombie(now) == CHANNEL_CLOSED) {
-            newChannels = channelWrapper :: newChannels
-          }
-        }
-        channels = newChannels
-      }
-
-      //check for pending i/o, and just no deadlocks
-      @tailrec def check_for_pending_io() {
-        var tmp = this.synchronized {
-          if (pending_io_operations.isEmpty)
-            null
-          else {
-            val swap = pending_io_operations
-            pending_io_operations = LinkedList.newEmpty()
-            swap
-          }
-        }
-        if (null != tmp) {
-          val current = System.currentTimeMillis()
-          tmp.foreach { _.check(current) }
-          check_for_pending_io()
-        }
-
-      }
-      //!!!after checking the selected keys, the following statement is necessary!!! 
-      check_for_pending_io()
-      //!!!
-
-      loop()
-    }
+    //!!!after checking the selected keys, the following statement is necessary!!! 
+    check_for_pending_io()
+    //!!!
   }
+  protected def process_selected_key(key: SelectionKey): Unit = {
 
-  private def process(key: SelectionKey) {
-    if (key.isAcceptable()) {
-      val ssc = key.channel().asInstanceOf[ServerSocketChannel]
-      val channel = ssc.accept()
-      val wrapper = new SocketChannelWrapper(channel)
-      accepted_channel_configurator(wrapper)
-      var channelWrapper: MyChannelWrapper = null
+    val channel = key.channel().asInstanceOf[SocketChannel]
+    val channelWrapper = key.attachment().asInstanceOf[MyChannelWrapper]
+
+    if (key.isReadable()) {
       try {
-        channel.configureBlocking(false)
-        channel_hander_factory.getHandler(new MyChannelInformation(channel)) match {
-          case None => {
-            safeClose(channel)
+        val readCount = channel.read(CLIENT_BUFFER)
+        if (readCount > 0) {
+          CLIENT_BUFFER.flip()
+          //!!!check before bytesReceived, or errors may occur in the overall control flow!!!
+          //especially some action(sink) is abandoned flowed by 'close', then 'bytesReceived' should not be fired definitely. 
+          if (!key.isValid() || !channel.isOpen()) {
+            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
           }
-          case Some(handler) => {
-            channelWrapper = new MyChannelWrapper(channel, handler)
-            channel.register(selector, SelectionKey.OP_READ, channelWrapper)
-            channelWrapper.open()
-            if (!key.isValid()) {
-              channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-            } else {
-              channels = channelWrapper :: channels
-            }
+          channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
+        } else {
+          if (!key.isValid() || !channel.isOpen()) {
+            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+          } else {
+            //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
+            //I tried much, but did not catch it!
+            //business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
+            channelWrapper.clearOpRead()
+            channelWrapper.inputEnded()
           }
         }
       } catch {
         case ex: Throwable => {
-          warn(ex, "when a new channel is accepted.")
-          if (null == channelWrapper) {
-            safeClose(channel)
-          } else {
-            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-          }
+          SelectorRunner.warn(ex, "when key is readable.")
+          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
+      } finally {
+        CLIENT_BUFFER.clear()
       }
+    }
 
-    } else {
-
-      val channel = key.channel().asInstanceOf[SocketChannel]
-      val channelWrapper = key.attachment().asInstanceOf[MyChannelWrapper]
-
-      if (key.isReadable()) {
-        try {
-          val readCount = channel.read(CLIENT_BUFFER)
-          if (readCount > 0) {
-            CLIENT_BUFFER.flip()
-            //!!!check before bytesReceived, or errors may occur in the overall control flow!!!
-            //especially some action(sink) is abandoned flowed by 'close', then 'bytesReceived' should not be fired definitely. 
-            if (!key.isValid() || !channel.isOpen()) {
-              channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-            }
-            channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
-          } else {
-            if (!key.isValid() || !channel.isOpen()) {
-              channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-            } else {
-              //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
-              //I tried much, but did not catch it!
-              //business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
-              channelWrapper.clearOpRead()
-              channelWrapper.inputEnded()
-            }
-          }
-        } catch {
-          case ex: Throwable => {
-            warn(ex, "when key is readable.")
-            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-          }
-        } finally {
-          CLIENT_BUFFER.clear()
+    if (key.isWritable()) {
+      try {
+        channelWrapper.writing()
+        if (!key.isValid()) {
+          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
-      }
-
-      if (key.isWritable()) {
-        try {
-          channelWrapper.writing()
-          if (!key.isValid()) {
-            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-          }
-        } catch {
-          case ex: Throwable => {
-            warn(ex, "when key is writable.")
-            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-          }
+      } catch {
+        case ex: Throwable => {
+          SelectorRunner.warn(ex, "when key is writable.")
+          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       }
     }
   }
 
-  private[NioSocketServer] class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper {
+  protected class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper {
 
-    import NioSocketServer._
+    import NioSocketReaderWriter._
 
     private var last_active_time = System.currentTimeMillis()
 
@@ -447,7 +228,7 @@ class NioSocketServer(interface: String,
 
     private var closed_cause = ChannelClosedCause.UNKNOWN
     private var attachment_for_closed: Option[_] = None
-    private[NioSocketServer] def close(rightNow: Boolean = false, cause: ChannelClosedCause.Value, attachment: Option[_] = None): Unit = {
+    private[NioSocketReaderWriter] def close(rightNow: Boolean = false, cause: ChannelClosedCause.Value, attachment: Option[_] = None): Unit = {
       val should_pending = this.synchronized {
         val rightNow1 = if (rightNow) true else writes == null
         if (CHANNEL_CLOSING_RIGHT_NOW != status) {
@@ -470,8 +251,8 @@ class NioSocketServer(interface: String,
       if (should_pending) {
         pend_for_io_operation(this)
         //if in workerThread, no need for wakeup
-        if (Thread.currentThread() != NioSocketServer.this.workerThread)
-          NioSocketServer.this.selector.wakeup()
+        if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
+          NioSocketReaderWriter.this.selector.wakeup()
       }
 
     }
@@ -482,7 +263,7 @@ class NioSocketServer(interface: String,
       this.last_active_time = System.currentTimeMillis()
     }
 
-    def post_to_io_thread(task: Runnable): Boolean = NioSocketServer.this.post_to_io_thread(task)
+    def post_to_io_thread(task: Runnable): Boolean = NioSocketReaderWriter.this.post_to_io_thread(task)
 
     private[nio] def inputEnded() = {
       if (null != handler) {
@@ -569,8 +350,8 @@ class NioSocketServer(interface: String,
           if (should_pending || force_pending) {
             pend_for_io_operation(this)
             //if in workerThread, no need for wakeup, or processor will be wasted for one more "listen()" 
-            if (Thread.currentThread() != NioSocketServer.this.workerThread)
-              NioSocketServer.this.selector.wakeup()
+            if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
+              NioSocketReaderWriter.this.selector.wakeup()
           }
 
           wr
@@ -646,7 +427,7 @@ class NioSocketServer(interface: String,
     private[nio] def checkIdle(current: Long) = {
       val (should, status1) = this.synchronized {
         if (status == CHANNEL_NORMAL &&
-          current - this.last_active_time > NioSocketServer.this.socket_max_idle_time_in_seconds_1 * 1000) {
+          current - this.last_active_time > NioSocketReaderWriter.this.socket_max_idle_time_in_seconds_1 * 1000) {
           (true, status)
         } else {
           (false, status)

@@ -48,7 +48,7 @@ object EchoServer extends App {
     def getHandler(channel: ChannelInformation): Option[ChannelHandler] = handler
   }
 
-  val listening_channel_configurator: NioSocketServer.ServerSocketChannelWrapper => Unit = wrapper => {
+  val listening_channel_configurator: ServerSocketChannelWrapper => Unit = wrapper => {
     wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
     wrapper.setBacklog(128)
   }

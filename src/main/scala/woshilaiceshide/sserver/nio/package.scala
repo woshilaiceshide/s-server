@@ -14,6 +14,32 @@ import scala.annotation.tailrec
 //public 'api's here
 package object nio {
 
+  private[nio] val CHANNEL_NORMAL = 0
+  private[nio] val CHANNEL_CLOSING_GRACEFULLY = 1
+  private[nio] val CHANNEL_CLOSING_RIGHT_NOW = 2
+  private[nio] val CHANNEL_CLOSED = 3
+
+  private[nio] final class MyChannelInformation(channel: SocketChannel) extends ChannelInformation {
+    def remoteAddress = channel.getRemoteAddress
+    def localAddress = channel.getLocalAddress
+  }
+
+  final class ServerSocketChannelWrapper(channel: ServerSocketChannel) {
+    def setOption[T](name: java.net.SocketOption[T], value: T) = {
+      channel.setOption(name, value)
+    }
+    private[nio] var backlog: Int = -1
+    def setBacklog(backlog: Int) = {
+      this.backlog = backlog
+    }
+  }
+
+  final class SocketChannelWrapper(channel: SocketChannel) {
+    def setOption[T](name: java.net.SocketOption[T], value: T) = {
+      channel.setOption(name, value)
+    }
+  }
+
   object ChannelClosedCause extends scala.Enumeration {
     val UNKNOWN = Value
     //the upper business codes closed the channel

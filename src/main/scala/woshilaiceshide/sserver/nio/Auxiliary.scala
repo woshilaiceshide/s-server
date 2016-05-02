@@ -2,7 +2,9 @@ package woshilaiceshide.sserver.nio
 
 import scala.annotation._
 
-//some private methods and data structures. 
+/**
+ * some private methods and data structures, which are dedicated for this project's efficiency.
+ */
 private[nio] object Auxiliary {
 
   final class BytesNode(val bytes: Array[Byte], var next: BytesNode = null) {

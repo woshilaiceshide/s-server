@@ -11,6 +11,18 @@ trait Utility {
     bytes
   }
 
+  def closeIfFailed(c: java.io.Closeable)(task: => Unit) = {
+    try {
+      task
+    } catch {
+      case ex: Throwable => {
+        c.close()
+        throw ex
+      }
+    }
+
+  }
+
 }
 
 object Utility extends Utility
