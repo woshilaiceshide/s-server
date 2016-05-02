@@ -109,7 +109,24 @@ class MultipleThreadHandler(var handler: ChannelHandler, worker: Worker) extends
     }, channelWrapper)
   }
 
+  @inline private def deepCopy(o: ByteBuffer) = {
+
+    val c = if (o.isDirect()) {
+      ByteBuffer.allocateDirect(o.remaining())
+    } else {
+      ByteBuffer.allocate(o.remaining())
+    }
+
+    val x = o.asReadOnlyBuffer()
+    c.put(x)
+    c.flip()
+    c
+  }
+
   def bytesReceived(byteBuffer: ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
+
+    val clone = deepCopy(byteBuffer)
+
     tryAdd(new Runnable() {
       def run() = {
         if (handler != null && !finished) {
