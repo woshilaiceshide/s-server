@@ -48,8 +48,12 @@ object EchoServer extends App {
     def getHandler(channel: ChannelInformation): Option[ChannelHandler] = handler
   }
 
-  val reuse_addr = NioSocketServer.SOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
-  val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_socket_options = List(reuse_addr))
+  val listening_channel_configurator: NioSocketServer.ServerSocketChannelWrapper => Unit = wrapper => {
+    wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
+    wrapper.setBacklog(128)
+  }
+
+  val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_channel_configurator = listening_channel_configurator)
   server.start(false)
 
 }

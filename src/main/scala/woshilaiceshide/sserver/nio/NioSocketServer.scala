@@ -37,6 +37,22 @@ object NioSocketServer {
     def localAddress = channel.getLocalAddress
   }
 
+  final class ServerSocketChannelWrapper(channel: ServerSocketChannel) {
+    def setOption[T](name: java.net.SocketOption[T], value: T) = {
+      channel.setOption(name, value)
+    }
+    private[nio] var backlog: Int = -1
+    def setBacklog(backlog: Int) = {
+      this.backlog = backlog
+    }
+  }
+
+  final class SocketChannelWrapper(channel: SocketChannel) {
+    def setOption[T](name: java.net.SocketOption[T], value: T) = {
+      channel.setOption(name, value)
+    }
+  }
+
   final case class SOption[T](name: java.net.SocketOption[T], value: T)
 
 }
@@ -44,18 +60,17 @@ object NioSocketServer {
 /**
  * a nio socket server.
  *
- * @param listening_socket_options
- * options for the listening port.
+ * @param listening_channel_configurator
+ * congfigure the listening port.
  *
- * @param accepted_socket_options
- * when a connection is accepted, these options will given to the accepted connection.
+ * @param accepted_channel_configurator
+ * when a connection is accepted, configure the accepted connection.
  */
 class NioSocketServer(interface: String,
     port: Int,
     channel_hander_factory: ChannelHandlerFactory,
-    backlog: Int = -1,
-    listening_socket_options: List[NioSocketServer.SOption[_]] = Nil,
-    accepted_socket_options: List[NioSocketServer.SOption[_]] = Nil,
+    listening_channel_configurator: NioSocketServer.ServerSocketChannelWrapper => Unit = _ => {},
+    accepted_channel_configurator: NioSocketServer.SocketChannelWrapper => Unit = _ => {},
     receive_buffer_size: Int = 1024,
     socket_max_idle_time_in_seconds: Int = 90,
     max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
@@ -131,10 +146,12 @@ class NioSocketServer(interface: String,
     var listenInCurrentThread = false
     this.synchronized {
       if (INITIALIZED == status) {
-        if (-1 == backlog) {
+        val wrapper = new ServerSocketChannelWrapper(ssc)
+        listening_channel_configurator(wrapper)
+        if (-1 == wrapper.backlog) {
           ssc.socket().bind(new InetSocketAddress(interface, port))
         } else {
-          ssc.socket().bind(new InetSocketAddress(interface, port), backlog)
+          ssc.socket().bind(new InetSocketAddress(interface, port), wrapper.backlog)
         }
 
         ssc.configureBlocking(false)
@@ -238,6 +255,7 @@ class NioSocketServer(interface: String,
 
     val continue = if ((!selector.isOpen()) || this.synchronized { status == STOPPING && stop_deadline < System.currentTimeMillis() }) {
       //closed
+      safeClose(selector)
       safeClose(ssc)
       channels.foreach { _.closeDirectly() }
       channels = Nil
@@ -348,6 +366,8 @@ class NioSocketServer(interface: String,
     if (key.isAcceptable()) {
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
+      val wrapper = new SocketChannelWrapper(channel)
+      accepted_channel_configurator(wrapper)
       var channelWrapper: MyChannelWrapper = null
       try {
         channel.configureBlocking(false)
