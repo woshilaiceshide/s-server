@@ -214,6 +214,17 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
 
   def getStatus() = this.synchronized { status }
 
+  //avoid instantiations in hot codes.
+  private val safeRunner = new (Runnable => Unit) {
+    def apply(r: Runnable): Unit = {
+      try {
+        r.run()
+      } catch {
+        case ex: Throwable => { ex.printStackTrace() }
+      }
+    }
+  }
+
   private var already_in_stopping = false
   protected def is_stopping() = already_in_stopping
   @tailrec private def loop(): Unit = {
@@ -271,7 +282,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       }
     }
     if (null != tasks_to_do)
-      tasks_to_do.foreach { x => safeOp(x.run()) }
+      tasks_to_do.foreach { safeRunner }
 
     if (enable_fuzzy_scheduler) {
       var timed_tasks_to_do = this.synchronized {

@@ -91,7 +91,8 @@ object SampleHttpServer extends App {
   //val server = new NioSocketServer("127.0.0.1", 8181, mt, listening_channel_configurator = listening_channel_configurator)
   //val server = new NioSocketServer1("127.0.0.1", 8181, mt, listening_channel_configurator = listening_channel_configurator)
   //val server = new NioSocketServer1("127.0.0.1", 8181, mt, listening_channel_configurator = listening_channel_configurator)
-  val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, mt, listening_channel_configurator = listening_channel_configurator)
+  //val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, mt, listening_channel_configurator = listening_channel_configurator)
+  val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, factory, listening_channel_configurator = listening_channel_configurator)
 
   server.start(false)
 

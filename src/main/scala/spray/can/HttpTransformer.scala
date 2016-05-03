@@ -38,7 +38,6 @@ object HttpTransformer {
     }
 
   private[HttpTransformer] final case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper, var next: Node)
-  private[HttpTransformer] final case class DataToSwitch(byteString: ByteString, offset: Int, channelWrapper: ChannelWrapper)
 
   val headerValueCacheLimits = {
     import com.typesafe.config._

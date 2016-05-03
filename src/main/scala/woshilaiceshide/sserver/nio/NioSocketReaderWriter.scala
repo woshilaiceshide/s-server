@@ -90,6 +90,13 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
   }
 
+  //avoid instantiations in hot codes.
+  private val io_checker = new (MyChannelWrapper => Unit) {
+    def apply(channelWrapper: MyChannelWrapper): Unit = {
+      channelWrapper.checkIO()
+    }
+  }
+
   private var last_check_for_idle_zombie: Long = 0
   protected def before_next_loop(): Unit = {
 
@@ -116,7 +123,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     }
 
     //check for pending i/o, and just no deadlocks
-    @tailrec def check_for_pending_io() {
+    @inline def check_for_pending_io() {
       var tmp = this.synchronized {
         if (pending_io_operations.isEmpty)
           null
@@ -128,12 +135,14 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       }
       if (null != tmp) {
         val current = System.currentTimeMillis()
-        tmp.foreach { _.check(current) }
+        tmp.foreach { io_checker }
         check_for_pending_io()
       }
 
     }
-    //!!!after checking the selected keys, the following statement is necessary!!! 
+    //!!!after checking the selected keys, the following statement is necessary!!!
+    //!!!DO NOT loop indefinitely. twice is enough.
+    check_for_pending_io()
     check_for_pending_io()
     //!!!
   }
@@ -237,18 +246,14 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
         }
         if (CHANNEL_NORMAL == status) {
           status = if (rightNow1) CHANNEL_CLOSING_RIGHT_NOW else CHANNEL_CLOSING_GRACEFULLY
-          if (already_pending) {
-            false
-          } else {
-            already_pending = true
-            true
-          }
+          !already_pending
         } else {
           false
         }
 
       }
       if (should_pending) {
+        already_pending = true
         pend_for_io_operation(this)
         //if in workerThread, no need for wakeup
         if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
@@ -322,32 +327,26 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
             (WriteResult.WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED, false)
 
           } else {
-            val should_pending_1 = {
-              if (null == writes) {
-                val node = new BytesNode(bytes)
-                writes = new BytesList(node, node)
-              } else {
-                writes.append(bytes)
-              }
-              bytes_waiting_for_written = bytes_waiting_for_written + bytes.length
-              if (already_pending) {
-                false
-              } else {
-                already_pending = true
-                true
-              }
+
+            if (null == writes) {
+              val node = new BytesNode(bytes)
+              writes = new BytesList(node, node)
+            } else {
+              writes.append(bytes)
             }
+            bytes_waiting_for_written = bytes_waiting_for_written + bytes.length
 
             /*if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
               WriteResult.WR_OK_BUT_OVERFLOWED
             } else {
               WriteResult.WR_OK
             }*/
-            (WriteResult.WR_OK, should_pending_1)
+            (WriteResult.WR_OK, !already_pending)
 
           }
 
-          if (should_pending || force_pending) {
+          if (should_pending || (force_pending && !already_pending)) {
+            already_pending = true
             pend_for_io_operation(this)
             //if in workerThread, no need for wakeup, or processor will be wasted for one more "listen()" 
             if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
@@ -372,12 +371,24 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       if (null != tmp) {
         val remain = writing0(tmp.head, tmp.last, 0)
 
+        //clear op_write just here for optimization.
+        /*
         if (null == remain._1) {
           pend_for_io_operation(this)
         }
+        */
 
         var become_writable = false
         this.synchronized {
+
+          //clear op_write just here for optimization.
+          if (null == remain._1 && writes == null) {
+            try {
+              this.clearOpWrite()
+            } catch {
+              case _: Throwable => { safeClose(channel); status = CHANNEL_CLOSED; }
+            }
+          }
 
           val prev_bytes_waiting_for_written = bytes_waiting_for_written
           bytes_waiting_for_written = bytes_waiting_for_written - remain._2
@@ -454,12 +465,16 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
         case _: Throwable => { safeClose(channel); status = CHANNEL_CLOSED; true; }
       }
     }
-    private[nio] def check(current_timestamp: Long) = {
+    private[nio] def checkIO() = {
 
       var closedCause: ChannelClosedCause.Value = null
       var attachmentForClosed: Option[_] = None
 
+      var generate_writing_event = false
       val (should_close, status1) = this.synchronized {
+
+        generate_writing_event = should_generate_writing_event
+        should_generate_writing_event = false
 
         closedCause = closed_cause
         attachmentForClosed = attachment_for_closed
@@ -495,11 +510,14 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       if (should_close) {
         safeOp { if (null != handler) handler.channelClosed(this, closedCause, attachmentForClosed) }
       } else {
-        if (null != this.handler) {
-          val newHandler = this.handler.writtenHappened(this)
-          //nothing to do with oldHandler
-          this.handler = newHandler
+        if (generate_writing_event) {
+          if (null != this.handler) {
+            val newHandler = this.handler.writtenHappened(this)
+            //nothing to do with oldHandler
+            this.handler = newHandler
+          }
         }
+
       }
       status1
     }

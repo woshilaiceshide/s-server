@@ -31,6 +31,8 @@ private[nio] object Auxiliary {
 
     import LinkedList._
 
+    var size = 0
+
     private def append(node: Node[T]): Unit = {
       if (null == head) {
         head = node
@@ -41,6 +43,7 @@ private[nio] object Auxiliary {
         tail.next = node
         tail = node
       }
+      size = size + 1
     }
     def append(value: T): Unit = append(new Node(value, null))
 

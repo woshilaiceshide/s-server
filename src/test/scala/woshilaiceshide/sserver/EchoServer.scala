@@ -53,7 +53,7 @@ object EchoServer extends App {
     wrapper.setBacklog(128)
   }
 
-  val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_channel_configurator = listening_channel_configurator)
+  val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, factory, listening_channel_configurator = listening_channel_configurator)
   server.start(false)
 
 }
