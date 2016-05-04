@@ -79,7 +79,10 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       }
       case Some(handler) => {
         val channelWrapper = new MyChannelWrapper(channel, handler)
-        Utility.closeIfFailed(channel) { channel.register(selector, SelectionKey.OP_READ, channelWrapper) }
+        Utility.closeIfFailed(channel) {
+          val key = channel.register(selector, SelectionKey.OP_READ, channelWrapper)
+          channelWrapper.key = key
+        }
         channels = channelWrapper :: channels
         channelWrapper.open()
         if (!channel.isOpen()) {
@@ -205,6 +208,8 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     private var last_active_time = System.currentTimeMillis()
 
     private var status = CHANNEL_NORMAL
+
+    private[NioSocketReaderWriter] var key: SelectionKey = null
 
     def remoteAddress: java.net.SocketAddress = channel.getRemoteAddress
     def localAddress: java.net.SocketAddress = channel.getLocalAddress
@@ -523,37 +528,47 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     }
 
     private[nio] def justOpWriteIfNeededOrNoOp() = this.synchronized {
-      if ((status == CHANNEL_NORMAL || status == CHANNEL_CLOSING_GRACEFULLY) && null != writes) {
-        val key = channel.keyFor(selector)
-        key.interestOps(SelectionKey.OP_WRITE)
-      } else {
-        val key = channel.keyFor(selector)
-        key.interestOps(0)
+      if (key != null) {
+        if ((status == CHANNEL_NORMAL || status == CHANNEL_CLOSING_GRACEFULLY) && null != writes) {
+          //val key = channel.keyFor(selector)
+          key.interestOps(SelectionKey.OP_WRITE)
+        } else {
+          //val key = channel.keyFor(selector)
+          key.interestOps(0)
+        }
       }
+
     }
     private def setOpWrite() {
-      val key = channel.keyFor(selector)
-      var alreadyOps = key.interestOps()
-      if ((alreadyOps & SelectionKey.OP_WRITE) == 0) {
-        alreadyOps |= SelectionKey.OP_WRITE
-        key.interestOps(alreadyOps)
+      if (key != null) {
+        //val key = channel.keyFor(selector)
+        var alreadyOps = key.interestOps()
+        if ((alreadyOps & SelectionKey.OP_WRITE) == 0) {
+          alreadyOps |= SelectionKey.OP_WRITE
+          key.interestOps(alreadyOps)
+        }
       }
     }
+
     private def clearOpWrite() {
-      val key = channel.keyFor(selector)
-      var alreadyOps = key.interestOps()
-      if ((alreadyOps & SelectionKey.OP_WRITE) != 0) {
-        alreadyOps &= ~SelectionKey.OP_WRITE
-        key.interestOps(alreadyOps)
+      if (key != null) {
+        //val key = channel.keyFor(selector)
+        var alreadyOps = key.interestOps()
+        if ((alreadyOps & SelectionKey.OP_WRITE) != 0) {
+          alreadyOps &= ~SelectionKey.OP_WRITE
+          key.interestOps(alreadyOps)
+        }
       }
     }
 
     private[nio] def clearOpRead() {
-      val key = channel.keyFor(selector)
-      var alreadyOps = key.interestOps()
-      if ((alreadyOps & SelectionKey.OP_READ) != 0) {
-        alreadyOps &= ~SelectionKey.OP_READ
-        key.interestOps(alreadyOps)
+      if (key != null) {
+        //val key = channel.keyFor(selector)
+        var alreadyOps = key.interestOps()
+        if ((alreadyOps & SelectionKey.OP_READ) != 0) {
+          alreadyOps &= ~SelectionKey.OP_READ
+          key.interestOps(alreadyOps)
+        }
       }
     }
   }
