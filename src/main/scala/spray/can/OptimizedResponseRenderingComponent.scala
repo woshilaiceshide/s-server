@@ -74,7 +74,8 @@ trait OptimizedResponseRenderingComponent {
   //def chunklessStreaming: Boolean
   //def transparentHeadRequests: Boolean
 
-  private[this] val serverHeaderPlusDateColonSP =
+  //TODO ???
+  private[this] def serverHeaderPlusDateColonSP =
     serverHeaderValue match {
       case "" ⇒ "Date: ".getAsciiBytes
       case x ⇒ ("Server: " + x + "\r\nDate: ").getAsciiBytes
