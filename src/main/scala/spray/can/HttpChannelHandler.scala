@@ -13,9 +13,6 @@ import _root_.spray.http.HttpHeader
 import _root_.spray.http.ByteArrayRendering
 import _root_.spray.http.HttpResponsePart
 import _root_.spray.http.HttpRequestPart
-import _root_.spray.can.rendering.ResponsePartRenderingContext
-import _root_.spray.can.rendering.ResponseRenderingComponent
-import _root_.spray.can.rendering.ResponseRenderingComponent
 
 import woshilaiceshide.sserver.nio._
 import woshilaiceshide.sserver.httpd.WebSocket13
@@ -29,60 +26,6 @@ class HttpChannelHandlerFactory(http_channel_handler: HttpChannelHandler, max_re
     val transformer = new HttpTransformer(http_channel_handler, max_request_in_pipeline = max_request_in_pipeline)
     Some(transformer)
 
-  }
-
-}
-
-//won't be reused internally
-final class HttpChannel(
-    private[can] val channel: ChannelWrapper,
-    private[this] var closeAfterEnd: Boolean,
-    requestMethod: HttpMethod,
-    requestProtocol: HttpProtocol) extends ResponseRenderingComponent {
-
-  def remoteAddress: java.net.SocketAddress = channel.remoteAddress
-  def localAddress: java.net.SocketAddress = channel.localAddress
-
-  def serverHeaderValue: String = woshilaiceshide.sserver.httpd.HttpdInforamtion.VERSION
-  def chunklessStreaming: Boolean = false
-  def transparentHeadRequests: Boolean = false
-
-  private var finished = false
-
-  def isCompleted = this.synchronized {
-    finished
-  }
-
-  //TODO test chunked responding
-  def writeResponse(response: HttpResponsePart) = {
-
-    val (_finished, wr, should_close) = synchronized {
-
-      if (finished) {
-        throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
-      }
-      response match {
-        case _: HttpResponse => finished = true
-        case _: ChunkedMessageEnd => finished = true
-        case _ => {}
-      }
-
-      val r = new ByteArrayRendering(1024)
-      val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
-      val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
-
-      //if finished, jump to the next request in the pipelining(if existed)
-      val write_result = channel.write(r.get, true, finished)
-
-      val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
-      if (closeMode == CloseMode.CloseAfterEnd) closeAfterEnd = true
-
-      (finished, write_result, closeNow)
-    }
-
-    if (should_close) channel.closeChannel(false)
-
-    wr
   }
 
 }
