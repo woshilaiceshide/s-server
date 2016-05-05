@@ -3,8 +3,11 @@ package spray.can
 import akka.util._
 
 import _root_.spray.can.parsing.ParserSettings
-import _root_.spray.can.parsing.HttpRequestPartParser
-import _root_.spray.can.parsing.Result
+//import _root_.spray.can.parsing.HttpRequestPartParser
+//import _root_.spray.can.parsing.Result
+
+import woshilaiceshide.sserver.http._
+
 import _root_.spray.http._
 import _root_.spray.http.HttpRequest
 import _root_.spray.http.HttpResponse
@@ -13,9 +16,6 @@ import _root_.spray.http.HttpHeader
 import _root_.spray.http.ByteArrayRendering
 import _root_.spray.http.HttpResponsePart
 import _root_.spray.http.HttpRequestPart
-import _root_.spray.can.rendering.ResponsePartRenderingContext
-import _root_.spray.can.rendering.ResponseRenderingComponent
-import _root_.spray.can.rendering.ResponseRenderingComponent
 
 import woshilaiceshide.sserver.nio._
 import woshilaiceshide.sserver.httpd.WebSocket13
@@ -132,7 +132,7 @@ class HttpTransformer(handler: HttpChannelHandler,
 
   @inline private def has_next(): Boolean = null != head
 
-  private var parser: _root_.spray.can.parsing.Parser = original_parser
+  private var parser: Parser = original_parser
 
   def lastOffset = original_parser.lastOffset
   def lastInput = original_parser.lastInput
@@ -182,7 +182,118 @@ class HttpTransformer(handler: HttpChannelHandler,
 
     @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
       result match {
+        case Result.EmitDirectly(request: HttpRequestPart, closeAfterResponseCompletion, continue) => {
 
+          request match {
+            case x: ChunkedRequestStart => {
+              if (current_http_channel != null) {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue)
+              } else {
+                if (current_sink != null) {
+                  current_sink = null
+                }
+
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol)
+                val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
+                action match {
+                  case ResponseAction.AcceptChunking(h) => {
+                    current_sink = h
+                    process(continue)
+                  }
+                  case ResponseAction.ResponseNormally => {
+                    process(continue)
+                  }
+                  case _ => {
+                    channelWrapper.closeChannel(false)
+                    null
+                  }
+                }
+
+              }
+            }
+            case x: MessageChunk => {
+
+              if (head == null) {
+                if (current_sink != null) {
+                  current_sink match {
+                    case c: ChunkedRequestHandler => c.chunkReceived(x)
+                    case _ => channelWrapper.closeChannel(true)
+                  }
+                }
+                process(continue)
+              } else {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue)
+              }
+            }
+            case x: ChunkedMessageEnd => {
+
+              if (head == null) {
+                if (current_sink != null) {
+                  current_sink match {
+                    case c: ChunkedRequestHandler => c.chunkEnded(x)
+                    case _ => channelWrapper.closeChannel(true)
+                  }
+                  //do not make it null now!!!
+                  //current_sink = null
+                }
+                process(continue)
+              } else {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue)
+              }
+            }
+            case x: HttpRequest => {
+
+              if (current_http_channel != null) {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue)
+              } else {
+                if (current_sink != null) {
+                  current_sink = null
+                }
+
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+                val classifier = DynamicRequestClassifier(x)
+                val action = handler.requestReceived(x, current_http_channel, classifier)
+                action match {
+                  case ResponseAction.ResponseNormally => {
+                    process(continue)
+                  }
+                  case ResponseAction.AcceptWebsocket(factory) => {
+
+                    original_parser.just_check_positions = true
+                    try { continue } catch { case FakeException => {} }
+                    //!!!
+                    original_parser.just_check_positions = false
+
+                    val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+                    val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
+                    val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
+
+                    if (null != lastInput && lastInput.length > lastOffset) {
+                      //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+                      //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
+                      throw new RuntimeException("no data should be here because handshake does not complete.")
+                    }
+                    websocket
+                  }
+                  case ResponseAction.ResponseWithASink(sink) => {
+                    current_sink = sink
+                    process(continue)
+                  }
+                  case _ => {
+                    channelWrapper.closeChannel(false)
+                    null
+                  }
+                }
+
+              }
+
+            }
+          }
+        }
         //closeAfterResponseCompletion will be fine even if it's a 'MessageChunk'
         case Result.Emit(request: HttpRequestPart, closeAfterResponseCompletion, continue) => {
 

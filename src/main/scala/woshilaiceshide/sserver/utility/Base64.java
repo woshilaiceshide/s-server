@@ -1,15 +1,15 @@
-package woshilaiceshide.sserver.httpd;
+package woshilaiceshide.sserver.utility;
 
 /**
- * Please refer to http://stackoverflow.com/a/4265472. 
- * Many thanks to
+ * Please refer to http://stackoverflow.com/a/4265472. Many thanks to
  * http://stackoverflow.com/users/518568/georgek
  * 
  * @author georgek
  */
 public class Base64 {
 
-	private final static char[] ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".toCharArray();
+	private final static char[] ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+			.toCharArray();
 
 	private static int[] toInt = new int[128];
 
