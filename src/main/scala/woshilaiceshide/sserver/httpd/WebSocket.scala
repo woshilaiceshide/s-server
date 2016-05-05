@@ -1,22 +1,17 @@
 package woshilaiceshide.sserver.httpd
 
 import akka.util._
-import _root_.spray.can.parsing.ParserSettings
-import _root_.spray.can.parsing.HttpRequestPartParser
-import _root_.spray.can.parsing.Result
+
 import _root_.spray.http.HttpRequest
 import _root_.spray.http.HttpResponse
 import _root_.spray.http.StatusCodes
 import _root_.spray.http.HttpHeader
 import _root_.spray.http.HttpCookie
-import _root_.spray.can.rendering.ResponsePartRenderingContext
-import _root_.spray.can.rendering.ResponseRenderingComponent
-import _root_.spray.http.ByteArrayRendering
+
 import woshilaiceshide.sserver.nio._
-import spray.can.rendering.ResponseRenderingComponent
+import woshilaiceshide.sserver.utility._
+
 import java.security.MessageDigest
-import java.nio.charset.Charset
-import java.nio.ByteBuffer
 import java.io.UnsupportedEncodingException
 
 /**
