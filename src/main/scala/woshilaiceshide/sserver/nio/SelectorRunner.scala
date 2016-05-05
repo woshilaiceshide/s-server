@@ -143,7 +143,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
 
       if (asynchronously) {
         //workerThread should not be assigned in the new thread's running.
-        workerThread = new Thread(s"sserver-selector-${hashCode()}-${System.currentTimeMillis()}") {
+        workerThread = new Thread(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}") {
           override def run() = safe_loop()
         }
         workerThread.start()
