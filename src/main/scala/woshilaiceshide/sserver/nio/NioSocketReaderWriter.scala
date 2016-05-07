@@ -314,7 +314,9 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     //if generate_writing_event is true, then 'bytesWritten' will be fired. 
     def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
 
-      this.synchronized {
+      var should_wakeup = false
+
+      val result = this.synchronized {
         if (CHANNEL_NORMAL == status) {
 
           var force_pending = false
@@ -353,9 +355,9 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
           if (should_pending || (force_pending && !already_pending)) {
             already_pending = true
             pend_for_io_operation(this)
-            //if in workerThread, no need for wakeup, or processor will be wasted for one more "listen()" 
-            if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
-              NioSocketReaderWriter.this.selector.wakeup()
+            //if in workerThread, no need for waking up, or processor will be wasted for one more "listen()"
+            should_wakeup = Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread()
+
           }
 
           wr
@@ -365,6 +367,8 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
         }
       }
 
+      if (should_wakeup) NioSocketReaderWriter.this.selector.wakeup()
+      result
     }
 
     private[nio] final def writing() {
