@@ -1,10 +1,7 @@
-package spray.can
+package woshilaiceshide.sserver.http
 
 import akka.util._
 
-import _root_.spray.can.parsing.ParserSettings
-import _root_.spray.can.parsing.HttpRequestPartParser
-import _root_.spray.can.parsing.Result
 import _root_.spray.http._
 import _root_.spray.http.HttpRequest
 import _root_.spray.http.HttpResponse
@@ -15,8 +12,6 @@ import _root_.spray.http.HttpResponsePart
 import _root_.spray.http.HttpRequestPart
 
 import woshilaiceshide.sserver.nio._
-import woshilaiceshide.sserver.httpd.WebSocket13
-import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
 class HttpChannelHandlerFactory(http_channel_handler: HttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
 
@@ -54,10 +49,10 @@ sealed abstract class ResponseAction
 //3. websocket, stateful and a different parser/handler needed
 object ResponseAction {
 
-  private[can] object ResponseNormally extends ResponseAction
-  private[can] final case class ResponseWithASink(sink: ResponseSink) extends ResponseAction
-  private[can] final case class AcceptWebsocket(factory: WebSocketChannel => (WebSocketChannelHandler, WebSocket13.WSFrameParser)) extends ResponseAction
-  private[can] final case class AcceptChunking(handler: ChunkedRequestHandler) extends ResponseAction
+  private[http] object ResponseNormally extends ResponseAction
+  private[http] final case class ResponseWithASink(sink: ResponseSink) extends ResponseAction
+  private[http] final case class AcceptWebsocket(factory: WebSocketChannel => (WebSocketChannelHandler, WebSocket13.WSFrameParser)) extends ResponseAction
+  private[http] final case class AcceptChunking(handler: ChunkedRequestHandler) extends ResponseAction
 
   //I'll work with this response finely.
   def responseNormally: ResponseAction = ResponseNormally
@@ -90,11 +85,11 @@ sealed abstract class RequestClassifier {
   def classification: RequestClassification.Value
 }
 
-private[can] object AChunkedRequestStart extends RequestClassifier {
+private[http] object AChunkedRequestStart extends RequestClassifier {
   def classification: RequestClassification.Value = RequestClassification.ChunkedHttpStart
 }
 
-final case class DynamicRequestClassifier private[can] (request: HttpRequest) extends RequestClassifier {
+final case class DynamicRequestClassifier private[http] (request: HttpRequest) extends RequestClassifier {
 
   lazy val classification: RequestClassification.Value = {
     request match {

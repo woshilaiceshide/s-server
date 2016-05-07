@@ -1,17 +1,13 @@
-package spray.can
+package woshilaiceshide.sserver.http
 
 import spray.util._
 
 import spray.http._
 import spray.http.HttpHeaders._
 
-import _root_.spray.can.rendering.ResponsePartRenderingContext
-import _root_.spray.can.rendering.ResponseRenderingComponent
-import _root_.spray.can.rendering.ResponseRenderingComponent
-
 import scala.annotation._
 
-private[can] object RenderSupport {
+private[http] object RenderSupport {
   //HTTP/1.0?
   val DefaultStatusLine = "HTTP/1.1 200 OK\r\n".getAsciiBytes
   val StatusLineStart = "HTTP/1.1 ".getAsciiBytes
@@ -64,7 +60,38 @@ private[can] object RenderSupport {
 import RenderSupport._
 import HttpProtocols._
 
-trait OptimizedResponseRenderingComponent {
+case class ResponsePartRenderingContext(
+  responsePart: HttpResponsePart,
+  requestMethod: HttpMethod = HttpMethods.GET,
+  requestProtocol: HttpProtocol = HttpProtocols.`HTTP/1.1`,
+  closeAfterResponseCompletion: Boolean = false)
+
+object ResponseRenderingComponent {
+
+  sealed trait CloseMode {
+    def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean
+  }
+  object CloseMode {
+    case object DontClose extends CloseMode {
+      def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean =
+        closeAfterEnd && part.isInstanceOf[HttpMessageEnd]
+    }
+    case object CloseNow extends CloseMode {
+      def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean = true
+    }
+    case object CloseAfterEnd extends CloseMode {
+      def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean =
+        part.isInstanceOf[HttpMessageEnd]
+    }
+
+    def closeNowIf(doClose: Boolean): CloseMode = if (doClose) CloseNow else DontClose
+  }
+
+}
+
+trait ResponseRenderingComponent {
+
+  import ResponseRenderingComponent._
 
   def serverHeaderValue: String = woshilaiceshide.sserver.httpd.HttpdInforamtion.VERSION
   def chunklessStreaming: Boolean = false
@@ -96,7 +123,7 @@ trait OptimizedResponseRenderingComponent {
 
       def shouldClose(contentLengthDefined: Boolean, connectionHeader: Connection) =
         ctx.closeAfterResponseCompletion || // request wants to close
-          (connectionHeader != null && connectionHeader.hasClose) || // application wants to close
+          (connectionHeader != null && OptimizedUtility.hasClose(connectionHeader)) || // application wants to close
           (chunkless && !contentLengthDefined) // missing content-length, close needed as data boundary
 
       @tailrec def renderHeaders(remaining: List[HttpHeader], contentLengthDefined: Boolean,
@@ -134,7 +161,7 @@ trait OptimizedResponseRenderingComponent {
 
             case x: `Connection` ⇒
               val connectionHeader = if (connHeader eq null) x else Connection(x.tokens ++ connHeader.tokens)
-              if (x.hasUpgrade) render(x)
+              if (OptimizedUtility.hasUpgrade(x)) render(x)
               renderHeaders(tail, contentLengthDefined, userContentType, connectionHeader)
 
             case x: RawHeader if x.lowercaseName == "content-type" ||
@@ -153,7 +180,9 @@ trait OptimizedResponseRenderingComponent {
 
           case Nil ⇒
             response.entity match {
-              case HttpEntity.NonEmpty(ContentTypes.NoContentType, _) ⇒
+              //case HttpEntity.NonEmpty(ContentTypes.NoContentType, _) ⇒
+              //!!!
+              case HttpEntity.NonEmpty(contentType, _) if ContentTypes.NoContentType eq contentType ⇒
               case HttpEntity.NonEmpty(contentType, _) if !userContentType ⇒ {
                 if (contentType eq ContentTypes.`text/plain(UTF-8)`) {
                   r ~~ `Content-Type--text/plain(UTF-8)-CrLf-Bytes`
@@ -269,22 +298,4 @@ trait OptimizedResponseRenderingComponent {
 
   protected def dateTime(now: Long) = DateTime(now) // split out so we can stabilize by overriding in tests
 
-  sealed trait CloseMode {
-    def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean
-  }
-  object CloseMode {
-    case object DontClose extends CloseMode {
-      def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean =
-        closeAfterEnd && part.isInstanceOf[HttpMessageEnd]
-    }
-    case object CloseNow extends CloseMode {
-      def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean = true
-    }
-    case object CloseAfterEnd extends CloseMode {
-      def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean =
-        part.isInstanceOf[HttpMessageEnd]
-    }
-
-    def closeNowIf(doClose: Boolean): CloseMode = if (doClose) CloseNow else DontClose
-  }
 }

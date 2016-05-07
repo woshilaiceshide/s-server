@@ -1,13 +1,9 @@
-package spray.can
+package woshilaiceshide.sserver.http
 
 import spray.util._
 
 import spray.http._
 import spray.http.HttpHeaders._
-
-import _root_.spray.can.rendering.ResponsePartRenderingContext
-import _root_.spray.can.rendering.ResponseRenderingComponent
-import _root_.spray.can.rendering.ResponseRenderingComponent
 
 import woshilaiceshide.sserver.nio._
 
@@ -15,10 +11,12 @@ import scala.annotation._
 
 //won't be reused internally
 final class HttpChannel(
-    private[can] val channel: ChannelWrapper,
+    private[http] val channel: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     requestMethod: HttpMethod,
-    requestProtocol: HttpProtocol) extends OptimizedResponseRenderingComponent {
+    requestProtocol: HttpProtocol) extends ResponseRenderingComponent {
+
+  import ResponseRenderingComponent._
 
   def remoteAddress: java.net.SocketAddress = channel.remoteAddress
   def localAddress: java.net.SocketAddress = channel.localAddress
@@ -30,6 +28,9 @@ final class HttpChannel(
   //TODO test chunked responding
   /**
    * 'server' and 'date' headers may be served by proxies (nginx?).
+   *
+   * to make the best performance, do your best to use the instantiated objects in
+   * 'spray.http.ContentTypes' and 'spray.http.MediaTypes' and 'spray.http.ContentTypes.HttpCharsets'.
    *
    * netty's 'hello world' example does not render 'server' and 'date' headers.
    */

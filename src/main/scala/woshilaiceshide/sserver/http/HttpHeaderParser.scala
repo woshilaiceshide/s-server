@@ -92,7 +92,7 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
    * line ending from a line fold.
    * If the header is invalid a respective `ParsingException` is thrown.
    */
-  @tailrec def parseHeaderLine(input: ByteString, lineStart: Int = 0)(cursor: Int = lineStart, nodeIx: Int = 0): Int = {
+  @tailrec final def parseHeaderLine(input: ByteString, lineStart: Int = 0)(cursor: Int = lineStart, nodeIx: Int = 0): Int = {
     def startValueBranch(rootValueIx: Int, valueParser: HeaderValueParser) = {
       val (header, endIx) = valueParser(input, cursor, warnOnIllegalHeader)
       if (valueParser.maxValueCount > 0)
@@ -133,7 +133,7 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
     }
   }
 
-  private def parseRawHeader(input: ByteString, lineStart: Int, cursor: Int, nodeIx: Int): Int = {
+  private final def parseRawHeader(input: ByteString, lineStart: Int, cursor: Int, nodeIx: Int): Int = {
     val colonIx = scanHeaderNameAndReturnIndexOfColon(input, lineStart, lineStart + maxHeaderNameLength)(cursor)
     val headerName = asciiString(input, lineStart, colonIx)
     try {
@@ -148,7 +148,7 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
     }
   }
 
-  @tailrec private def parseHeaderValue(input: ByteString, valueStart: Int, branch: ValueBranch)(cursor: Int = valueStart, nodeIx: Int = branch.branchRootNodeIx): Int = {
+  @tailrec final private def parseHeaderValue(input: ByteString, valueStart: Int, branch: ValueBranch)(cursor: Int = valueStart, nodeIx: Int = branch.branchRootNodeIx): Int = {
     def parseAndInsertHeader() = {
       val (header, endIx) = branch.parser(input, valueStart, warnOnIllegalHeader)
       if (branch.spaceLeft)
@@ -159,6 +159,7 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
       resultHeader = header
       endIx
     }
+
     val char = byteChar(input, cursor)
     val node = nodes(nodeIx)
     if (char == node) // fast match, descend
@@ -187,7 +188,7 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
    * - the input does not contain illegal characters
    * - the input is not a prefix of an already stored value, i.e. the input must be properly terminated (CRLF or colon)
    */
-  @tailrec def insert(input: ByteString, value: AnyRef)(cursor: Int = 0, endIx: Int = input.length, nodeIx: Int = 0, colonIx: Int = 0): Unit = {
+  @tailrec final def insert(input: ByteString, value: AnyRef)(cursor: Int = 0, endIx: Int = input.length, nodeIx: Int = 0, colonIx: Int = 0): Unit = {
     val char =
       if (cursor < colonIx) toLowerCase(input(cursor).toChar)
       else if (cursor < endIx) input(cursor).toChar
@@ -230,7 +231,7 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
    * Inserts a value into the cache trie as new nodes.
    * CAUTION: this method must only be called if the trie data have already been "unshared"!
    */
-  @tailrec def insertRemainingCharsAsNewNodes(input: ByteString, value: AnyRef)(cursor: Int = 0, endIx: Int = input.length, valueIx: Int = newValueIndex, colonIx: Int = 0): Unit = {
+  @tailrec final def insertRemainingCharsAsNewNodes(input: ByteString, value: AnyRef)(cursor: Int = 0, endIx: Int = input.length, valueIx: Int = newValueIndex, colonIx: Int = 0): Unit = {
     val newNodeIx = newNodeIndex
     if (cursor < endIx) {
       val c = input(cursor).toChar
@@ -447,7 +448,7 @@ object HttpHeaderParser {
       }
     }
 
-  @tailrec private def scanHeaderNameAndReturnIndexOfColon(input: ByteString, start: Int,
+  @tailrec final private def scanHeaderNameAndReturnIndexOfColon(input: ByteString, start: Int,
     maxHeaderNameEndIx: Int)(ix: Int = start): Int =
     if (ix < maxHeaderNameEndIx)
       byteChar(input, ix) match {
@@ -457,7 +458,8 @@ object HttpHeaderParser {
       }
     else fail(s"HTTP header name exceeds the configured limit of ${maxHeaderNameEndIx - start} characters")
 
-  @tailrec private def scanHeaderValue(input: ByteString, start: Int, maxHeaderValueEndIx: Int)(sb: JStringBuilder = null, ix: Int = start): (String, Int) = {
+  //this method could be optimized, but it should not be invoked frequently, because the trie cache exists.
+  @tailrec final private def scanHeaderValue(input: ByteString, start: Int, maxHeaderValueEndIx: Int)(sb: JStringBuilder = null, ix: Int = start): (String, Int) = {
     def spaceAppended = (if (sb != null) sb else new JStringBuilder(asciiString(input, start, ix))).append(' ')
     if (ix < maxHeaderValueEndIx)
       byteChar(input, ix) match {

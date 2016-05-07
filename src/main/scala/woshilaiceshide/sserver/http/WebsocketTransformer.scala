@@ -1,10 +1,7 @@
-package spray.can
+package woshilaiceshide.sserver.http
 
 import akka.util._
 
-import _root_.spray.can.parsing.ParserSettings
-import _root_.spray.can.parsing.HttpRequestPartParser
-import _root_.spray.can.parsing.Result
 import _root_.spray.http._
 import _root_.spray.http.HttpRequest
 import _root_.spray.http.HttpResponse
@@ -13,13 +10,8 @@ import _root_.spray.http.HttpHeader
 import _root_.spray.http.ByteArrayRendering
 import _root_.spray.http.HttpResponsePart
 import _root_.spray.http.HttpRequestPart
-import _root_.spray.can.rendering.ResponsePartRenderingContext
-import _root_.spray.can.rendering.ResponseRenderingComponent
-import _root_.spray.can.rendering.ResponseRenderingComponent
 
 import woshilaiceshide.sserver.nio._
-import woshilaiceshide.sserver.httpd.WebSocket13
-import woshilaiceshide.sserver.httpd.WebSocket13.WebSocketAcceptance
 
 object WebSocketChannel {
   private val ResponseStatus_Init: Byte = 0
@@ -33,10 +25,6 @@ class WebSocketChannel(channel: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     requestMethod: HttpMethod,
     requestProtocol: HttpProtocol, maxResponseSize: Int = 2048) extends ResponseRenderingComponent {
-
-  def serverHeaderValue: String = woshilaiceshide.sserver.httpd.HttpdInforamtion.VERSION
-  def chunklessStreaming: Boolean = false
-  def transparentHeadRequests: Boolean = false
 
   import WebSocketChannel._
   import WebSocket13._
@@ -107,14 +95,14 @@ class WebSocketChannel(channel: ChannelWrapper,
     }
   }
 
-  private def writeWebSocketResponse(response: HttpResponse) = {
+  private def writeWebSocketResponse(response: HttpResponse, writeServerAndDateHeader: Boolean = false) = {
 
     val r = new ByteArrayRendering(maxResponseSize)
     val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
-    val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging)
+    val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, writeServerAndDateHeader)
 
     val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
-    if (closeMode == CloseMode.CloseAfterEnd) closeAfterEnd = true
+    if (closeMode == ResponseRenderingComponent.CloseMode.CloseAfterEnd) closeAfterEnd = true
 
     channel.write(r.get, true, false)
   }

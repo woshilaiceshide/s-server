@@ -100,7 +100,7 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
       teh match {
         case Some(`Transfer-Encoding`(Seq("chunked"))) ⇒
           if (clh.isEmpty)
-            emit(chunkStartMessage(headers), closeAfterResponseCompletion) {
+            emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
               parseChunk(input, bodyStart, closeAfterResponseCompletion)
             }
           else fail("A chunked request must not contain a Content-Length header.")
@@ -112,7 +112,7 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
           }
           if (contentLength == 0) {
             if (input.length > bodyStart) {
-              emit(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
+              emitLazily(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
                 parseMessageSafe(input, bodyStart)
               }
             } else {

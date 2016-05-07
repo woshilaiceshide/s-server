@@ -1,10 +1,9 @@
 package woshilaiceshide.sserver
 
-import woshilaiceshide.sserver.httpd._
+import woshilaiceshide.sserver.http._
 import woshilaiceshide.sserver.nio._
 import WebSocket13.WSText
 
-import spray.can._
 import spray.http._
 import spray.http.HttpEntity.apply
 import spray.http.StatusCode.int2StatusCode
@@ -87,12 +86,13 @@ object SampleHttpServer extends App {
       new Thread(r)
     }
   }
-  val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
+  //val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
   //val server = new NioSocketServer1("127.0.0.1", 8181, mt, listening_channel_configurator = listening_channel_configurator)
   //val server = new NioSocketServer1("127.0.0.1", 8181, factory, listening_channel_configurator = listening_channel_configurator)
   //val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, mt, listening_channel_configurator = listening_channel_configurator)
   val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, factory, listening_channel_configurator = listening_channel_configurator)
 
+  println(s"starting...")
   server.start(false)
 
 }

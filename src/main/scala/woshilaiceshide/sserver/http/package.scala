@@ -11,9 +11,16 @@ package object http {
   sealed trait Result
   object Result {
     final case class NeedMoreData(next: Parser) extends Result
-    final case class Emit(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, continue: () ⇒ Result) extends Result
+    sealed trait AbstractEmit extends Result {
+      val part: HttpMessagePart
+      val closeAfterResponseCompletion: Boolean
+      def continue: Result
+    }
+    final case class EmitLazily(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, lazy_continue: () ⇒ Result) extends AbstractEmit {
+      def continue = lazy_continue()
+    }
     //no lazy evaluation. this optimization is proved by facts.
-    final case class EmitDirectly(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, continue: Result) extends Result
+    final case class EmitDirectly(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, continue: Result) extends AbstractEmit
     final case class Expect100Continue(continue: () ⇒ Result) extends Result
     final case class ParsingError(status: StatusCode, info: ErrorInfo) extends Result
     case object IgnoreAllFurtherInput extends Result with Parser { def apply(data: ByteString) = this }

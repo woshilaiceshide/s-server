@@ -1,4 +1,4 @@
-package woshilaiceshide.sserver.httpd
+package woshilaiceshide.sserver.http
 
 import akka.util._
 

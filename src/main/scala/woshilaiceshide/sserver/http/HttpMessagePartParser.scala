@@ -32,9 +32,12 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
   def parseMessage(input: ByteString, offset: Int): Result
 
   def parseProtocol(input: ByteString, cursor: Int): Int = {
-    def c(ix: Int) = byteChar(input, cursor + ix)
-    if (c(0) == 'H' && c(1) == 'T' && c(2) == 'T' && c(3) == 'P' && c(4) == '/' && c(5) == '1' && c(6) == '.') {
-      protocol = c(7) match {
+    @inline def byteCharDirectly(ix: Int) = input(cursor + ix).toChar
+    if (input.length < cursor + 8) {
+      throw NotEnoughDataException
+    } else if (byteCharDirectly(0) == 'H' && byteCharDirectly(1) == 'T' && byteCharDirectly(2) == 'T' && byteCharDirectly(3) == 'P' &&
+      byteCharDirectly(4) == '/' && byteCharDirectly(5) == '1' && byteCharDirectly(6) == '.') {
+      protocol = byteCharDirectly(7) match {
         case '0' ⇒ `HTTP/1.0`
         case '1' ⇒ `HTTP/1.1`
         case _ ⇒ badProtocol
@@ -47,8 +50,10 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
 
   def connectionCloseExpected(protocol: HttpProtocol, connectionHeader: Option[Connection]): Boolean =
     protocol match {
-      case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && connectionHeader.get.hasClose
-      case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || !connectionHeader.get.hasKeepAlive
+      //case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && connectionHeader.get.hasClose
+      //case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || !connectionHeader.get.hasKeepAlive
+      case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && OptimizedUtility.hasClose(connectionHeader.get)
+      case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || OptimizedUtility.hasNoKeepAlive(connectionHeader.get)
     }
 
   @tailrec final def parseHeaderLines(input: ByteString, lineStart: Int,
@@ -113,7 +118,7 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
   def parseFixedLengthBody(headers: List[HttpHeader], input: ByteString, bodyStart: Int, length: Long,
     cth: Option[`Content-Type`], closeAfterResponseCompletion: Boolean): Result =
     if (length >= settings.autoChunkingThreshold) {
-      emit(chunkStartMessage(headers), closeAfterResponseCompletion) {
+      emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
         parseBodyWithAutoChunking(input, bodyStart, length, closeAfterResponseCompletion)
       }
     } else if (length > Int.MaxValue) {
@@ -121,7 +126,7 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
     } else if (bodyStart.toLong + length <= input.length) {
       val offset = bodyStart + length.toInt
       val msg = message(headers, entity(cth, input.slice(bodyStart, offset)))
-      emit(msg, closeAfterResponseCompletion) {
+      emitLazily(msg, closeAfterResponseCompletion) {
         if (input.isCompact) parseMessageSafe(input, offset)
         else parseMessageSafe(input.drop(offset))
       }
@@ -133,7 +138,7 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
       val lineEnd = headerParser.parseHeaderLine(input, lineStart)()
       headerParser.resultHeader match {
         case HttpHeaderParser.EmptyHeader ⇒
-          emit(ChunkedMessageEnd(extension, headers), closeAfterResponseCompletion) { parseMessageSafe(input, lineEnd) }
+          emitLazily(ChunkedMessageEnd(extension, headers), closeAfterResponseCompletion) { parseMessageSafe(input, lineEnd) }
         case header if headerCount < settings.maxHeaderCount ⇒
           parseTrailer(extension, lineEnd, header :: headers, headerCount + 1)
         case _ ⇒ fail(s"Chunk trailer contains more than the configured limit of ${settings.maxHeaderCount} headers")
@@ -145,7 +150,7 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
         val chunkBodyEnd = cursor + chunkSize
         def result(terminatorLen: Int) = {
           val chunk = MessageChunk(HttpData(input.slice(cursor, chunkBodyEnd)), extension)
-          emit(chunk, closeAfterResponseCompletion) {
+          emitLazily(chunk, closeAfterResponseCompletion) {
             parseChunk(input, chunkBodyEnd + terminatorLen, closeAfterResponseCompletion)
           }
         }
@@ -190,9 +195,9 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
     if (chunkSize > 0) {
       val chunkEnd = offset + chunkSize
       val chunk = MessageChunk(HttpData(input.slice(offset, chunkEnd).compact))
-      emit(chunk, closeAfterResponseCompletion) {
+      emitLazily(chunk, closeAfterResponseCompletion) {
         if (chunkSize == remainingBytes) // last chunk
-          emit(ChunkedMessageEnd, closeAfterResponseCompletion) {
+          emitLazily(ChunkedMessageEnd, closeAfterResponseCompletion) {
             if (input.isCompact) parseMessageSafe(input, chunkEnd)
             else parseMessageSafe(input.drop(chunkEnd))
           }
@@ -213,8 +218,8 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
     if (offset == input.length) Result.NeedMoreData(next(_, 0))
     else Result.NeedMoreData(more ⇒ next(input ++ more, offset))
 
-  def emit(part: HttpMessagePart, closeAfterResponseCompletion: Boolean)(continue: ⇒ Result) =
-    Result.Emit(part, closeAfterResponseCompletion, () ⇒ continue)
+  def emitLazily(part: HttpMessagePart, closeAfterResponseCompletion: Boolean)(continue: ⇒ Result) =
+    Result.EmitLazily(part, closeAfterResponseCompletion, () ⇒ continue)
 
   def emitDirectly(part: HttpMessagePart, closeAfterResponseCompletion: Boolean)(continue: Result) =
     Result.EmitDirectly(part, closeAfterResponseCompletion, continue)
