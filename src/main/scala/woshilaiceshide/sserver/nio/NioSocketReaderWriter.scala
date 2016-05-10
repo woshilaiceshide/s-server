@@ -243,7 +243,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     private var closed_cause = ChannelClosedCause.UNKNOWN
     private var attachment_for_closed: Option[_] = None
     private[NioSocketReaderWriter] def close(rightNow: Boolean = false, cause: ChannelClosedCause.Value, attachment: Option[_] = None): Unit = {
-      val should_pending = this.synchronized {
+      val should_pend = this.synchronized {
         val rightNow1 = if (rightNow) true else writes == null
         if (CHANNEL_CLOSING_RIGHT_NOW != status) {
           closed_cause = cause
@@ -251,14 +251,14 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
         }
         if (CHANNEL_NORMAL == status) {
           status = if (rightNow1) CHANNEL_CLOSING_RIGHT_NOW else CHANNEL_CLOSING_GRACEFULLY
-          !already_pending
+          !already_pended
         } else {
           false
         }
 
       }
-      if (should_pending) {
-        already_pending = true
+      if (should_pend) {
+        already_pended = true
         pend_for_io_operation(this)
         //if in workerThread, no need for wakeup
         if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
@@ -309,26 +309,26 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     private var bytes_waiting_for_written = 0
 
     //use a (byte)flag to store the following two fields?
-    private var already_pending = false
+    private var already_pended = false
     private var should_generate_writing_event = false
     //if generate_writing_event is true, then 'bytesWritten' will be fired. 
     def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
 
-      var please_pending = false
+      var please_pend = false
       var please_wakeup = false
 
       val result = this.synchronized {
         if (CHANNEL_NORMAL == status) {
 
-          var force_pending = false
+          var force_pend = false
           if (should_generate_writing_event == false && generate_writing_event == true) {
             should_generate_writing_event = generate_writing_event
-            force_pending = true
+            force_pend = true
           }
 
           this.last_active_time = System.currentTimeMillis()
 
-          val (wr, should_pending) = if (null == bytes || 0 == bytes.length) {
+          val (wr, should_pend) = if (null == bytes || 0 == bytes.length) {
             (WriteResult.WR_OK, false)
 
           } else if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
@@ -349,14 +349,14 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
             } else {
               WriteResult.WR_OK
             }*/
-            (WriteResult.WR_OK, !already_pending)
+            (WriteResult.WR_OK, !already_pended)
 
           }
 
-          if (should_pending || (force_pending && !already_pending)) {
+          if (should_pend || (force_pend && !already_pended)) {
 
-            already_pending = true
-            please_pending = true
+            already_pended = true
+            please_pend = true
 
             //if in workerThread, no need for waking up, or processor will be wasted for one more "listen()"
             please_wakeup = Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread()
@@ -371,7 +371,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       }
 
       //pending comes before waking up
-      if (please_pending) pend_for_io_operation(this)
+      if (please_pend) pend_for_io_operation(this)
       if (please_wakeup) NioSocketReaderWriter.this.selector.wakeup()
 
       result
@@ -493,7 +493,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
         closedCause = closed_cause
         attachmentForClosed = attachment_for_closed
-        already_pending = false
+        already_pended = false
 
         if (status == CHANNEL_CLOSING_RIGHT_NOW) {
           safeClose(channel)

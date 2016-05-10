@@ -50,48 +50,106 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   def safeClose(x: Closeable) = try { x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
   def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
 
-  private var workerThread: Thread = null
-  def get_worker_thread() = workerThread
+  private var worker_thread: Thread = null
+  def get_worker_thread() = worker_thread
 
-  protected var status = INITIALIZED
+  private var status = INITIALIZED
 
+  private val lock_for_tasks = new Object
   private var tasks: LinkedList[Runnable] = LinkedList.newEmpty()
+  /**
+   * only can be posted when the runner is in 'STARTED' status.
+   */
   def post_to_io_thread(task: => Unit): Boolean = post_to_io_thread(new Runnable() {
     def run() = task
   })
+  /**
+   * only can be posted when the runner is in 'STARTED' status.
+   */
   def post_to_io_thread(task: Runnable): Boolean = this.synchronized {
     if (STARTED != status) {
       false
     } else {
-      tasks.append(task)
+      lock_for_tasks.synchronized {
+        tasks.append(task)
+      }
       selector.wakeup()
       true
     }
   }
-  //please invoke this method after you start the nio socket server.
-  def is_in_io_worker_thread(): Boolean = Thread.currentThread() == this.workerThread
+  private def reap_tasks() = {
+    val tasks_to_do = lock_for_tasks.synchronized {
+      if (tasks.isEmpty) {
+        //LinkedList.newEmpty()
+        null
+      } else {
+        val tmp = tasks;
+        tasks = LinkedList.newEmpty();
+        tmp
+      }
+    }
+    if (null != tasks_to_do)
+      tasks_to_do.foreach { safe_runner }
+  }
 
+  //please invoke this method after you start the nio socket server.
+  def is_in_io_worker_thread(): Boolean = Thread.currentThread() == this.worker_thread
+
+  private val lock_for_timed_tasks = new Object
   private var timed_tasks: LinkedList[TimedTask] = LinkedList.newEmpty()
-  def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = this.synchronized {
-    if (STARTED != status) {
+  def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = {
+    if (!enable_fuzzy_scheduler) {
       false
-    } else if (enable_fuzzy_scheduler) {
-      timed_tasks.append(TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task))
-      true
-    } else {
-      false
+    } else this.synchronized {
+      if (STARTED != status) {
+        false
+      } else {
+        val timed_task = TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task)
+        lock_for_timed_tasks.synchronized {
+          timed_tasks.append(timed_task)
+        }
+        true
+      }
+    }
+  }
+  private def reap_timed_tasks() = {
+    if (enable_fuzzy_scheduler) {
+      val timed_tasks_to_do = lock_for_timed_tasks.synchronized {
+        if (timed_tasks.isEmpty) {
+          null
+        } else {
+          val now = System.currentTimeMillis()
+          val tmp = timed_tasks.group_by_fitler { x => x.when_to_run <= now }
+          timed_tasks = tmp.unfiltered;
+          tmp.filtered
+        }
+      }
+      if (null != timed_tasks_to_do)
+        timed_tasks_to_do.foreach { x => safeOp { x.runnable.run() } }
     }
   }
 
   private var terminated = false
+  private val lock_for_terminated = new Object
   private var when_terminated: LinkedList[Runnable] = LinkedList.newEmpty()
-  def registerOnTermination[T](code: => T) = this.synchronized {
+  def registerOnTermination[T](code: => T) = lock_for_terminated.synchronized {
     if (terminated) {
       false
     } else {
       when_terminated.append(new Runnable { def run = code })
       true
     }
+  }
+  private def reap_terminated() = {
+    val termination_sinks = lock_for_terminated.synchronized {
+      //disable registerOnTermination first, before executing the sinks.
+      terminated = true
+      val tmp = when_terminated
+      when_terminated = null
+      this.notifyAll()
+      tmp
+    }
+    termination_sinks.foreach { x => safeOp(x.run()) }
   }
 
   /**
@@ -120,7 +178,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   protected def process_selected_key(key: SelectionKey): Unit
 
   def start(asynchronously: Boolean = true) = {
-    val continued = this.synchronized {
+    var continued = this.synchronized {
       if (INITIALIZED == status) {
         status = STARTED
         true
@@ -129,26 +187,28 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       }
     }
     if (continued) {
-
       try {
         do_start()
       } catch {
         case ex: Throwable => {
+          continued = false
           this.synchronized {
             status = BAD
           }
+          close_selector()
           warn(ex)
         }
       }
-
+    }
+    if (continued) {
       if (asynchronously) {
-        //workerThread should not be assigned in the new thread's running.
-        workerThread = new Thread(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}") {
+        //worker_thread should not be assigned in the new thread's running.
+        worker_thread = new Thread(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}") {
           override def run() = safe_loop()
         }
-        workerThread.start()
+        worker_thread.start()
       } else {
-        workerThread = Thread.currentThread()
+        worker_thread = Thread.currentThread()
         safe_loop()
       }
     }
@@ -159,25 +219,21 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       loop()
     } catch {
       case ex: Throwable => {
-        stop_roughly()
+        warn(ex)
         this.synchronized {
           status = STOPPED_ROUGHLY
-          this.notifyAll()
         }
-        warn(ex)
+        stop_roughly()
       }
     } finally {
       close_selector()
-      this.synchronized {
-        //disable registerOnTermination first, before executing the sinks.
-        terminated = true
-        when_terminated.foreach { x => safeOp(x.run()) }
-        when_terminated = null
-      }
+      reap_tasks()
+      reap_timed_tasks()
+      reap_terminated()
     }
   }
 
-  protected var stop_deadline: Long = 0
+  private var stop_deadline: Long = 0
   /**
    * if i'm stopped using a "timeout", then this is the deadline.
    */
@@ -185,37 +241,39 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   /**
    * the status is returned.
    *
-   * Note that this method returned immediately. use "def join(...)" to wait it's termination.
+   * Note that this method returned immediately. use "def join(...)" to wait its termination.
    */
   def stop(timeout: Int) = {
-    if (workerThread == Thread.currentThread()) {
-      if (STARTED == status) {
-        status = STOPPING
-        select_timeout = Math.min(Math.max(0, timeout), select_timeout)
-        //stop_deadline is necessary.
-        stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
+    if (worker_thread == Thread.currentThread()) {
+      this.synchronized {
+        if (STARTED == status) {
+          status = STOPPING
+          select_timeout = Math.min(Math.max(0, timeout), select_timeout)
+          //stop_deadline is necessary.
+          stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
+        }
+        status
       }
-      status
     } else this.synchronized {
       if (STARTED == status) {
         status = STOPPING
         stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
         safeOp { selector.wakeup() }
-        safeOp { workerThread.interrupt() }
+        safeOp { worker_thread.interrupt() }
       }
       status
     }
   }
   def join(timeout: Long) = {
-    if (workerThread != Thread.currentThread()) {
-      workerThread.join(timeout)
+    if (worker_thread != Thread.currentThread()) {
+      worker_thread.join(timeout)
     }
   }
 
   def getStatus() = this.synchronized { status }
 
   //avoid instantiations in hot codes.
-  private val safeRunner = new (Runnable => Unit) {
+  private val safe_runner = new (Runnable => Unit) {
     def apply(r: Runnable): Unit = {
       try {
         r.run()
@@ -271,33 +329,8 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       true
     }
 
-    var tasks_to_do = this.synchronized {
-      if (tasks.isEmpty) {
-        //LinkedList.newEmpty()
-        null
-      } else {
-        val tmp = tasks;
-        tasks = LinkedList.newEmpty();
-        tmp
-      }
-    }
-    if (null != tasks_to_do)
-      tasks_to_do.foreach { safeRunner }
-
-    if (enable_fuzzy_scheduler) {
-      var timed_tasks_to_do = this.synchronized {
-        if (timed_tasks.isEmpty) {
-          null
-        } else {
-          val now = System.currentTimeMillis()
-          val tmp = timed_tasks.group_by_fitler { x => x.when_to_run <= now }
-          timed_tasks = tmp.unfiltered;
-          tmp.filtered
-        }
-      }
-      if (null != timed_tasks_to_do)
-        timed_tasks_to_do.foreach { x => safeOp { x.runnable.run() } }
-    }
+    reap_tasks()
+    reap_timed_tasks()
 
     if (continued) {
       before_next_loop()
