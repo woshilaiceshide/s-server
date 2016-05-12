@@ -43,9 +43,44 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   //private val default_select_timeout = 30 * 1000
   protected var select_timeout = default_select_timeout
 
-  protected val selector = Selector.open()
-
-  private def close_selector() = { safeClose(selector) }
+  import java.util.concurrent.locks.ReentrantReadWriteLock
+  private val lock_for_selector = new ReentrantReadWriteLock(false)
+  private var selector = Selector.open()
+  //epoll's 100% cpu bug
+  //this method will be invoked in the i/o thread only.
+  private def rebuild_selector() = {
+    val lock = lock_for_selector.writeLock()
+    lock.lock()
+    try {
+      //TODO to be done
+    } finally {
+      lock.unlock()
+    }
+  }
+  //no lock is needed.
+  private def close_selector() = { if (null != selector) safeClose(selector) }
+  /**
+   * this method is thread safe.
+   */
+  def wakeup_selector() = {
+    val lock = lock_for_selector.readLock()
+    lock.lock()
+    try {
+      if (null != selector) selector.wakeup()
+    } finally {
+      lock.unlock()
+    }
+  }
+  def register(ch: SelectableChannel, ops: Int, att: Object) = {
+    val lock = lock_for_selector.readLock()
+    lock.lock()
+    try {
+      if (null != selector) ch.register(selector, ops, att)
+      else null
+    } finally {
+      lock.unlock()
+    }
+  }
 
   def safeClose(x: Closeable) = try { x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
   def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }

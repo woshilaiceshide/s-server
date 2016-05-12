@@ -80,7 +80,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       case Some(handler) => {
         val channelWrapper = new MyChannelWrapper(channel, handler)
         Utility.closeIfFailed(channel) {
-          val key = channel.register(selector, SelectionKey.OP_READ, channelWrapper)
+          val key = this.register(channel, SelectionKey.OP_READ, channelWrapper)
           channelWrapper.key = key
         }
         channels = channelWrapper :: channels
@@ -259,7 +259,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
         pend_for_io_operation(this)
         //if in workerThread, no need for wakeup
         if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
-          NioSocketReaderWriter.this.selector.wakeup()
+          NioSocketReaderWriter.this.wakeup_selector()
       }
 
     }
@@ -388,7 +388,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
       //pending comes before waking up
       if (please_pend) pend_for_io_operation(this)
-      if (please_wakeup) NioSocketReaderWriter.this.selector.wakeup()
+      if (please_wakeup) NioSocketReaderWriter.this.wakeup_selector()
 
       result
     }

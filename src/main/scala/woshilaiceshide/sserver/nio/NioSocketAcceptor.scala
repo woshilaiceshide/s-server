@@ -50,7 +50,7 @@ class NioSocketAcceptor(interface: String,
     }
 
     ssc.configureBlocking(false)
-    ssc.register(selector, SelectionKey.OP_ACCEPT)
+    this.register(ssc, SelectionKey.OP_ACCEPT, null)
   }
   protected def stop_roughly(): Unit = {
     safeClose(ssc)

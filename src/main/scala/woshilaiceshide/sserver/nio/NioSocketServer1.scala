@@ -43,7 +43,7 @@ class NioSocketServer1(interface: String,
     }
 
     ssc.configureBlocking(false)
-    ssc.register(selector, SelectionKey.OP_ACCEPT)
+    this.register(ssc, SelectionKey.OP_ACCEPT, null)
 
   }
   protected override def stop_roughly(): Unit = {
