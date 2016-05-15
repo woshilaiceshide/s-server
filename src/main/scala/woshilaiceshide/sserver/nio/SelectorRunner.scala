@@ -88,7 +88,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   private var worker_thread: Thread = null
   def get_worker_thread() = worker_thread
 
-  private var status = INITIALIZED
+  private val status = new java.util.concurrent.atomic.AtomicInteger(INITIALIZED)
 
   private val lock_for_tasks = new Object
   private var tasks: LinkedList[Runnable] = LinkedList.newEmpty()
@@ -102,7 +102,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
    * only can be posted when the runner is in 'STARTED' status.
    */
   def post_to_io_thread(task: Runnable): Boolean = this.synchronized {
-    if (STARTED != status) {
+    if (STARTED != status.get()) {
       false
     } else {
       lock_for_tasks.synchronized {
@@ -136,7 +136,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
     if (!enable_fuzzy_scheduler) {
       false
     } else this.synchronized {
-      if (STARTED != status) {
+      if (STARTED != status.get()) {
         false
       } else {
         val timed_task = TimedTask(System.currentTimeMillis() + delayInSeconds * 1000, task)
@@ -213,23 +213,14 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   protected def process_selected_key(key: SelectionKey): Unit
 
   def start(asynchronously: Boolean = true) = {
-    var continued = this.synchronized {
-      if (INITIALIZED == status) {
-        status = STARTED
-        true
-      } else {
-        false
-      }
-    }
+    var continued = status.compareAndSet(INITIALIZED, STARTED)
     if (continued) {
       try {
         do_start()
       } catch {
         case ex: Throwable => {
           continued = false
-          this.synchronized {
-            status = BAD
-          }
+          status.set(BAD)
           close_selector()
           warn(ex)
         }
@@ -255,10 +246,8 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
     } catch {
       case ex: Throwable => {
         warn(ex)
-        this.synchronized {
-          status = STOPPED_ROUGHLY
-        }
         stop_roughly()
+        status.set(STOPPED_ROUGHLY)
       }
     } finally {
       close_selector()
@@ -281,22 +270,20 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   def stop(timeout: Int) = {
     if (worker_thread == Thread.currentThread()) {
       this.synchronized {
-        if (STARTED == status) {
-          status = STOPPING
+        if (status.compareAndSet(STARTED, STOPPING)) {
           select_timeout = Math.min(Math.max(0, timeout), select_timeout)
           //stop_deadline is necessary.
           stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
         }
-        status
+        status.get()
       }
     } else this.synchronized {
-      if (STARTED == status) {
-        status = STOPPING
+      if (status.compareAndSet(STARTED, STOPPING)) {
         stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
         safeOp { selector.wakeup() }
         safeOp { worker_thread.interrupt() }
       }
-      status
+      status.get()
     }
   }
   def join(timeout: Long) = {
@@ -305,7 +292,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
     }
   }
 
-  def getStatus() = this.synchronized { status }
+  def getStatus() = status.get()
 
   //avoid instantiations in hot codes.
   private val safe_runner = new (Runnable => Unit) {
@@ -333,21 +320,21 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       }
     }
 
-    val continued = if ((!selector.isOpen()) || this.synchronized { status == STOPPING && stop_deadline < System.currentTimeMillis() }) {
+    val continued = if (status.get() == STOPPING && stop_deadline < System.currentTimeMillis()) {
       //closed
       stop_roughly()
       this.synchronized {
-        status = STOPPED_ROUGHLY
+        status.set(STOPPED_ROUGHLY)
         this.notifyAll()
       }
       false
-    } else if (!already_in_stopping && this.synchronized { status == STOPPING }) {
+    } else if (!already_in_stopping && status.get() == STOPPING) {
       //stopping
       already_in_stopping = true
       val immediately = stop_gracefully()
       if (immediately) {
         this.synchronized {
-          status = STOPPED_GRACEFULLY
+          status.set(STOPPED_GRACEFULLY)
           this.notifyAll()
         }
         false
@@ -356,7 +343,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       }
     } else if (already_in_stopping && !has_remaining_work()) {
       this.synchronized {
-        status = STOPPED_GRACEFULLY
+        status.set(STOPPED_GRACEFULLY)
         this.notifyAll()
       }
       false
