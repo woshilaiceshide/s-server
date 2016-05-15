@@ -29,6 +29,8 @@ private[http] object RenderSupport {
   //TODO for more common content types
   val `Content-Type--text/plain(UTF-8)-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain(UTF-8)`))
   val `Content-Type--text/plain(UTF-8)-CrLf-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain(UTF-8)`)) ++ CrLf
+  val `Content-Type--text/plain-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain`))
+  val `Content-Type--text/plain-CrLf-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain`)) ++ CrLf
   val `Content-Length-Bytes` = "Content-Length: ".getAsciiBytes
 
   val `Connection: KeepAlive-CrLf` = getBytes(Connection) ++ ": ".getAsciiBytes ++ KeepAlive ++ CrLf
@@ -139,6 +141,8 @@ trait ResponseRenderingComponent {
                   //render(x);
                   if (x.contentType eq ContentTypes.`text/plain(UTF-8)`) {
                     r ~~ `Content-Type--text/plain(UTF-8)-Bytes`
+                  } else if (x.contentType eq ContentTypes.`text/plain`) {
+                    r ~~ `Content-Type--text/plain-Bytes`
                   } else {
                     x.renderValue(r ~~ `Content-Type-Bytes`)
                   }
@@ -186,6 +190,8 @@ trait ResponseRenderingComponent {
               case HttpEntity.NonEmpty(contentType, _) if !userContentType ⇒ {
                 if (contentType eq ContentTypes.`text/plain(UTF-8)`) {
                   r ~~ `Content-Type--text/plain(UTF-8)-CrLf-Bytes`
+                } else if (contentType eq ContentTypes.`text/plain`) {
+                  r ~~ `Content-Type--text/plain-CrLf-Bytes`
                 } else {
                   r ~~ `Content-Type` ~~ contentType ~~ CrLf
                 }
