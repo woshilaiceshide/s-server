@@ -42,11 +42,11 @@ object SampleHttpServer extends App {
       (handler, WebSocket13.default_parser(2048))
     }
 
-    private val ping1 = new HttpResponse(200, "pong1\r\n")
+    private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World"))
     def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
-      case HttpRequest(HttpMethods.GET, Uri.Path("/ping1"), _, _, _) => {
+      case HttpRequest(HttpMethods.GET, Uri.Path("/ping"), _, _, _) => {
         channel.writeResponse {
-          ping1
+          ping
         }
         ResponseAction.responseNormally
       }
@@ -79,6 +79,10 @@ object SampleHttpServer extends App {
     wrapper.setBacklog(1024 * 8)
   }
 
+  val accepted_channel_configurator: SocketChannelWrapper => Unit = wrapper => {
+    wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.TCP_NODELAY, true)
+  }
+
   //val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_socket_options = List(reuse_addr))
 
   val threadFactory = new java.util.concurrent.ThreadFactory() {
@@ -86,11 +90,15 @@ object SampleHttpServer extends App {
       new Thread(r)
     }
   }
+
   //val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
   //val server = new NioSocketServer1("127.0.0.1", 8181, mt, listening_channel_configurator = listening_channel_configurator)
   //val server = new NioSocketServer1("127.0.0.1", 8181, factory, listening_channel_configurator = listening_channel_configurator)
   //val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, mt, listening_channel_configurator = listening_channel_configurator)
-  val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, factory, listening_channel_configurator = listening_channel_configurator)
+  val server = new NioSocketAcceptor("0.0.0.0", 8181, 2,
+    factory,
+    listening_channel_configurator = listening_channel_configurator,
+    accepted_channel_configurator = accepted_channel_configurator)
 
   println(s"starting...")
   server.start(false)
