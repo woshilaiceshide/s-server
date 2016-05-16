@@ -3,14 +3,14 @@ package woshilaiceshide.sserver.utility;
 import java.util.concurrent.atomic.*;
 
 /**
- * multiple threads can be 'add(...)' concurrently, but only one thread can
- * 'reap()' at the same time.
+ * multiple threads can be 'add(...)' concurrently, but only one thread may
+ * 'reap()' and/or 'end()' at the same time.
  * 
  * @author woshilaiceshide
  *
  * @param <T>
  */
-class ReapableQueue<T> {
+public class ReapableQueue<T> {
 
 	@SuppressWarnings("rawtypes")
 	private static AtomicReferenceFieldUpdater<ReapableQueue, Node> head_updater = AtomicReferenceFieldUpdater
@@ -26,7 +26,7 @@ class ReapableQueue<T> {
 
 	public static class Node<T> {
 		public final T value;
-		private volatile Node<T> next;
+		volatile Node<T> next;
 
 		Node(T value, Node<T> next) {
 			this.value = value;
@@ -41,6 +41,11 @@ class ReapableQueue<T> {
 		// http://robsjava.blogspot.com/2013/06/a-faster-volatile.html
 		void set_next(Node<T> new_next) {
 			next_updater.lazySet(this, new_next);
+			return;
+		}
+
+		void set_next(Node<T> old_next, Node<T> new_next) {
+			next_updater.compareAndSet(this, old_next, new_next);
 			return;
 		}
 
@@ -68,13 +73,27 @@ class ReapableQueue<T> {
 					this.head = null;
 				} else {
 					Node<T> next = this.head.get_next();
+					int i = 0;
 					while (true) {
 						if (next != null)
 							break;
 						else
 							next = this.head.get_next();
+
+						if (i < 1024) {
+							i++;
+						} else {
+							try {
+								Thread.sleep(System.currentTimeMillis() % 10);
+							} catch (Throwable throwable) {
+								// omitted
+							}
+						}
 					}
+					this.head = next;
 				}
+				// for jvm's gc
+				tmp.set_next(null);
 				return tmp;
 			}
 
@@ -82,7 +101,8 @@ class ReapableQueue<T> {
 
 	}
 
-	private java.util.concurrent.atomic.AtomicBoolean ended = new AtomicBoolean(false);
+	// track the chain of transformation
+	private java.util.concurrent.atomic.AtomicInteger ended = new AtomicInteger(0);
 
 	@SuppressWarnings("unused")
 	private volatile Node<T> head = null;
@@ -90,10 +110,16 @@ class ReapableQueue<T> {
 	@SuppressWarnings("unused")
 	private volatile Node<T> tail = null;
 
+	/**
+	 * this method may be invoked in multiple threads concurrently.
+	 * 
+	 * @param value
+	 * @return if accepted and can be reaped, true is returned, otherwise false.
+	 */
 	@SuppressWarnings("unchecked")
 	public boolean add(T value) {
 
-		if (ended.get())
+		if (ended.get() != 0)
 			return false;
 
 		Node<T> new_tail = new Node<T>(value);
@@ -101,28 +127,73 @@ class ReapableQueue<T> {
 		if (null == old_tail) {
 			head_updater.set(this, new_tail);
 		} else {
-			old_tail.set_next(new_tail);
+			// if reaped right now, then do not set_next(...)
+			old_tail.set_next(null, new_tail);
 		}
 
-		if (!ended.get()) {
+		if (ended.get() == 0) {
 			return true;
-		} else {
 
-			Node<T> tmp = tail_updater.get(this);
-			if (tmp == null) {
-				// it's reaped out.
-				return true;
-			} else if (tmp == new_tail) {
+		} else if (ended.get() == 1) {
+			return true;
 
+		}
+
+		// if ended is 2, then wait for 3.
+		int i = 0;
+		while (ended.get() != 3) {
+			if (i < 1024) {
+				i++;
 			} else {
+				try {
+					Thread.sleep(System.currentTimeMillis() % 10);
+				} catch (Throwable throwable) {
+					// omitted
+				}
+			}
+		}
 
+		int j = 0;
+		while (true) {
+
+			if (tail_updater.get(this) == new_tail) {
+				// it will not be reaped out.
+				tail_updater.compareAndSet(this, new_tail, old_tail);
+				return false;
+			} else if (tail_updater.get(this) == null) {
+				// it's reaped out already.
+				return true;
 			}
 
-			return true;
+			if (j < 1024) {
+				j++;
+			} else {
+				try {
+					Thread.sleep(System.currentTimeMillis() % 10);
+				} catch (Throwable throwable) {
+					// omitted
+				}
+			}
 		}
+
 	}
 
-	public Reaped<T> reap() {
+	@SuppressWarnings("unchecked")
+	/**
+	 * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
+	 * time.
+	 * 
+	 * @param is_last_reap
+	 * @return
+	 */
+	public Reaped<T> reap(final boolean is_last_reap) {
+
+		if (is_last_reap) {
+			if (!ended.compareAndSet(1, 2)) {
+				// already ended and reaped.
+				return null;
+			}
+		}
 
 		Node<T> old_head = head_updater.get(this);
 		if (old_head == null) {
@@ -133,14 +204,24 @@ class ReapableQueue<T> {
 		if (old_tail == null) {
 			throw new Error("??????");
 		}
+		// for jvm's gc.
+		old_tail.set_next(old_tail);
 
 		head_updater.compareAndSet(this, old_head, null);
+
+		if (is_last_reap)
+			ended.compareAndSet(2, 3);
+
 		return new Reaped<T>(old_head, old_tail);
 
 	}
 
+	/**
+	 * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
+	 * time.
+	 */
 	public void end() {
-		ended.set(true);
+		ended.compareAndSet(0, 1);
 		// DO NOT reap here!!!
 	}
 

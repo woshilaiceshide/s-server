@@ -13,6 +13,7 @@ import java.nio.charset._
 
 import scala.annotation.tailrec
 
+import woshilaiceshide.sserver.utility._
 import woshilaiceshide.sserver.utility.Utility
 
 class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
@@ -34,9 +35,9 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
   private var channels = List[MyChannelWrapper]()
   //some i/o operations related to those channels are pending
   //note that those operations will be checked in the order they are pended as soon as possible.
-  private var pending_io_operations = LinkedList.newEmpty[MyChannelWrapper]()
-  private def pend_for_io_operation(channelWrapper: MyChannelWrapper) = this.synchronized {
-    pending_io_operations.append(channelWrapper)
+  private var pending_io_operations: ReapableQueue[MyChannelWrapper] = new ReapableQueue()
+  private def pend_for_io_operation(channelWrapper: MyChannelWrapper) = {
+    pending_io_operations.add(channelWrapper)
   }
 
   private var waiting_for_register = List[SocketChannel]()
@@ -127,18 +128,10 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
     //check for pending i/o, and just no deadlocks
     @tailrec @inline def check_for_pending_io() {
-      var tmp = this.synchronized {
-        if (pending_io_operations.isEmpty)
-          null
-        else {
-          val swap = pending_io_operations
-          pending_io_operations = LinkedList.newEmpty()
-          swap
-        }
-      }
-      if (null != tmp) {
-        val current = System.currentTimeMillis()
-        tmp.foreach { io_checker }
+
+      val reaped = pending_io_operations.reap(false)
+      if (null != reaped) {
+        ReapableQueueUtility.foreach(reaped, io_checker)
         check_for_pending_io()
       }
 
@@ -302,15 +295,6 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
     }
 
-    @tailrec private def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
-      if (0 < times) {
-        channel.write(buffer)
-        if (buffer.hasRemaining()) {
-          write_immediately(buffer, times - 1)
-        }
-      }
-    }
-
     private var writes: BytesList = null
     private var bytes_waiting_for_written = 0
 
@@ -344,7 +328,15 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
             if (null == writes) {
 
-              //TODO to use read and write lock?
+              /*
+              @tailrec def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
+                if (0 < times) {
+                  channel.write(buffer)
+                  if (buffer.hasRemaining()) {
+                    write_immediately(buffer, times - 1)
+                  }
+                }
+              }
               val buffer = ByteBuffer.wrap(bytes)
               write_immediately(buffer, 1)
               if (buffer.hasRemaining()) {
@@ -353,6 +345,11 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
                 val node = new BytesNode(tmp)
                 writes = new BytesList(node, node)
               }
+              */
+
+              //make i/o in the selector's thread
+              val node = new BytesNode(bytes)
+              writes = new BytesList(node, node)
 
             } else {
               writes.append(bytes)
@@ -401,13 +398,6 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       }
       if (null != tmp) {
         val remain = writing0(tmp.head, tmp.last, 0)
-
-        //clear op_write just here for optimization.
-        /*
-        if (null == remain._1) {
-          pend_for_io_operation(this)
-        }
-        */
 
         var become_writable = false
         this.synchronized {

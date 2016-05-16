@@ -13,6 +13,8 @@ import java.nio.charset._
 
 import scala.annotation.tailrec
 
+import woshilaiceshide.sserver.utility._
+
 object SelectorRunner {
 
   private[nio] def warn(ex: Throwable, msg: String = "empty message") = {
@@ -90,8 +92,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
 
   private val status = new java.util.concurrent.atomic.AtomicInteger(INITIALIZED)
 
-  private val lock_for_tasks = new Object
-  private var tasks: LinkedList[Runnable] = LinkedList.newEmpty()
+  private val tasks: ReapableQueue[Runnable] = new ReapableQueue()
   /**
    * only can be posted when the runner is in 'STARTED' status.
    */
@@ -101,30 +102,22 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   /**
    * only can be posted when the runner is in 'STARTED' status.
    */
-  def post_to_io_thread(task: Runnable): Boolean = this.synchronized {
-    if (STARTED != status.get()) {
-      false
-    } else {
-      lock_for_tasks.synchronized {
-        tasks.append(task)
-      }
+  def post_to_io_thread(task: Runnable): Boolean = {
+    if (tasks.add(task)) {
       selector.wakeup()
       true
+    } else {
+      return false
     }
   }
-  private def reap_tasks() = {
-    val tasks_to_do = lock_for_tasks.synchronized {
-      if (tasks.isEmpty) {
-        //LinkedList.newEmpty()
-        null
-      } else {
-        val tmp = tasks;
-        tasks = LinkedList.newEmpty();
-        tmp
-      }
+  private def end_tasks() = {
+    tasks.end()
+  }
+  private def reap_tasks(is_last_reap: Boolean) = {
+    val tasks_to_do = tasks.reap(is_last_reap)
+    if (null != tasks_to_do) {
+      ReapableQueueUtility.foreach(tasks_to_do, safe_runner)
     }
-    if (null != tasks_to_do)
-      tasks_to_do.foreach { safe_runner }
   }
 
   //please invoke this method after you start the nio socket server.
@@ -132,7 +125,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
 
   private val lock_for_timed_tasks = new Object
   private var timed_tasks: LinkedList[TimedTask] = LinkedList.newEmpty()
-  def scheduleFuzzily(task: Runnable, delayInSeconds: Int) = {
+  def schedule_fuzzily(task: Runnable, delayInSeconds: Int) = {
     if (!enable_fuzzy_scheduler) {
       false
     } else this.synchronized {
@@ -251,7 +244,8 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       }
     } finally {
       close_selector()
-      reap_tasks()
+      end_tasks()
+      reap_tasks(true)
       reap_timed_tasks()
       reap_terminated()
     }
@@ -351,7 +345,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       true
     }
 
-    reap_tasks()
+    reap_tasks(false)
     reap_timed_tasks()
 
     if (continued) {
