@@ -61,9 +61,10 @@ libraryDependencies ++= {
   )
 }
 
+libraryDependencies in Test += "io.netty" % "netty" % "4.0.36.Final" 
+
 mappings in Universal ++= (baseDirectory.value / "conf" * "*" get) map (x => x -> ("conf/" + x.getName))
 
-//mainClass in (Test, run) := Some("woshilaiceshide.sserver.EchoServer")
-
-mainClass in Test := Some("woshilaiceshide.sserver.EchoServer")
+//or woshilaiceshide.sserver.SampleHttpServer
+mainClass in (Test, run) := Some("woshilaiceshide.sserver.EchoServer")
 
