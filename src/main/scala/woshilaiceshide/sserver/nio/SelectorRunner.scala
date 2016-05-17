@@ -201,9 +201,9 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
    */
   protected def before_next_loop(): Unit
   /**
-   * process the selected key
+   * process the selected key. do your best to use the given parameter named 'ready_ops', and do not user 'key.readyOps()'
    */
-  protected def process_selected_key(key: SelectionKey): Unit
+  protected def process_selected_key(key: SelectionKey, ready_ops: Int): Unit
 
   def start(asynchronously: Boolean = true) = {
     var continued = status.compareAndSet(INITIALIZED, STARTED)
@@ -310,7 +310,8 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
       while (iterator.hasNext()) {
         val key = iterator.next()
         iterator.remove()
-        process_selected_key(key)
+        //TODO what's about java.nio.channels.SelectionKey.OP_CONNECT???
+        process_selected_key(key, key.readyOps())
       }
     }
 

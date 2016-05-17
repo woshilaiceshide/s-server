@@ -11,6 +11,8 @@ import java.nio.CharBuffer
 import java.nio.channels._
 import java.nio.charset._
 
+import java.nio.channels.SelectionKey._
+
 import scala.annotation.tailrec
 
 import woshilaiceshide.sserver.utility._
@@ -139,12 +141,12 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
     check_for_pending_io()
   }
-  protected def process_selected_key(key: SelectionKey): Unit = {
+  protected def process_selected_key(key: SelectionKey, ready_ops: Int): Unit = {
 
     val channel = key.channel().asInstanceOf[SocketChannel]
     val channelWrapper = key.attachment().asInstanceOf[MyChannelWrapper]
 
-    if (key.isReadable()) {
+    if ((ready_ops & OP_READ) > 0) {
       try {
         val readCount = channel.read(CLIENT_BUFFER)
         if (readCount > 0) {
@@ -176,7 +178,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
       }
     }
 
-    if (key.isWritable()) {
+    if ((ready_ops & OP_WRITE) > 0) {
       try {
         channelWrapper.writing()
         if (!key.isValid()) {

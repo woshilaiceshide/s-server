@@ -11,6 +11,8 @@ import java.nio.CharBuffer
 import java.nio.channels._
 import java.nio.charset._
 
+import java.nio.channels.SelectionKey._
+
 import woshilaiceshide.sserver.utility.Utility
 
 /**
@@ -61,8 +63,8 @@ class NioSocketServer1(interface: String,
   protected override def before_next_loop(): Unit = {
     super.before_next_loop()
   }
-  protected override def process_selected_key(key: SelectionKey): Unit = {
-    if (key.isAcceptable()) {
+  protected override def process_selected_key(key: SelectionKey, ready_ops: Int): Unit = {
+    if ((ready_ops & OP_ACCEPT) > 0) {
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
       val wrapper = new SocketChannelWrapper(channel)
@@ -77,7 +79,7 @@ class NioSocketServer1(interface: String,
         }
       }
     } else {
-      super.process_selected_key(key)
+      super.process_selected_key(key, ready_ops)
     }
   }
 

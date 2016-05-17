@@ -11,6 +11,8 @@ import java.nio.CharBuffer
 import java.nio.channels._
 import java.nio.charset._
 
+import java.nio.channels.SelectionKey._
+
 import scala.annotation.tailrec
 
 class NioSocketAcceptor(interface: String,
@@ -70,8 +72,8 @@ class NioSocketAcceptor(interface: String,
   protected def before_next_loop(): Unit = {
     //nothing else
   }
-  protected def process_selected_key(key: SelectionKey): Unit = {
-    if (key.isAcceptable()) {
+  protected def process_selected_key(key: SelectionKey, ready_ops: Int): Unit = {
+    if ((ready_ops & OP_ACCEPT) > 0) {
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
       val wrapper = new SocketChannelWrapper(channel)
