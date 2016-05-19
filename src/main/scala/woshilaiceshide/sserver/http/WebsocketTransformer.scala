@@ -24,12 +24,14 @@ object WebSocketChannel {
 class WebSocketChannel(channel: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     requestMethod: HttpMethod,
-    requestProtocol: HttpProtocol, maxResponseSize: Int = 2048) extends ResponseRenderingComponent {
+    requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends ResponseRenderingComponent {
 
   import WebSocketChannel._
   import WebSocket13._
 
   private var response_status: Byte = 0
+
+  def maxResponseSize: Int = configurator.max_response_size
 
   def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, cookies: List[HttpCookie]): Boolean = {
 
@@ -154,8 +156,10 @@ trait WebSocketChannelHandler {
 
 class WebsocketTransformer(
   handler: WebSocketChannelHandler, channel: WebSocketChannel,
-  private[this] var parser: WebSocket13.WSFrameParser)
+  configurator: HttpConfigurator)
     extends ChannelHandler {
+
+  private[this] var parser: WebSocket13.WSFrameParser = configurator.get_websocket_parser()
 
   //already opened
   final def channelOpened(channelWrapper: ChannelWrapper): Unit = {}

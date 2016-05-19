@@ -35,4 +35,139 @@ package object http {
 
   object NotEnoughDataException extends SingletonException
 
+  val headerValueCacheLimits = Map(
+    "default" -> 12,
+    "Content-MD5" -> 0,
+    "Date" -> 0,
+    "If-Match" -> 0,
+    "If-Modified-Since" -> 0,
+    "If-None-Match" -> 0,
+    "If-Range" -> 0,
+    "If-Unmodified-Since" -> 0,
+    "User-Agent" -> 32)
+
+  val default_parser_settings = spray.can.parsing.ParserSettings(
+    maxUriLength = 256,
+    maxResponseReasonLength = 128,
+    maxHeaderNameLength = 128,
+    maxHeaderValueLength = 128,
+    maxHeaderCount = 128,
+    maxContentLength = 4 * 1024,
+    maxChunkExtLength = 4 * 1024,
+    maxChunkSize = 4 * 1024,
+    autoChunkingThreshold = 1024 * 1024 * 8,
+    uriParsingMode = _root_.spray.http.Uri.ParsingMode.Relaxed,
+    illegalHeaderWarnings = false,
+    sslSessionInfoHeader = false,
+    headerValueCacheLimits = headerValueCacheLimits)
+
+  case class HttpConfigurator(
+      parser_settings: spray.can.parsing.ParserSettings = default_parser_settings,
+      raw_request_uri_header: Boolean = false,
+      max_request_in_pipeline: Int = 1,
+      server_name: String = "S-SERVER/2.0-SNAPSHOT",
+      chunkless_streaming: Boolean = false,
+      transparent_header_requestes: Boolean = false,
+
+      base_for_content_length_cache: Int = 1,
+      size_for_content_length_cache: Int = 1024 * 4,
+
+      bytes_rendering_pool_partition_count: Int = 4,
+      bytes_rendering_pool_partition_size: Int = 32,
+      bytes_rendering_pool_partition_length: Int = 1024,
+
+      max_response_size: Int = 2048,
+      max_payload_length_in_websocket_frame: Int = 2048) {
+
+    private val bytes_rendering_pool = new Array[List[Revised1ByteArrayRendering]](bytes_rendering_pool_partition_count)
+    private val bytes_rendering_pool_lock = Array.fill(bytes_rendering_pool_partition_count)(new Object)
+    for (i <- 0 until bytes_rendering_pool.size) {
+      val tmp = for (_ <- 1 until bytes_rendering_pool_partition_size) yield {
+        new Revised1ByteArrayRendering(bytes_rendering_pool_partition_length, i)
+      }
+      bytes_rendering_pool(i) = tmp.toList
+    }
+
+    def borrow_bytes_rendering(size: Int) = {
+      if (size > bytes_rendering_pool_partition_length) {
+        new RevisedByteArrayRendering(size)
+      } else {
+        val par = (System.currentTimeMillis() % bytes_rendering_pool_partition_count).toInt
+        val bucket = bytes_rendering_pool(par)
+        val borrowed = bytes_rendering_pool_lock(par).synchronized {
+          if (!bucket.isEmpty) {
+            val r = bucket.head
+            val tmp = bucket.tail
+            bytes_rendering_pool(par) = tmp
+            r
+          } else {
+            null
+          }
+        }
+        if (borrowed != null) {
+          borrowed
+        } else {
+          new RevisedByteArrayRendering(size)
+        }
+      }
+    }
+
+    def return_bytes_rendering(r: RevisedByteArrayRendering) = {
+      r match {
+        case x: Revised1ByteArrayRendering => {
+          x.reset()
+          val par = x.par
+          val bucket = bytes_rendering_pool(par)
+          bytes_rendering_pool_lock(par).synchronized {
+            val tmp = x :: bucket
+            bytes_rendering_pool(par) = tmp
+          }
+        }
+        case _ =>
+      }
+    }
+
+    def get_request_parser(): HttpTransformer.RevisedHttpRequestPartParser = {
+      new HttpTransformer.RevisedHttpRequestPartParser(parser_settings, raw_request_uri_header)
+
+    }
+
+    def get_websocket_parser(): WebSocket13.WSFrameParser = {
+      WebSocket13.default_parser(max_payload_length_in_websocket_frame)
+    }
+
+    import spray.util._
+
+    private def getBytes(renderable: Renderable, sizeHint: Int = 512) = {
+      val r = new ByteArrayRendering(sizeHint)
+      r ~~ renderable
+      r.get
+    }
+
+    private def getBytes(l: Long) = {
+      val r = new ByteArrayRendering(64)
+      r ~~ l
+      r.get
+    }
+
+    private val content_length_cache = {
+      val cache = new Array[Array[Byte]](size_for_content_length_cache)
+      for (i <- 0 until size_for_content_length_cache) {
+        cache(i) = "Content-Length: ".getAsciiBytes ++ getBytes(i + base_for_content_length_cache)
+      }
+      cache
+    }
+
+    def render_content_length(r: Rendering, length: Long) = {
+      if (base_for_content_length_cache <= length && length < content_length_cache.length + base_for_content_length_cache && length < Integer.MAX_VALUE) {
+        val bytes = content_length_cache(length.toInt - base_for_content_length_cache)
+        r ~~ bytes
+        true
+      } else {
+        false
+      }
+    }
+
+  }
+
 }

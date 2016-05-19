@@ -13,12 +13,12 @@ import _root_.spray.http.HttpRequestPart
 
 import woshilaiceshide.sserver.nio._
 
-class HttpChannelHandlerFactory(http_channel_handler: HttpChannelHandler, max_request_in_pipeline: Int = 1) extends ChannelHandlerFactory {
+class HttpChannelHandlerFactory(http_channel_handler: HttpChannelHandler, configurator: HttpConfigurator) extends ChannelHandlerFactory {
 
   //HttpTransformer is instantiated every time because the handler is stateful.
   def getHandler(channel: ChannelInformation): Option[ChannelHandler] = {
 
-    val transformer = new HttpTransformer(http_channel_handler, max_request_in_pipeline = max_request_in_pipeline)
+    val transformer = new HttpTransformer(http_channel_handler, configurator)
     Some(transformer)
 
   }
@@ -51,7 +51,7 @@ object ResponseAction {
 
   private[http] object ResponseNormally extends ResponseAction
   private[http] final case class ResponseWithASink(sink: ResponseSink) extends ResponseAction
-  private[http] final case class AcceptWebsocket(factory: WebSocketChannel => (WebSocketChannelHandler, WebSocket13.WSFrameParser)) extends ResponseAction
+  private[http] final case class AcceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler) extends ResponseAction
   private[http] final case class AcceptChunking(handler: ChunkedRequestHandler) extends ResponseAction
 
   //I'll work with this response finely.
@@ -63,7 +63,7 @@ object ResponseAction {
 
   //return a websocket handler instead of websocket transformer, 
   //because the transformer need to be instantiated every time, which will be coded incorrectly by some coders.
-  def acceptWebsocket(factory: WebSocketChannel => (WebSocketChannelHandler, WebSocket13.WSFrameParser)): ResponseAction = {
+  def acceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler): ResponseAction = {
     new AcceptWebsocket(factory)
   }
 

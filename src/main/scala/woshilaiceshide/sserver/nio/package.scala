@@ -93,7 +93,11 @@ package object nio {
     //  if generate_writing_event is true, then 'writtenHappend' will be fired. 
     //  note that 'writtenHappened' means just an "writing' event, and zero byte may be written.
     //  multiple 'generate_writing_event' may be folded into one. 
-    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value
+    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
+      write(bytes, 0, bytes.length, write_even_if_too_busy, generate_writing_event)
+    }
+
+    def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value
   }
 
   //this trait is full of sinks. Every sink receives a channel wrapper, 
@@ -134,6 +138,59 @@ package object nio {
     def getHandler(channel: ChannelInformation): Option[ChannelHandler]
 
     def close() = {}
+  }
+
+  abstract case class X(i: Int)
+
+  trait SelectorRunnerConfigurator {
+    def rebuild_selector_for_epoll_100_perent_cpu_bug: Boolean
+    def try_to_optimize_selector_key_set: Boolean
+    def default_select_timeout: Int
+    def enable_fuzzy_scheduler: Boolean
+  }
+
+  trait NioConfigurator extends SelectorRunnerConfigurator {
+    def count_for_reader_writers: Int
+    def listening_channel_configurator: ServerSocketChannelWrapper => Unit
+    def accepted_channel_configurator: SocketChannelWrapper => Unit
+    def receive_buffer_size: Int
+    def socket_max_idle_time_in_seconds: Int
+    def max_bytes_waiting_for_written_per_channel: Int
+  }
+
+  final case class XNioConfigurator(
+    /**
+     * if count_for_reader_writers is 0, then read/write will be in the same thread as the acceptor,
+     * no extra threads will be created.
+     */
+    count_for_reader_writers: Int,
+    rebuild_selector_for_epoll_100_perent_cpu_bug: Boolean = true,
+    try_to_optimize_selector_key_set: Boolean = true,
+    default_select_timeout: Int = 30 * 1000,
+    enable_fuzzy_scheduler: Boolean = false,
+    listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
+    accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
+    receive_buffer_size: Int = 1024,
+    socket_max_idle_time_in_seconds: Int = 90,
+    max_bytes_waiting_for_written_per_channel: Int = 64 * 1024) extends NioConfigurator
+
+  object NioSocketServer {
+
+    def apply(
+      interface: String,
+      port: Int,
+      channel_hander_factory: ChannelHandlerFactory,
+      configurator: NioConfigurator) = {
+
+      if (configurator.count_for_reader_writers == 0) {
+        new NioSocketServer1(interface, port, channel_hander_factory, configurator)
+
+      } else {
+        new NioSocketAcceptor(interface, port, channel_hander_factory, configurator)
+
+      }
+    }
+
   }
 
 }

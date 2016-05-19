@@ -18,14 +18,13 @@ import scala.annotation.tailrec
 import woshilaiceshide.sserver.utility._
 import woshilaiceshide.sserver.utility.Utility
 
-class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
-    receive_buffer_size: Int = 1024,
-    socket_max_idle_time_in_seconds: Int = 90,
-    max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
-    default_select_timeout: Int = 30 * 1000,
-    enable_fuzzy_scheduler: Boolean = false) extends SelectorRunner(default_select_timeout, enable_fuzzy_scheduler) {
+class NioSocketReaderWriter private[nio] (
+    channel_hander_factory: ChannelHandlerFactory,
+    val configurator: NioConfigurator) extends SelectorRunner() {
 
   import Auxiliary._
+
+  import configurator._
 
   private val socket_max_idle_time_in_seconds_1 = if (0 < socket_max_idle_time_in_seconds) socket_max_idle_time_in_seconds else 60
   select_timeout = Math.min(socket_max_idle_time_in_seconds_1 * 1000, default_select_timeout)
@@ -151,11 +150,6 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
         val readCount = channel.read(CLIENT_BUFFER)
         if (readCount > 0) {
           CLIENT_BUFFER.flip()
-          //!!!check before bytesReceived, or errors may occur in the overall control flow!!!
-          //especially some action(sink) is abandoned flowed by 'close', then 'bytesReceived' should not be fired definitely. 
-          if (!key.isValid() || !channel.isOpen()) {
-            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-          }
           channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
         } else {
           if (!key.isValid() || !channel.isOpen()) {
@@ -168,6 +162,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
             channelWrapper.inputEnded()
           }
         }
+
       } catch {
         case ex: Throwable => {
           SelectorRunner.warn(ex, "when key is readable.")
@@ -194,8 +189,6 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
   }
 
   protected class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper {
-
-    import NioSocketReaderWriter._
 
     private var last_active_time = System.currentTimeMillis()
 
@@ -304,7 +297,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
     private var already_pended = false
     private var should_generate_writing_event = false
     //if generate_writing_event is true, then 'bytesWritten' will be fired.
-    def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
+    def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
 
       var please_pend = false
       var please_wakeup = false
@@ -330,7 +323,6 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
 
             if (null == writes) {
 
-              /*
               @tailrec def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
                 if (0 < times) {
                   channel.write(buffer)
@@ -339,7 +331,7 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
                   }
                 }
               }
-              val buffer = ByteBuffer.wrap(bytes)
+              val buffer = ByteBuffer.wrap(bytes, offset, length)
               write_immediately(buffer, 1)
               if (buffer.hasRemaining()) {
                 val tmp = new Array[Byte](buffer.remaining())
@@ -347,11 +339,11 @@ class NioSocketReaderWriter(channel_hander_factory: ChannelHandlerFactory,
                 val node = new BytesNode(tmp)
                 writes = new BytesList(node, node)
               }
-              */
 
               //make i/o in the selector's thread
-              val node = new BytesNode(bytes)
-              writes = new BytesList(node, node)
+              //TODO
+              /*val node = new BytesNode(bytes)
+              writes = new BytesList(node, node)*/
 
             } else {
               writes.append(bytes)

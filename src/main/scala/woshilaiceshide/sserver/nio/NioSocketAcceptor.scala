@@ -15,28 +15,18 @@ import java.nio.channels.SelectionKey._
 
 import scala.annotation.tailrec
 
-class NioSocketAcceptor(interface: String,
+class NioSocketAcceptor private[nio] (
+    interface: String,
     port: Int,
-    count_for_reader_writers: Int,
     channel_hander_factory: ChannelHandlerFactory,
-    listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
-    accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
-    receive_buffer_size: Int = 1024,
-    socket_max_idle_time_in_seconds: Int = 90,
-    max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
-    default_select_timeout: Int = 30 * 1000,
-    enable_fuzzy_scheduler: Boolean = false) extends SelectorRunner(default_select_timeout, enable_fuzzy_scheduler) {
+    val configurator: NioConfigurator) extends SelectorRunner() {
+
+  import configurator._
 
   private val ssc = ServerSocketChannel.open()
 
   private val io_workers = Array.fill(count_for_reader_writers) {
-    new NioSocketReaderWriter(
-      channel_hander_factory,
-      receive_buffer_size,
-      socket_max_idle_time_in_seconds,
-      max_bytes_waiting_for_written_per_channel,
-      default_select_timeout,
-      enable_fuzzy_scheduler)
+    new NioSocketReaderWriter(channel_hander_factory, configurator)
   }
 
   protected def do_start(): Unit = {

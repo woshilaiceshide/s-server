@@ -95,13 +95,15 @@ trait ResponseRenderingComponent {
 
   import ResponseRenderingComponent._
 
-  def serverHeaderValue: String = woshilaiceshide.sserver.httpd.HttpdInforamtion.VERSION
-  def chunklessStreaming: Boolean = false
-  def transparentHeadRequests: Boolean = false
+  def configurator: HttpConfigurator
 
   //def serverHeaderValue: String
   //def chunklessStreaming: Boolean
   //def transparentHeadRequests: Boolean
+
+  def serverHeaderValue: String = configurator.server_name
+  def chunklessStreaming: Boolean = configurator.chunkless_streaming
+  def transparentHeadRequests: Boolean = configurator.transparent_header_requestes
 
   //TODO ???
   private[this] def serverHeaderPlusDateColonSP =
@@ -131,58 +133,64 @@ trait ResponseRenderingComponent {
       @tailrec def renderHeaders(remaining: List[HttpHeader], contentLengthDefined: Boolean,
         userContentType: Boolean = false, connHeader: Connection = null): Boolean = {
         remaining match {
-          case head :: tail ⇒ head match {
-            case x: `Content-Type` ⇒
-              val userCT =
-                if (userContentType) { suppressionWarning(x, "another `Content-Type` header was already rendered"); true }
-                else if (!allowUserContentType) { suppressionWarning(x, "the response Content-Type is set via the response's HttpEntity!"); false }
-                else {
-                  //optimization
-                  //render(x);
-                  if (x.contentType eq ContentTypes.`text/plain(UTF-8)`) {
-                    r ~~ `Content-Type--text/plain(UTF-8)-Bytes`
-                  } else if (x.contentType eq ContentTypes.`text/plain`) {
-                    r ~~ `Content-Type--text/plain-Bytes`
-                  } else {
-                    x.renderValue(r ~~ `Content-Type-Bytes`)
+          //case head :: tail ⇒ head match {
+          case _ if remaining.length > 0 ⇒
+            val head = remaining.head
+            val tail = remaining.tail
+            head match {
+              case x: `Content-Type` ⇒
+                val userCT =
+                  if (userContentType) { suppressionWarning(x, "another `Content-Type` header was already rendered"); true }
+                  else if (!allowUserContentType) { suppressionWarning(x, "the response Content-Type is set via the response's HttpEntity!"); false }
+                  else {
+                    //optimization
+                    //render(x);
+                    if (x.contentType eq ContentTypes.`text/plain(UTF-8)`) {
+                      r ~~ `Content-Type--text/plain(UTF-8)-Bytes`
+                    } else if (x.contentType eq ContentTypes.`text/plain`) {
+                      r ~~ `Content-Type--text/plain-Bytes`
+                    } else {
+                      x.renderValue(r ~~ `Content-Type-Bytes`)
+                    }
+                    true
                   }
-                  true
+                renderHeaders(tail, contentLengthDefined, userContentType = userCT, connHeader)
+
+              case x: `Content-Length` ⇒
+                if (contentLengthDefined) suppressionWarning(x, "another `Content-Length` header was already rendered")
+                else {
+                  //render(x)
+                  if (!configurator.render_content_length(r, x.length)) {
+                    x.renderValue(r ~~ `Content-Length-Bytes`)
+                  }
                 }
-              renderHeaders(tail, contentLengthDefined, userContentType = userCT, connHeader)
+                renderHeaders(tail, contentLengthDefined = true, userContentType, connHeader)
 
-            case x: `Content-Length` ⇒
-              if (contentLengthDefined) suppressionWarning(x, "another `Content-Length` header was already rendered")
-              else {
-                //optimization
-                //render(x)
-                x.renderValue(r ~~ `Content-Length-Bytes`)
-              }
-              renderHeaders(tail, contentLengthDefined = true, userContentType, connHeader)
+              case `Transfer-Encoding`(_) | Date(_) | Server(_) ⇒
+                suppressionWarning(head)
+                renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
 
-            case `Transfer-Encoding`(_) | Date(_) | Server(_) ⇒
-              suppressionWarning(head)
-              renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
+              case x: `Connection` ⇒
+                val connectionHeader = if (connHeader eq null) x else Connection(x.tokens ++ connHeader.tokens)
+                if (OptimizedUtility.hasUpgrade(x)) render(x)
+                renderHeaders(tail, contentLengthDefined, userContentType, connectionHeader)
 
-            case x: `Connection` ⇒
-              val connectionHeader = if (connHeader eq null) x else Connection(x.tokens ++ connHeader.tokens)
-              if (OptimizedUtility.hasUpgrade(x)) render(x)
-              renderHeaders(tail, contentLengthDefined, userContentType, connectionHeader)
+              case x: RawHeader if x.lowercaseName == "content-type" ||
+                x.lowercaseName == "content-length" ||
+                x.lowercaseName == "transfer-encoding" ||
+                x.lowercaseName == "date" ||
+                x.lowercaseName == "server" ||
+                x.lowercaseName == "connection" ⇒
+                suppressionWarning(x, "illegal RawHeader")
+                renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
 
-            case x: RawHeader if x.lowercaseName == "content-type" ||
-              x.lowercaseName == "content-length" ||
-              x.lowercaseName == "transfer-encoding" ||
-              x.lowercaseName == "date" ||
-              x.lowercaseName == "server" ||
-              x.lowercaseName == "connection" ⇒
-              suppressionWarning(x, "illegal RawHeader")
-              renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
+              case x ⇒
+                render(x)
+                renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
+            }
 
-            case x ⇒
-              render(x)
-              renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
-          }
-
-          case Nil ⇒
+          //case Nil ⇒
+          case _ ⇒
             response.entity match {
               //case HttpEntity.NonEmpty(ContentTypes.NoContentType, _) ⇒
               //!!!
@@ -232,7 +240,12 @@ trait ResponseRenderingComponent {
       r ~~ CrLf
       */
       if ((response.protocol == `HTTP/1.1` || !close) && (ctx.requestMethod != HttpMethods.HEAD || transparentHeadRequests)) {
-        r ~~ `Content-Length` ~~ entity.data.length ~~ TwoCrLf
+        //r ~~ `Content-Length` ~~ entity.data.length ~~ TwoCrLf
+        if (configurator.render_content_length(r, entity.data.length)) {
+          r ~~ TwoCrLf
+        } else {
+          r ~~ `Content-Length-Bytes` ~~ entity.data.length ~~ TwoCrLf
+        }
       } else {
         r ~~ CrLf
       }

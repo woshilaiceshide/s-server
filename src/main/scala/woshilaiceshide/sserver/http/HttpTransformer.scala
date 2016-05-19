@@ -33,42 +33,6 @@ object HttpTransformer {
 
   private[HttpTransformer] final case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper, var next: Node)
 
-  val headerValueCacheLimits = {
-    import com.typesafe.config._
-    val s = """
-{
-      default = 12
-      Content-MD5 = 0
-      Date = 0
-      If-Match = 0
-      If-Modified-Since = 0
-      If-None-Match = 0
-      If-Range = 0
-      If-Unmodified-Since = 0
-      User-Agent = 32
-}
-    """
-    val options = ConfigParseOptions.defaults().setSyntax(ConfigSyntax.CONF)
-    val config = ConfigFactory.parseString(s, options)
-    import scala.collection.JavaConverters._
-    config.entrySet.asScala.map(kvp => kvp.getKey -> config.getInt(kvp.getKey))(collection.breakOut).toMap
-  }
-
-  val default_parser_settings = spray.can.parsing.ParserSettings(
-    maxUriLength = 256,
-    maxResponseReasonLength = 128,
-    maxHeaderNameLength = 128,
-    maxHeaderValueLength = 128,
-    maxHeaderCount = 128,
-    maxContentLength = 4 * 1024,
-    maxChunkExtLength = 4 * 1024,
-    maxChunkSize = 4 * 1024,
-    autoChunkingThreshold = 1024 * 1024 * 8,
-    uriParsingMode = _root_.spray.http.Uri.ParsingMode.Relaxed,
-    illegalHeaderWarnings = false,
-    sslSessionInfoHeader = false,
-    headerValueCacheLimits = headerValueCacheLimits)
-
   private[http] object FakeException extends Exception with scala.util.control.NoStackTrace
   //TODO
   private[http] class RevisedHttpRequestPartParser(parser_setting: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean)
@@ -97,8 +61,6 @@ object HttpTransformer {
     override def copyWith(warnOnIllegalHeader: ErrorInfo ⇒ Unit): HttpRequestPartParser = throw new UnsupportedOperationException()
   }
 
-  def default_parser = new RevisedHttpRequestPartParser(default_parser_settings, false)
-
   final class MyChannelInformation(channel: HttpChannel) extends ChannelInformation {
     def remoteAddress = channel.remoteAddress
     def localAddress = channel.localAddress
@@ -111,14 +73,12 @@ object HttpTransformer {
  *
  * TODO need to limit the un-processed bytes(related to the messages in pipeline).
  */
-class HttpTransformer(handler: HttpChannelHandler,
-  val original_parser: HttpTransformer.RevisedHttpRequestPartParser = HttpTransformer.default_parser,
-  max_request_in_pipeline: Int = 1)
+class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurator)
     extends ChannelHandler {
 
   import HttpTransformer._
 
-  private val max_request_in_pipeline_1 = Math.max(1, max_request_in_pipeline)
+  val original_parser = configurator.get_request_parser()
 
   private[this] var current_sink: ResponseSink = null
 
@@ -145,7 +105,7 @@ class HttpTransformer(handler: HttpChannelHandler,
       tail = head
       pipeline_size = 1
     } else {
-      if (pipeline_size >= max_request_in_pipeline_1) {
+      if (pipeline_size >= configurator.max_request_in_pipeline) {
         throw new RuntimeException("too many requests in pipeline!")
       } else {
         tail.next = Node(request, closeAfterResponseCompletion, channelWrapper, null)
@@ -194,7 +154,7 @@ class HttpTransformer(handler: HttpChannelHandler,
                   current_sink = null
                 }
 
-                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol)
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
                 val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
                 action match {
                   case ResponseAction.AcceptChunking(h) => {
@@ -254,7 +214,7 @@ class HttpTransformer(handler: HttpChannelHandler,
                   current_sink = null
                 }
 
-                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
                 val classifier = DynamicRequestClassifier(x)
                 val action = handler.requestReceived(x, current_http_channel, classifier)
                 action match {
@@ -268,9 +228,9 @@ class HttpTransformer(handler: HttpChannelHandler,
                     //!!!
                     original_parser.just_check_positions = false
 
-                    val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
-                    val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
-                    val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
+                    val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
+                    val websocket_channel_handler = factory(websocket_channel)
+                    val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
 
                     if (null != lastInput && lastInput.length > lastOffset) {
                       //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
@@ -323,7 +283,7 @@ class HttpTransformer(handler: HttpChannelHandler,
 
           case x: ChunkedRequestStart => {
 
-            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol)
+            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
             val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
             action match {
               case ResponseAction.AcceptChunking(h) => {
@@ -346,7 +306,7 @@ class HttpTransformer(handler: HttpChannelHandler,
 
           case x: HttpRequest => {
 
-            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
+            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
             val classifier = DynamicRequestClassifier(x)
             val action = handler.requestReceived(x, current_http_channel, classifier)
             action match {
@@ -355,9 +315,9 @@ class HttpTransformer(handler: HttpChannelHandler,
               }
               case ResponseAction.AcceptWebsocket(factory) => {
 
-                val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol)
-                val (websocket_channel_handler, wsframe_parser) = factory(websocket_channel)
-                val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, wsframe_parser)
+                val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
+                val websocket_channel_handler = factory(websocket_channel)
+                val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
 
                 if (!is_queue_empty()) {
                   //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.

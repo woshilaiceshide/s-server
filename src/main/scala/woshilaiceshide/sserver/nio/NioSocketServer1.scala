@@ -18,17 +18,12 @@ import woshilaiceshide.sserver.utility.Utility
 /**
  * a nio socket server in a single thread.
  */
-class NioSocketServer1(interface: String,
+class NioSocketServer1 private[nio] (
+  interface: String,
   port: Int,
   channel_hander_factory: ChannelHandlerFactory,
-  listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
-  accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
-  receive_buffer_size: Int = 1024,
-  socket_max_idle_time_in_seconds: Int = 90,
-  max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
-  default_select_timeout: Int = 30 * 1000,
-  enable_fuzzy_scheduler: Boolean = false) extends NioSocketReaderWriter(channel_hander_factory, receive_buffer_size, socket_max_idle_time_in_seconds,
-  max_bytes_waiting_for_written_per_channel, default_select_timeout, enable_fuzzy_scheduler) {
+  configurator: NioConfigurator)
+    extends NioSocketReaderWriter(channel_hander_factory, configurator) {
 
   private val ssc = ServerSocketChannel.open()
 
@@ -37,7 +32,7 @@ class NioSocketServer1(interface: String,
     super.do_start()
 
     val wrapper = new ServerSocketChannelWrapper(ssc)
-    listening_channel_configurator(wrapper)
+    configurator.listening_channel_configurator(wrapper)
     if (-1 == wrapper.backlog) {
       ssc.socket().bind(new InetSocketAddress(interface, port))
     } else {
@@ -68,7 +63,7 @@ class NioSocketServer1(interface: String,
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
       val wrapper = new SocketChannelWrapper(channel)
-      accepted_channel_configurator(wrapper)
+      configurator.accepted_channel_configurator(wrapper)
       try {
         channel.configureBlocking(false)
         add_a_new_socket_channel(channel)

@@ -18,7 +18,7 @@ object SampleHttpServer extends App {
 
     private val websocket_demo = (c: WebSocketChannel) => {
 
-      val handler = new WebSocketChannelHandler() {
+      new WebSocketChannelHandler() {
 
         def frameReceived(frame: WebSocket13.WSFrame): Unit = {
           import WebSocket13._
@@ -39,12 +39,12 @@ object SampleHttpServer extends App {
         def channelWritable(): Unit = {}
       }
 
-      (handler, WebSocket13.default_parser(2048))
     }
 
     private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World"))
+    private val path_ping = Uri.Path("/ping")
     def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
-      case HttpRequest(HttpMethods.GET, Uri.Path("/ping"), _, _, _) => {
+      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => {
         channel.writeResponse {
           ping
         }
@@ -72,7 +72,10 @@ object SampleHttpServer extends App {
     }
 
   }
-  val factory = new HttpChannelHandlerFactory(handler, 8)
+
+  val http_configurator = new HttpConfigurator(max_request_in_pipeline = 8)
+
+  val factory = new HttpChannelHandlerFactory(handler, http_configurator)
 
   val listening_channel_configurator: ServerSocketChannelWrapper => Unit = wrapper => {
     wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
@@ -83,22 +86,24 @@ object SampleHttpServer extends App {
     wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.TCP_NODELAY, true)
   }
 
-  //val server = new NioSocketServer("127.0.0.1", 8181, factory, listening_socket_options = List(reuse_addr))
-
+  /*
   val threadFactory = new java.util.concurrent.ThreadFactory() {
     def newThread(r: Runnable) = {
       new Thread(r)
     }
   }
+  val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
+  */
 
-  //val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
-  //val server = new NioSocketServer1("127.0.0.1", 8181, mt, listening_channel_configurator = listening_channel_configurator)
-  //val server = new NioSocketServer1("127.0.0.1", 8181, factory, listening_channel_configurator = listening_channel_configurator)
-  //val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, mt, listening_channel_configurator = listening_channel_configurator)
-  val server = new NioSocketAcceptor("0.0.0.0", 8181, 2,
-    factory,
+  val configurator = XNioConfigurator(count_for_reader_writers = 2,
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator)
+
+  val server = NioSocketServer(
+    "0.0.0.0",
+    8787,
+    factory,
+    configurator)
 
   println(s"starting...")
   server.start(false)

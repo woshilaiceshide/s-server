@@ -50,10 +50,20 @@ object EchoServer extends App {
 
   val listening_channel_configurator: ServerSocketChannelWrapper => Unit = wrapper => {
     wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
-    wrapper.setBacklog(128)
+    wrapper.setBacklog(1024 * 8)
   }
 
-  val server = new NioSocketAcceptor("127.0.0.1", 8181, 2, factory, listening_channel_configurator = listening_channel_configurator)
+  val accepted_channel_configurator: SocketChannelWrapper => Unit = wrapper => {
+    wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.TCP_NODELAY, true)
+  }
+
+  val configurator = XNioConfigurator(count_for_reader_writers = 2, listening_channel_configurator = listening_channel_configurator, accepted_channel_configurator = accepted_channel_configurator)
+  val server = NioSocketServer(
+    "0.0.0.0",
+    8787,
+    factory,
+    configurator)
+
   server.start(false)
 
 }

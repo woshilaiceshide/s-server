@@ -36,18 +36,58 @@ object SelectorRunner {
  * read/write bytes over the accepted(connected) socket channels.
  *
  */
-abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
-    enable_fuzzy_scheduler: Boolean = false) {
+abstract class SelectorRunner() {
 
   import Auxiliary._
   import SelectorRunner._
 
+  def configurator: SelectorRunnerConfigurator
+
   //private val default_select_timeout = 30 * 1000
-  protected var select_timeout = default_select_timeout
+  protected var select_timeout = configurator.default_select_timeout
 
   import java.util.concurrent.locks.ReentrantReadWriteLock
   private val lock_for_selector = new ReentrantReadWriteLock(false)
-  private var selector = Selector.open()
+
+  private var selected_keys: SelectedKeySet = null
+
+  private def new_selector() = {
+    if (configurator.try_to_optimize_selector_key_set) {
+      var selector = Selector.open()
+      try {
+        val keys = new SelectedKeySet()
+        val selector_impl_clz = Class.forName("sun.nio.ch.SelectorImpl", false, ClassLoader.getSystemClassLoader)
+        if (selector_impl_clz.isAssignableFrom(selector.getClass())) {
+          val f_selectedKeys = selector_impl_clz.getDeclaredField("selectedKeys")
+          val f_publicSelectedKeys = selector_impl_clz.getDeclaredField("publicSelectedKeys")
+
+          f_selectedKeys.setAccessible(true);
+          f_publicSelectedKeys.setAccessible(true)
+
+          f_selectedKeys.set(selector, keys)
+          f_publicSelectedKeys.set(selector, keys)
+
+          selected_keys = keys;
+        }
+
+      } catch {
+        case _: Throwable => {
+          selected_keys = null
+          if (null != selector) {
+            selector.close()
+            selector = Selector.open()
+          }
+        }
+      }
+      selector
+
+    } else {
+      Selector.open()
+    }
+
+  }
+
+  private var selector = new_selector()
   //epoll's 100% cpu bug
   //this method will be invoked in the i/o thread only.
   private def rebuild_selector() = {
@@ -126,7 +166,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
   private val lock_for_timed_tasks = new Object
   private var timed_tasks: LinkedList[TimedTask] = LinkedList.newEmpty()
   def schedule_fuzzily(task: Runnable, delayInSeconds: Int) = {
-    if (!enable_fuzzy_scheduler) {
+    if (!configurator.enable_fuzzy_scheduler) {
       false
     } else this.synchronized {
       if (STARTED != status.get()) {
@@ -141,7 +181,7 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
     }
   }
   private def reap_timed_tasks() = {
-    if (enable_fuzzy_scheduler) {
+    if (configurator.enable_fuzzy_scheduler) {
       val timed_tasks_to_do = lock_for_timed_tasks.synchronized {
         if (timed_tasks.isEmpty) {
           null
@@ -306,12 +346,29 @@ abstract class SelectorRunner(default_select_timeout: Int = 30 * 1000,
     val selected = selector.select(select_timeout)
 
     if (selected > 0) {
-      val iterator = selector.selectedKeys().iterator()
-      while (iterator.hasNext()) {
-        val key = iterator.next()
-        iterator.remove()
-        //TODO what's about java.nio.channels.SelectionKey.OP_CONNECT???
-        process_selected_key(key, key.readyOps())
+
+      if (selected_keys != null) {
+        val keys = selected_keys.flip()
+
+        @tailrec def iterate_keys(keys: Array[SelectionKey], i: Int): Unit = {
+          if (i == keys.length || null == keys(i)) {
+            //completed
+          } else {
+            val key = keys(i)
+            keys(i) = null
+            process_selected_key(key, key.readyOps())
+            iterate_keys(keys, i + 1)
+          }
+        }
+        iterate_keys(keys, 0)
+
+      } else {
+        val iterator = selector.selectedKeys().iterator()
+        while (iterator.hasNext()) {
+          val key = iterator.next()
+          iterator.remove()
+          process_selected_key(key, key.readyOps())
+        }
       }
     }
 
