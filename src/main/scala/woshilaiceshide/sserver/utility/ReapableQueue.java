@@ -202,6 +202,8 @@ public class ReapableQueue<T> {
 
 		Node<T> old_tail = tail_updater.getAndSet(this, null);
 		if (old_tail == null) {
+			// it can not happen!!!
+			// if happened, this class is coded uncorrectly.
 			throw new Error("??????");
 		}
 		// for jvm's gc.
