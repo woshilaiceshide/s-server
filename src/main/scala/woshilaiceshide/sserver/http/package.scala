@@ -61,74 +61,6 @@ package object http {
     sslSessionInfoHeader = false,
     headerValueCacheLimits = headerValueCacheLimits)
 
-  private final case class Empty[T]() { var value: T = _ }
-
-  final class Node[T](val value: T, var next: Node[T])
-  final class LinkedQueue[T](var head: Node[T], var tail: Node[T]) {
-    var size = 0
-    private def append(node: Node[T]): Unit = {
-      if (null == head) {
-        head = node
-      } else if (null == tail) {
-        head.next = node
-        tail = node
-      } else {
-        tail.next = node
-        tail = node
-      }
-      size = size + 1
-    }
-    def enqueue(value: T): Unit = append(new Node(value, null))
-    def dequeue(): T = {
-      if (null == head) {
-        Empty().value
-      } else {
-        size = size - 1
-        val tmp = head
-        head = head.next
-        if (head eq tail) {
-          tail = null
-        }
-        tmp.value
-      }
-    }
-  }
-  final class LinkedStack[T](var head: Node[T], var tail: Node[T]) {
-    var size = 0
-    private def append(node: Node[T]): Unit = {
-      if (null == tail) {
-        tail = node
-      } else if (head == null) {
-        head = node
-        node.next = tail
-      } else {
-        node.next = head
-        head = node
-      }
-      size = size + 1
-    }
-    def push(value: T): Unit = append(new Node(value, null))
-    def pop(): T = {
-      if (null == tail) {
-        Empty().value
-      } else if (null == head) {
-        size = size - 1
-        val tmp = tail
-        tail = null
-        tmp.value
-      } else {
-        size = size - 1
-        val tmp = head
-        if (head.next == tail) {
-          head = null
-        } else {
-          head = head.next
-        }
-        tmp.value
-      }
-    }
-  }
-
   case class HttpConfigurator(
       parser_settings: spray.can.parsing.ParserSettings = default_parser_settings,
       raw_request_uri_header: Boolean = false,
@@ -146,10 +78,12 @@ package object http {
       max_response_size: Int = 2048,
       max_payload_length_in_websocket_frame: Int = 2048) {
 
+    import woshilaiceshide.sserver.utility._
+
     //a huge optimization. bytes copy and allocation is terrible in general.
-    private val tl_r_pool = new java.lang.ThreadLocal[LinkedStack[RevisedByteArrayRendering]]() {
-      override def initialValue(): LinkedStack[RevisedByteArrayRendering] = {
-        val pool = new LinkedStack[RevisedByteArrayRendering](null, null)
+    private val tl_r_pool = new java.lang.ThreadLocal[ArrayNodeStack[RevisedByteArrayRendering]]() {
+      override def initialValue(): ArrayNodeStack[RevisedByteArrayRendering] = {
+        val pool = new ArrayNodeStack[RevisedByteArrayRendering](bytes_rendering_pool_size)
         for (i <- 0 until bytes_rendering_pool_size) {
           pool.push(new RevisedByteArrayRendering(bytes_rendering_length_in_pool))
         }
@@ -162,9 +96,11 @@ package object http {
         new Revised1ByteArrayRendering(size, 0)
       } else {
         val pool = tl_r_pool.get
-        pool.pop() match {
-          case null => new Revised1ByteArrayRendering(size, 0)
-          case x => x
+        val poped = pool.pop()
+        if (poped.isEmpty) {
+          new Revised1ByteArrayRendering(size, 0)
+        } else {
+          poped.get
         }
       }
 

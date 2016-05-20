@@ -18,12 +18,32 @@ import scala.annotation.tailrec
 import woshilaiceshide.sserver.utility._
 import woshilaiceshide.sserver.utility.Utility
 
+private[nio] object NioSocketReaderWriter {
+
+  final class BytesNode(val bytes: Array[Byte], var next: BytesNode = null) {
+    def append(x: Array[Byte]) = {
+      if (null == x || 0 == x.length) {
+        this
+      } else {
+        this.next = new BytesNode(x)
+        this.next
+      }
+
+    }
+  }
+  final class BytesList(val head: BytesNode, var last: BytesNode) {
+    def append(x: Array[Byte]) = {
+      last = last.append(x)
+    }
+  }
+
+}
+
 class NioSocketReaderWriter private[nio] (
     channel_hander_factory: ChannelHandlerFactory,
     val configurator: NioConfigurator) extends SelectorRunner() {
 
-  import Auxiliary._
-
+  import NioSocketReaderWriter._
   import configurator._
 
   private val socket_max_idle_time_in_seconds_1 = if (0 < socket_max_idle_time_in_seconds) socket_max_idle_time_in_seconds else 60

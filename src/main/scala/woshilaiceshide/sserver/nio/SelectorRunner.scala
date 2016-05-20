@@ -23,6 +23,8 @@ object SelectorRunner {
     ex.printStackTrace(Console.err)
   }
 
+  final case class TimedTask(when_to_run: Long, runnable: Runnable)
+
   val INITIALIZED = 0
   val STARTED = 1
   val STOPPING = 2
@@ -34,11 +36,9 @@ object SelectorRunner {
 
 /**
  * read/write bytes over the accepted(connected) socket channels.
- *
  */
 abstract class SelectorRunner() {
 
-  import Auxiliary._
   import SelectorRunner._
 
   def configurator: SelectorRunnerConfigurator
@@ -164,7 +164,7 @@ abstract class SelectorRunner() {
   def is_in_io_worker_thread(): Boolean = Thread.currentThread() == this.worker_thread
 
   private val lock_for_timed_tasks = new Object
-  private var timed_tasks: LinkedList[TimedTask] = LinkedList.newEmpty()
+  private var timed_tasks: LinkedNodeList[TimedTask] = LinkedNodeList.newEmpty()
   def schedule_fuzzily(task: Runnable, delayInSeconds: Int) = {
     if (!configurator.enable_fuzzy_scheduler) {
       false
@@ -199,7 +199,7 @@ abstract class SelectorRunner() {
 
   private var terminated = false
   private val lock_for_terminated = new Object
-  private var when_terminated: LinkedList[Runnable] = LinkedList.newEmpty()
+  private var when_terminated: LinkedNodeList[Runnable] = LinkedNodeList.newEmpty()
   def registerOnTermination[T](code: => T) = lock_for_terminated.synchronized {
     if (terminated) {
       false
