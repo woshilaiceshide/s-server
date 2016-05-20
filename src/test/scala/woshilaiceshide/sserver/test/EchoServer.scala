@@ -1,4 +1,4 @@
-package woshilaiceshide.sserver
+package woshilaiceshide.sserver.test
 
 import woshilaiceshide.sserver.nio._
 

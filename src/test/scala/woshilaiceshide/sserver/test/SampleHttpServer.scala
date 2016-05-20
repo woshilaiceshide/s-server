@@ -1,9 +1,7 @@
-package woshilaiceshide.sserver
+package woshilaiceshide.sserver.test
 
 import woshilaiceshide.sserver.http._
 import woshilaiceshide.sserver.nio._
-import WebSocket13.WSText
-
 import spray.http._
 import spray.http.HttpEntity.apply
 import spray.http.StatusCode.int2StatusCode
@@ -99,13 +97,15 @@ object SampleHttpServer extends App {
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator)
 
+  val port = 8787
+
   val server = NioSocketServer(
     "0.0.0.0",
-    8787,
+    port,
     factory,
     configurator)
 
-  println(s"starting...")
+  println(s"starting on: ${port}...")
   server.start(false)
 
 }
