@@ -91,9 +91,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
   def lastOffset = original_parser.lastOffset
   def lastInput = original_parser.lastInput
 
-  def channelOpened(channelWrapper: ChannelWrapper): Unit = {
-    println(s"open ${channelWrapper.remoteAddress}")
-  }
+  def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
 
   private var head: Node = null
   private var tail: Node = null

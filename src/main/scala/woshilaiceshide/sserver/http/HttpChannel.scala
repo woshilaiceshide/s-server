@@ -47,14 +47,15 @@ final class HttpChannel(
         case _ => {}
       }
 
-      val r = new RevisedByteArrayRendering(sizeHint)
-      //val r = configurator.borrow_bytes_rendering(sizeHint)
+      //val r = new RevisedByteArrayRendering(sizeHint)
+      val r = configurator.borrow_bytes_rendering(sizeHint)
       val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, writeServerAndDateHeader)
 
       //if finished, jump to the next request in the pipelining(if existed)
       val write_result = channel.write(r.get_underlying_array(), r.get_underlying_offset(), r.get_underlying_size(), true, finished)
-      //configurator.return_bytes_rendering(r)
+
+      configurator.return_bytes_rendering(r)
 
       val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
       if (closeMode == CloseMode.CloseAfterEnd) closeAfterEnd = true

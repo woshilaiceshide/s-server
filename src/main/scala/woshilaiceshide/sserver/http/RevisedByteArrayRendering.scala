@@ -9,4 +9,4 @@ class RevisedByteArrayRendering(sizeHint: Int) extends spray.http.ByteArrayRende
 
 }
 
-class Revised1ByteArrayRendering(sizeHint: Int, val par: Int) extends RevisedByteArrayRendering(sizeHint) 
+class Revised1ByteArrayRendering(sizeHint: Int, val par: Byte) extends RevisedByteArrayRendering(sizeHint) 

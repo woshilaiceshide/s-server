@@ -61,6 +61,74 @@ package object http {
     sslSessionInfoHeader = false,
     headerValueCacheLimits = headerValueCacheLimits)
 
+  private final case class Empty[T]() { var value: T = _ }
+
+  final class Node[T](val value: T, var next: Node[T])
+  final class LinkedQueue[T](var head: Node[T], var tail: Node[T]) {
+    var size = 0
+    private def append(node: Node[T]): Unit = {
+      if (null == head) {
+        head = node
+      } else if (null == tail) {
+        head.next = node
+        tail = node
+      } else {
+        tail.next = node
+        tail = node
+      }
+      size = size + 1
+    }
+    def enqueue(value: T): Unit = append(new Node(value, null))
+    def dequeue(): T = {
+      if (null == head) {
+        Empty().value
+      } else {
+        size = size - 1
+        val tmp = head
+        head = head.next
+        if (head eq tail) {
+          tail = null
+        }
+        tmp.value
+      }
+    }
+  }
+  final class LinkedStack[T](var head: Node[T], var tail: Node[T]) {
+    var size = 0
+    private def append(node: Node[T]): Unit = {
+      if (null == tail) {
+        tail = node
+      } else if (head == null) {
+        head = node
+        node.next = tail
+      } else {
+        node.next = head
+        head = node
+      }
+      size = size + 1
+    }
+    def push(value: T): Unit = append(new Node(value, null))
+    def pop(): T = {
+      if (null == tail) {
+        Empty().value
+      } else if (null == head) {
+        size = size - 1
+        val tmp = tail
+        tail = null
+        tmp.value
+      } else {
+        size = size - 1
+        val tmp = head
+        if (head.next == tail) {
+          head = null
+        } else {
+          head = head.next
+        }
+        tmp.value
+      }
+    }
+  }
+
   case class HttpConfigurator(
       parser_settings: spray.can.parsing.ParserSettings = default_parser_settings,
       raw_request_uri_header: Boolean = false,
@@ -72,58 +140,43 @@ package object http {
       base_for_content_length_cache: Int = 1,
       size_for_content_length_cache: Int = 1024 * 4,
 
-      bytes_rendering_pool_partition_count: Int = 4,
-      bytes_rendering_pool_partition_size: Int = 32,
-      bytes_rendering_pool_partition_length: Int = 1024,
+      bytes_rendering_pool_size: Int = 8,
+      bytes_rendering_length_in_pool: Int = 1024,
 
       max_response_size: Int = 2048,
       max_payload_length_in_websocket_frame: Int = 2048) {
 
-    private val bytes_rendering_pool = new Array[List[Revised1ByteArrayRendering]](bytes_rendering_pool_partition_count)
-    private val bytes_rendering_pool_lock = Array.fill(bytes_rendering_pool_partition_count)(new Object)
-    for (i <- 0 until bytes_rendering_pool.size) {
-      val tmp = for (_ <- 1 until bytes_rendering_pool_partition_size) yield {
-        new Revised1ByteArrayRendering(bytes_rendering_pool_partition_length, i)
+    //a huge optimization. bytes copy and allocation is terrible in general.
+    private val tl_r_pool = new java.lang.ThreadLocal[LinkedStack[RevisedByteArrayRendering]]() {
+      override def initialValue(): LinkedStack[RevisedByteArrayRendering] = {
+        val pool = new LinkedStack[RevisedByteArrayRendering](null, null)
+        for (i <- 0 until bytes_rendering_pool_size) {
+          pool.push(new RevisedByteArrayRendering(bytes_rendering_length_in_pool))
+        }
+        pool
       }
-      bytes_rendering_pool(i) = tmp.toList
     }
 
     def borrow_bytes_rendering(size: Int) = {
-      if (size > bytes_rendering_pool_partition_length) {
-        new RevisedByteArrayRendering(size)
+      if (size > bytes_rendering_length_in_pool) {
+        new Revised1ByteArrayRendering(size, 0)
       } else {
-        val par = (System.currentTimeMillis() % bytes_rendering_pool_partition_count).toInt
-        val bucket = bytes_rendering_pool(par)
-        val borrowed = bytes_rendering_pool_lock(par).synchronized {
-          if (!bucket.isEmpty) {
-            val r = bucket.head
-            val tmp = bucket.tail
-            bytes_rendering_pool(par) = tmp
-            r
-          } else {
-            null
-          }
-        }
-        if (borrowed != null) {
-          borrowed
-        } else {
-          new RevisedByteArrayRendering(size)
+        val pool = tl_r_pool.get
+        pool.pop() match {
+          case null => new Revised1ByteArrayRendering(size, 0)
+          case x => x
         }
       }
+
     }
 
     def return_bytes_rendering(r: RevisedByteArrayRendering) = {
       r match {
-        case x: Revised1ByteArrayRendering => {
+        case x: Revised1ByteArrayRendering => {}
+        case x => {
           x.reset()
-          val par = x.par
-          val bucket = bytes_rendering_pool(par)
-          bytes_rendering_pool_lock(par).synchronized {
-            val tmp = x :: bucket
-            bytes_rendering_pool(par) = tmp
-          }
+          tl_r_pool.get.push(x)
         }
-        case _ =>
       }
     }
 
