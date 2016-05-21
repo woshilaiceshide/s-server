@@ -27,6 +27,9 @@ object SelectorRunner {
     def set_key(new_key: SelectionKey): Unit
   }
 
+  class NotRunningException(msg: String) extends RuntimeException(msg)
+  class NotInIOThreadException(msg: String) extends RuntimeException(msg)
+
   final case class TimedTask(when_to_run: Long, runnable: Runnable)
 
   val INITIALIZED = 0
@@ -124,7 +127,7 @@ abstract class SelectorRunner() {
     }
   }
   //lock_for_selector is not needed because this method is invoked in the i/o thread only.
-  private def close_selector() = { if (null != selector) safeClose(selector) }
+  private def close_selector() = { if (null != selector) safeClose(selector); selector = null; }
 
   private val wokenup = new java.util.concurrent.atomic.AtomicBoolean(false)
   /**
@@ -140,14 +143,42 @@ abstract class SelectorRunner() {
       lock.unlock()
     }
   }
-  def register(ch: SelectableChannel, ops: Int, att: Object) = {
-    val lock = lock_for_selector.readLock()
-    lock.lock()
-    try {
+  def register(ch: SelectableChannel, ops: Int, att: Object): SelectionKey = {
+    if (!is_in_io_worker_thread()) {
+      throw new NotInIOThreadException("selector runner is stopping or stopped or not started.")
+    } else {
       if (null != selector) ch.register(selector, ops, att)
-      else null
-    } finally {
-      lock.unlock()
+      else throw new NotRunningException("selector runner is stopping or stopped or not started.")
+    }
+  }
+
+  def get_registered_size(): Int = {
+    if (!is_in_io_worker_thread()) {
+      val lock = lock_for_selector.readLock()
+      lock.lock()
+      try {
+        if (null != selector) selector.keys().size
+        else throw new NotRunningException("selector runner is stopping or stopped or not started.")
+      } finally {
+        lock.unlock()
+      }
+    } else {
+      if (null != selector) selector.keys().size
+      else throw new NotRunningException("selector runner is stopping or stopped or not started.")
+    }
+  }
+
+  def iterate_registered_keys(worker: SelectionKey => Unit): Unit = {
+    if (!is_in_io_worker_thread()) {
+      throw new NotInIOThreadException("selector runner is stopping or stopped or not started.")
+    } else {
+      if (null != selector) {
+        val iterator = selector.keys().iterator()
+        while (iterator.hasNext()) {
+          val key = iterator.next()
+          safeOp { worker.apply(key) }
+        }
+      } else throw new NotRunningException("selector runner is stopping or stopped or not started.")
     }
   }
 

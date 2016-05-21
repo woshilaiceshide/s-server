@@ -53,7 +53,6 @@ class NioSocketReaderWriter private[nio] (
   //this only client buffer will become read only before it's given to the handler
   private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
 
-  private var channels = List[MyChannelWrapper]()
   //some i/o operations related to those channels are pending
   //note that those operations will be checked in the order they are pended as soon as possible.
   private var pending_io_operations: ReapableQueue[MyChannelWrapper] = new ReapableQueue()
@@ -72,8 +71,13 @@ class NioSocketReaderWriter private[nio] (
     waiting_for_register.map { safeClose(_) }
     waiting_for_register = Nil
 
-    channels.foreach { _.closeDirectly() }
-    channels = Nil
+    this.iterate_registered_keys { key =>
+      val attach = key.attachment()
+      attach match {
+        case c: MyChannelWrapper => c.closeDirectly()
+        case _ =>
+      }
+    }
 
   }
   protected def stop_gracefully(): Boolean = {
@@ -81,16 +85,24 @@ class NioSocketReaderWriter private[nio] (
     waiting_for_register.map { safeClose(_) }
     waiting_for_register = Nil
 
-    if (channels.size == 0) {
+    if (this.get_registered_size() == 0) {
       true
     } else {
-      channels.foreach { _.close(false, ChannelClosedCause.SERVER_STOPPING) }
-      channels.foreach(x => safeOp { x.justOpWriteIfNeededOrNoOp() })
+      this.iterate_registered_keys { key =>
+        val attach = key.attachment()
+        attach match {
+          case c: MyChannelWrapper => {
+            c.close(false, ChannelClosedCause.SERVER_STOPPING)
+            safeOp { c.justOpWriteIfNeededOrNoOp() }
+          }
+          case _ =>
+        }
+      }
       false
     }
   }
   protected def has_remaining_work(): Boolean = {
-    channels.size == 0
+    this.get_registered_size() == 0
   }
 
   protected def add_a_new_socket_channel(channel: SocketChannel) = {
@@ -105,7 +117,6 @@ class NioSocketReaderWriter private[nio] (
           val key = this.register(channel, SelectionKey.OP_READ, channelWrapper)
           channelWrapper.key = key
         }
-        channels = channelWrapper :: channels
         channelWrapper.open()
         if (!channel.isOpen()) {
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
@@ -122,7 +133,7 @@ class NioSocketReaderWriter private[nio] (
     }
   }
 
-  private var last_check_for_idle_zombie: Long = 0
+  private var last_check_for_idle_zombie: Long = System.currentTimeMillis()
   protected def before_next_loop(): Unit = {
 
     if (!is_stopping() && waiting_for_register.size > 0) {
@@ -136,15 +147,15 @@ class NioSocketReaderWriter private[nio] (
     //check for idle channels and zombie channels
     //(sometimes a channel will be closed unexpectedly and the corresponding selector will not report it.)
     val now = System.currentTimeMillis()
-    if (now - last_check_for_idle_zombie > select_timeout && !is_stopping()) {
+    if (now - last_check_for_idle_zombie > configurator.check_idle_interval_in_seconds && !is_stopping()) {
       last_check_for_idle_zombie = now
-      var newChannels: List[MyChannelWrapper] = Nil
-      channels.foreach { channelWrapper =>
-        if (channelWrapper.checkIdle(now) != CHANNEL_CLOSED && channelWrapper.checkZombie(now) == CHANNEL_CLOSED) {
-          newChannels = channelWrapper :: newChannels
+      this.iterate_registered_keys { key =>
+        key.attachment() match {
+          case c: MyChannelWrapper =>
+            c.checkIdle(now)
+            c.checkZombie(now)
         }
       }
-      channels = newChannels
     }
 
     //check for pending i/o, and just no deadlocks
@@ -174,12 +185,14 @@ class NioSocketReaderWriter private[nio] (
         } else {
           if (!key.isValid() || !channel.isOpen()) {
             channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
-          } else {
+          } else if (configurator.allow_hafl_closure) {
             //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
             //I tried much, but did not catch it!
             //business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
             channelWrapper.clearOpRead()
             channelWrapper.inputEnded()
+          } else {
+            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_NORMALLY)
           }
         }
 
@@ -196,7 +209,7 @@ class NioSocketReaderWriter private[nio] (
     if ((ready_ops & OP_WRITE) > 0) {
       try {
         channelWrapper.writing()
-        if (!key.isValid()) {
+        if (!key.isValid() || !channel.isOpen()) {
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       } catch {
@@ -209,6 +222,9 @@ class NioSocketReaderWriter private[nio] (
   }
 
   protected class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper with SelectorRunner.HasKey {
+
+    private[nio] def isInputShutdown() = channel.socket().isInputShutdown()
+    private[nio] def isOutputShutdown() = channel.socket().isOutputShutdown()
 
     private var last_active_time = System.currentTimeMillis()
 
@@ -352,6 +368,7 @@ class NioSocketReaderWriter private[nio] (
                   }
                 }
               }
+              //no spin here
               val buffer = ByteBuffer.wrap(bytes, offset, length)
               write_immediately(buffer, 1)
               if (buffer.hasRemaining()) {
@@ -571,7 +588,7 @@ class NioSocketReaderWriter private[nio] (
       }
 
     }
-    private def setOpWrite() {
+    private[nio] def setOpWrite() {
       if (key != null) {
         //val key = channel.keyFor(selector)
         var alreadyOps = key.interestOps()
