@@ -99,11 +99,12 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
     if (hostHeaderPresent || protocol == HttpProtocols.`HTTP/1.0`) {
       teh match {
         case Some(`Transfer-Encoding`(Seq("chunked"))) ⇒
-          if (clh.isEmpty)
+          if (clh.isEmpty) {
+            val tmp = copy(input)
             emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
-              parseChunk(input, bodyStart, closeAfterResponseCompletion)
+              parseChunk(tmp, bodyStart, closeAfterResponseCompletion)
             }
-          else fail("A chunked request must not contain a Content-Length header.")
+          } else fail("A chunked request must not contain a Content-Length header.")
 
         case None | Some(`Transfer-Encoding`(Seq("identity"))) ⇒
           val contentLength = clh match {
@@ -112,8 +113,9 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
           }
           if (contentLength == 0) {
             if (input.length > bodyStart) {
+              val tmp = copy(input)
               emitLazily(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
-                parseMessageSafe(input, bodyStart)
+                parseMessageSafe(tmp, bodyStart)
               }
             } else {
               emitDirectly(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {

@@ -181,7 +181,8 @@ class NioSocketReaderWriter private[nio] (
         val readCount = channel.read(CLIENT_BUFFER)
         if (readCount > 0) {
           CLIENT_BUFFER.flip()
-          channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
+          //channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
+          channelWrapper.bytesReceived(CLIENT_BUFFER)
         } else {
           if (!key.isValid() || !channel.isOpen()) {
             channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)

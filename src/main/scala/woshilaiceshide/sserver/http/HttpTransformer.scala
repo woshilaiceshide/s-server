@@ -132,7 +132,8 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
   def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     //a reasonable request flow is produced
-    val result = parser.apply(ByteString(byteBuffer))
+    //val result = parser.apply(ByteString.apply(byteBuffer))
+    val result = parser.apply(akka.fake.FakeHelper.byte_string_from_byte_buffer_directly(byteBuffer))
 
     @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
       result match {
