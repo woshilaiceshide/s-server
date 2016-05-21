@@ -156,6 +156,10 @@ package object nio {
     def receive_buffer_size: Int
     def socket_max_idle_time_in_seconds: Int
     def max_bytes_waiting_for_written_per_channel: Int
+    /**
+     * set 'sun.nio.ch.bugLevel' to a blank string if it does not exist in the 'System.getProperties()'
+     */
+    def revise_sun_jdk_bug_level: Boolean
   }
 
   final case class XNioConfigurator(
@@ -172,7 +176,8 @@ package object nio {
     accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
     receive_buffer_size: Int = 1024,
     socket_max_idle_time_in_seconds: Int = 90,
-    max_bytes_waiting_for_written_per_channel: Int = 64 * 1024) extends NioConfigurator
+    max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
+    revise_sun_jdk_bug_level: Boolean = true) extends NioConfigurator
 
   object NioSocketServer {
 
@@ -181,6 +186,14 @@ package object nio {
       port: Int,
       channel_hander_factory: ChannelHandlerFactory,
       configurator: NioConfigurator) = {
+
+      if (configurator.revise_sun_jdk_bug_level) {
+        val key = "sun.nio.ch.bugLevel"
+        val value = System.getProperty(key, null)
+        if (value == null) {
+          System.setProperty(key, "")
+        }
+      }
 
       if (configurator.count_for_reader_writers == 0) {
         new NioSocketServer1(interface, port, channel_hander_factory, configurator)
