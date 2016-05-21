@@ -99,7 +99,7 @@ abstract class SelectorRunner() {
       lock.unlock()
     }
   }
-  //no lock is needed.
+  //lock_for_selector is not needed because this method is invoked in the i/o thread only.
   private def close_selector() = { if (null != selector) safeClose(selector) }
   /**
    * this method is thread safe.
@@ -124,7 +124,7 @@ abstract class SelectorRunner() {
     }
   }
 
-  def safeClose(x: Closeable) = try { x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
+  def safeClose(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
   def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
 
   private var worker_thread: Thread = null
@@ -245,30 +245,33 @@ abstract class SelectorRunner() {
    */
   protected def process_selected_key(key: SelectionKey, ready_ops: Int): Unit
 
-  def start(asynchronously: Boolean = true) = {
-    var continued = status.compareAndSet(INITIALIZED, STARTED)
-    if (continued) {
-      try {
-        do_start()
-      } catch {
-        case ex: Throwable => {
-          continued = false
-          status.set(BAD)
-          close_selector()
-          warn(ex)
-        }
+  //invoked in i/o thread.
+  private def start0() = {
+    try {
+      do_start()
+      true
+    } catch {
+      case ex: Throwable => {
+        status.set(BAD)
+        close_selector()
+        warn(ex)
+        false
       }
     }
+  }
+
+  def start(asynchronously: Boolean = true) = {
+    var continued = status.compareAndSet(INITIALIZED, STARTED)
     if (continued) {
       if (asynchronously) {
         //worker_thread should not be assigned in the new thread's running.
         worker_thread = new Thread(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}") {
-          override def run() = safe_loop()
+          override def run() = if (start0()) { safe_loop() }
         }
         worker_thread.start()
       } else {
         worker_thread = Thread.currentThread()
-        safe_loop()
+        if (start0()) { safe_loop() }
       }
     }
   }
@@ -302,14 +305,13 @@ abstract class SelectorRunner() {
    * Note that this method returned immediately. use "def join(...)" to wait its termination.
    */
   def stop(timeout: Int) = {
-    if (worker_thread == Thread.currentThread()) {
+    if (is_in_io_worker_thread()) {
       this.synchronized {
         if (status.compareAndSet(STARTED, STOPPING)) {
           select_timeout = Math.min(Math.max(0, timeout), select_timeout)
           //stop_deadline is necessary.
           stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
         }
-        status.get()
       }
     } else this.synchronized {
       if (status.compareAndSet(STARTED, STOPPING)) {
@@ -317,7 +319,6 @@ abstract class SelectorRunner() {
         safeOp { selector.wakeup() }
         safeOp { worker_thread.interrupt() }
       }
-      status.get()
     }
   }
   def join(timeout: Long) = {
@@ -343,6 +344,7 @@ abstract class SelectorRunner() {
   protected def is_stopping() = already_in_stopping
   @tailrec private def loop(): Unit = {
 
+    //lock_for_selector is not needed because i am in the i/o thread.
     val selected = selector.select(select_timeout)
 
     if (selected > 0) {
@@ -372,32 +374,24 @@ abstract class SelectorRunner() {
       }
     }
 
-    val continued = if (status.get() == STOPPING && stop_deadline < System.currentTimeMillis()) {
+    val current_status = status.get()
+    val continued = if (current_status == STOPPING && this.get_stop_deadline() /*synchronization is needed here*/ < System.currentTimeMillis()) {
       //closed
       stop_roughly()
-      this.synchronized {
-        status.set(STOPPED_ROUGHLY)
-        this.notifyAll()
-      }
+      status.set(STOPPED_ROUGHLY)
       false
-    } else if (!already_in_stopping && status.get() == STOPPING) {
+    } else if (!already_in_stopping && current_status == STOPPING) {
       //stopping
       already_in_stopping = true
       val immediately = stop_gracefully()
       if (immediately) {
-        this.synchronized {
-          status.set(STOPPED_GRACEFULLY)
-          this.notifyAll()
-        }
+        status.set(STOPPED_GRACEFULLY)
         false
       } else {
         true
       }
     } else if (already_in_stopping && !has_remaining_work()) {
-      this.synchronized {
-        status.set(STOPPED_GRACEFULLY)
-        this.notifyAll()
-      }
+      status.set(STOPPED_GRACEFULLY)
       false
     } else {
       true
