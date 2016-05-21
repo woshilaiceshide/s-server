@@ -23,6 +23,10 @@ object SelectorRunner {
     ex.printStackTrace(Console.err)
   }
 
+  trait HasKey {
+    def set_key(new_key: SelectionKey): Unit
+  }
+
   final case class TimedTask(when_to_run: Long, runnable: Runnable)
 
   val INITIALIZED = 0
@@ -36,6 +40,8 @@ object SelectorRunner {
 
 /**
  * read/write bytes over the accepted(connected) socket channels.
+ *
+ * note that all the operations on the SelectionKey should be in the i/o thread.
  */
 abstract class SelectorRunner() {
 
@@ -88,25 +94,46 @@ abstract class SelectorRunner() {
   }
 
   private var selector = new_selector()
-  //epoll's 100% cpu bug
+  //epoll's 100% cpu bug, see http://bugs.java.com/view_bug.do?bug_id=6403933
   //this method will be invoked in the i/o thread only.
   private def rebuild_selector() = {
     val lock = lock_for_selector.writeLock()
     lock.lock()
     try {
-      //TODO to be done
+      val selector0 = selector
+      val selector1 = new_selector()
+      val iterator = selector.keys.iterator()
+      while (iterator.hasNext()) {
+        val old_key = iterator.next()
+        old_key.cancel()
+        val ops = old_key.interestOps()
+        val attch = old_key.attachment()
+        val new_key = old_key.channel().register(selector1, ops, attch)
+        attch match {
+          case x: HasKey => x.set_key(new_key)
+          case _ =>
+        }
+      }
+
+      selector = selector1
+
+      safeClose(selector0)
+
     } finally {
       lock.unlock()
     }
   }
   //lock_for_selector is not needed because this method is invoked in the i/o thread only.
   private def close_selector() = { if (null != selector) safeClose(selector) }
+
+  private val wokenup = new java.util.concurrent.atomic.AtomicBoolean(false)
   /**
    * this method is thread safe.
    */
   def wakeup_selector() = {
     val lock = lock_for_selector.readLock()
     lock.lock()
+    wokenup.compareAndSet(false, true)
     try {
       if (null != selector) selector.wakeup()
     } finally {
@@ -342,10 +369,36 @@ abstract class SelectorRunner() {
 
   private var already_in_stopping = false
   protected def is_stopping() = already_in_stopping
+  //no keys selected and no time waited, it's for epoll's 100% cpu bug.
+  private var successive_select_count_for_0_key_0_time = 0
   @tailrec private def loop(): Unit = {
 
     //lock_for_selector is not needed because i am in the i/o thread.
-    val selected = selector.select(select_timeout)
+
+    val selected = if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
+      if (wokenup.compareAndSet(true, false)) {
+        successive_select_count_for_0_key_0_time = 0
+        selector.selectNow()
+      } else {
+        val start = System.currentTimeMillis()
+        val tmp = selector.select(select_timeout)
+        wokenup.compareAndSet(true, false)
+        //the interrupted status is cleared as intended.
+        val interrupted = Thread.interrupted()
+        if (0 == tmp && !interrupted && System.currentTimeMillis() - start == 0) {
+          successive_select_count_for_0_key_0_time = successive_select_count_for_0_key_0_time + 1
+          if (successive_select_count_for_0_key_0_time > Math.max(3, configurator.rebuild_selector_threshold)) {
+            rebuild_selector()
+            successive_select_count_for_0_key_0_time = 0
+          }
+        } else {
+          successive_select_count_for_0_key_0_time = 0
+        }
+        tmp
+      }
+    } else {
+      selector.select(select_timeout)
+    }
 
     if (selected > 0) {
 

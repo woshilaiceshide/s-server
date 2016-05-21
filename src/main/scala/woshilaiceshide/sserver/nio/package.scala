@@ -144,6 +144,7 @@ package object nio {
 
   trait SelectorRunnerConfigurator {
     def rebuild_selector_for_epoll_100_perent_cpu_bug: Boolean
+    def rebuild_selector_threshold: Int
     def try_to_optimize_selector_key_set: Boolean
     def default_select_timeout: Int
     def enable_fuzzy_scheduler: Boolean
@@ -168,7 +169,8 @@ package object nio {
      * no extra threads will be created.
      */
     count_for_reader_writers: Int,
-    rebuild_selector_for_epoll_100_perent_cpu_bug: Boolean = true,
+    rebuild_selector_for_epoll_100_perent_cpu_bug: Boolean = false,
+    rebuild_selector_threshold: Int = 1,
     try_to_optimize_selector_key_set: Boolean = true,
     default_select_timeout: Int = 30 * 1000,
     enable_fuzzy_scheduler: Boolean = false,

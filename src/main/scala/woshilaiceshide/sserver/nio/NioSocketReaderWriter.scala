@@ -208,13 +208,14 @@ class NioSocketReaderWriter private[nio] (
     }
   }
 
-  protected class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper {
+  protected class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper with SelectorRunner.HasKey {
 
     private var last_active_time = System.currentTimeMillis()
 
     private var status = CHANNEL_NORMAL
 
     private[NioSocketReaderWriter] var key: SelectionKey = null
+    def set_key(new_key: SelectionKey): Unit = this.key = new_key
 
     def remoteAddress: java.net.SocketAddress = channel.getRemoteAddress
     def localAddress: java.net.SocketAddress = channel.getLocalAddress
