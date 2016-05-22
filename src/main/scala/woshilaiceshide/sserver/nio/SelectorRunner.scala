@@ -147,7 +147,7 @@ abstract class SelectorRunner() {
   }
   def register(ch: SelectableChannel, ops: Int, att: Object): SelectionKey = {
     if (!is_in_io_worker_thread()) {
-      throw new NotInIOThreadException("selector runner is stopping or stopped or not started.")
+      throw new NotInIOThreadException(s"please run this method in i/o thread. the current thread is ${Thread.currentThread().getName}-${Thread.currentThread().getId}")
     } else {
       if (null != selector) ch.register(selector, ops, att)
       else throw new NotRunningException("selector runner is stopping or stopped or not started.")
@@ -172,7 +172,7 @@ abstract class SelectorRunner() {
 
   def iterate_registered_keys(worker: SelectionKey => Unit): Unit = {
     if (!is_in_io_worker_thread()) {
-      throw new NotInIOThreadException("selector runner is stopping or stopped or not started.")
+      throw new NotInIOThreadException(s"please run this method in i/o thread. the current thread is ${Thread.currentThread().getName}-${Thread.currentThread().getId}")
     } else {
       if (null != selector) {
         val iterator = selector.keys().iterator()

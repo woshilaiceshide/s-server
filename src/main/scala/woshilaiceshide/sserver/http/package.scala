@@ -75,6 +75,8 @@ package object http {
       bytes_rendering_pool_size: Int = 8,
       bytes_rendering_length_in_pool: Int = 1024,
 
+      header_parser_pool_size: Int = 8,
+
       max_response_size: Int = 2048,
       max_payload_length_in_websocket_frame: Int = 2048) {
 
@@ -103,7 +105,6 @@ package object http {
           poped.get
         }
       }
-
     }
 
     def return_bytes_rendering(r: RevisedByteArrayRendering) = {
@@ -116,9 +117,24 @@ package object http {
       }
     }
 
-    def get_request_parser(): HttpTransformer.RevisedHttpRequestPartParser = {
-      new HttpTransformer.RevisedHttpRequestPartParser(parser_settings, raw_request_uri_header)
+    //a huge optimization. header parser has a trie, which consumes lots of cpu.
+    private val tl_header_parser = new java.lang.ThreadLocal[HttpHeaderParser]() {
+      override def initialValue(): HttpHeaderParser = {
+        HttpHeaderParser(parser_settings)
+      }
+    }
 
+    private def get_header_parser() = {
+      var tmp = tl_header_parser.get
+      if (null == tmp) {
+        tmp = HttpHeaderParser(parser_settings)
+        tl_header_parser.set(tmp)
+      }
+      tmp
+    }
+
+    def get_request_parser(): HttpTransformer.RevisedHttpRequestPartParser = {
+      new HttpTransformer.RevisedHttpRequestPartParser(parser_settings, raw_request_uri_header, get_header_parser())
     }
 
     def get_websocket_parser(): WebSocket13.WSFrameParser = {

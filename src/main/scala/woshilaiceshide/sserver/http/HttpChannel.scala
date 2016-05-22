@@ -26,6 +26,7 @@ final class HttpChannel(
   def isCompleted = this.synchronized { finished }
 
   //TODO test chunked responding
+  //TODO a cached response build utility.
   /**
    * 'server' and 'date' headers may be served by proxies (nginx?).
    *

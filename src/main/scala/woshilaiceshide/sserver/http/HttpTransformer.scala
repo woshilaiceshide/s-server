@@ -35,8 +35,8 @@ object HttpTransformer {
 
   private[http] object FakeException extends Exception with scala.util.control.NoStackTrace
   //TODO
-  private[http] class RevisedHttpRequestPartParser(parser_setting: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean)
-      extends HttpRequestPartParser(parser_setting, rawRequestUriHeader)() {
+  private[http] class RevisedHttpRequestPartParser(parser_setting: spray.can.parsing.ParserSettings, raw_request_uri_header: Boolean, header_parser: HttpHeaderParser)
+      extends HttpRequestPartParser(parser_setting, raw_request_uri_header)(header_parser) {
 
     //this instance will be used from the very beginning to the end fo this channel
     var lastOffset = -1
@@ -78,7 +78,11 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
   import HttpTransformer._
 
-  val original_parser = configurator.get_request_parser()
+  private var original_parser: RevisedHttpRequestPartParser = null
+  private var parser: Parser = null
+
+  def lastOffset = original_parser.lastOffset
+  def lastInput = original_parser.lastInput
 
   private[this] var current_sink: ResponseSink = null
 
@@ -86,12 +90,11 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
   @inline private def has_next(): Boolean = null != head
 
-  private var parser: Parser = original_parser
-
-  def lastOffset = original_parser.lastOffset
-  def lastInput = original_parser.lastInput
-
-  def channelOpened(channelWrapper: ChannelWrapper): Unit = {}
+  //get parser from ThreadLocal here! so that all the codes related to parser is in the same thread.
+  def channelOpened(channelWrapper: ChannelWrapper): Unit = {
+    original_parser = configurator.get_request_parser()
+    parser = original_parser
+  }
 
   private var head: Node = null
   private var tail: Node = null

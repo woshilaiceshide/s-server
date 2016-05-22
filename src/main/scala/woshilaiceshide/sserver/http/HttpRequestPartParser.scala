@@ -9,7 +9,7 @@ import StatusCodes._
 import HttpHeaders._
 import CharUtils._
 
-class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser = HttpHeaderParser(_settings))
+class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser)
     extends HttpMessagePartParser(_settings, _headerParser) {
 
   private[this] var method: HttpMethod = GET
