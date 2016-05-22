@@ -238,13 +238,14 @@ class NioSocketReaderWriter private[nio] (
     def localAddress: java.net.SocketAddress = channel.getLocalAddress
 
     private[nio] def closeDirectly() {
-      val should = this.synchronized {
+      val should_close = this.synchronized {
         val tmp = status
         status = CHANNEL_CLOSED
         tmp != CHANNEL_CLOSED
       }
-      if (should) {
+      if (should_close) {
         safeClose(this.channel)
+        safeOp(key.cancel())
         if (null != handler) safeOp {
           handler.channelClosed(this, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED, None)
           handler = null
@@ -563,7 +564,13 @@ class NioSocketReaderWriter private[nio] (
       }
       //close outside, not in the "synchronization". keep locks clean.
       if (should_close) {
-        safeOp { if (null != handler) handler.channelClosed(this, closedCause, attachmentForClosed) }
+        safeOp {
+          if (null != handler) {
+            handler.channelClosed(this, closedCause, attachmentForClosed)
+            handler = null
+          }
+          key.cancel()
+        }
       } else {
         if (generate_writing_event) {
           if (null != this.handler) {
