@@ -44,6 +44,8 @@ class NioSocketAcceptor private[nio] (
     ssc.configureBlocking(false)
     this.register(ssc, SelectionKey.OP_ACCEPT, null)
   }
+
+  //TODO can not stop when 'java.net.BindException: Address already in use'
   protected def stop_roughly(): Unit = {
     safeClose(ssc)
     io_workers.map { _.stop(0) }
