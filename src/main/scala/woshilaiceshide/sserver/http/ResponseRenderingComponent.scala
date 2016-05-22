@@ -22,6 +22,12 @@ private[http] object RenderSupport {
     r.get
   }
 
+  def getBytes(l: Long) = {
+    val r = new ByteArrayRendering(64)
+    r ~~ l
+    r.get
+  }
+
   val CrLf = getBytes(Rendering.CrLf)
   val TwoCrLf = getBytes(Rendering.CrLf) ++ getBytes(Rendering.CrLf)
 
@@ -160,9 +166,7 @@ trait ResponseRenderingComponent {
                 if (contentLengthDefined) suppressionWarning(x, "another `Content-Length` header was already rendered")
                 else {
                   //render(x)
-                  if (!configurator.render_content_length(r, x.length, false)) {
-                    x.renderValue(r ~~ `Content-Length-Bytes`)
-                  }
+                  configurator.render_content_length(r, x.length, false)
                 }
                 renderHeaders(tail, contentLengthDefined = true, userContentType, connHeader)
 
@@ -241,9 +245,7 @@ trait ResponseRenderingComponent {
       */
       if ((response.protocol == `HTTP/1.1` || !close) && (ctx.requestMethod != HttpMethods.HEAD || transparentHeadRequests)) {
         //r ~~ `Content-Length` ~~ entity.data.length ~~ TwoCrLf
-        if (!configurator.render_content_length(r, entity.data.length, true)) {
-          r ~~ `Content-Length-Bytes` ~~ entity.data.length ~~ TwoCrLf
-        }
+        configurator.render_content_length(r, entity.data.length, true)
       } else {
         r ~~ CrLf
       }

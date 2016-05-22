@@ -141,40 +141,25 @@ package object http {
       WebSocket13.default_parser(max_payload_length_in_websocket_frame)
     }
 
-    import spray.util._
-
-    private def getBytes(renderable: Renderable, sizeHint: Int = 512) = {
-      val r = new ByteArrayRendering(sizeHint)
-      r ~~ renderable
-      r.get
-    }
-
-    private def getBytes(l: Long) = {
-      val r = new ByteArrayRendering(64)
-      r ~~ l
-      r.get
-    }
-
     //if rendering has '~~(Array[Byte], offset: Int, length: Int)', 
     ///then this cache can be replaced by content_length_cache_with_two_crlf
     private val content_length_cache = {
       val cache = new Array[Array[Byte]](size_for_content_length_cache)
       for (i <- 0 until size_for_content_length_cache) {
-        cache(i) = "Content-Length: ".getAsciiBytes ++ getBytes(i + base_for_content_length_cache)
+        cache(i) = RenderSupport.`Content-Length-Bytes` ++ RenderSupport.getBytes(i + base_for_content_length_cache)
       }
       cache
     }
 
     private val content_length_cache_with_two_crlf = {
       val cache = new Array[Array[Byte]](size_for_content_length_cache)
-      val two_crlf = getBytes(Rendering.CrLf) ++ getBytes(Rendering.CrLf)
       for (i <- 0 until size_for_content_length_cache) {
-        cache(i) = "Content-Length: ".getAsciiBytes ++ getBytes(i + base_for_content_length_cache) ++ two_crlf
+        cache(i) = RenderSupport.`Content-Length-Bytes` ++ RenderSupport.getBytes(i + base_for_content_length_cache) ++ RenderSupport.TwoCrLf
       }
       cache
     }
 
-    def render_content_length(r: Rendering, length: Long, with_two_crlf: Boolean) = {
+    def render_content_length(r: Rendering, length: Long, with_two_crlf: Boolean): Unit = {
       if (base_for_content_length_cache <= length &&
         length < base_for_content_length_cache + content_length_cache.length &&
         length < Integer.MAX_VALUE) {
@@ -186,10 +171,9 @@ package object http {
           val bytes = content_length_cache(length.toInt - base_for_content_length_cache)
           r ~~ bytes
         }
-        true
-
       } else {
-        false
+        r ~~ RenderSupport.`Content-Length-Bytes` ~~ length
+        if (with_two_crlf) r ~~ RenderSupport.TwoCrLf
       }
     }
 
