@@ -89,6 +89,7 @@ class MultipleThreadHandler(var handler: ChannelHandler, worker: Worker) extends
     }
   }
 
+  //this sink is important, which will help you to run initlization codes in the same thread as other sinks.
   def channelOpened(channelWrapper: ChannelWrapper): Unit = {
     tryAdd(new Runnable() {
       def run() = {
