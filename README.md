@@ -32,19 +32,19 @@ and `'channel handlers`' may use `'channel wrapper`'s to write responses.
 * test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala <br> To play with SampleHttpServer, run `'nc -C 127.0.0.1 8181 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
 
 To test the above examples, just type the following command in your sbt console: 
-* type `'test:run'` in your sbt console to run `'woshilaiceshide.sserver.EchoServer'`
+* type `'test:run'` in your sbt console to run `'woshilaiceshide.sserver.test.EchoServer'`
 
 * type `'test:runMain'` in your sbt console followed by a `'TAB'` to prompt you the valid choices
 
 * type the following commands in your sbt console to make a standalone package with all the tests:
 
 		set unmanagedSourceDirectories in Compile := (unmanagedSourceDirectories in Compile).value ++ (unmanagedSourceDirectories in Test).value
-		set mainClass in Compile := Some("woshilaiceshide.sserver.EchoServer")
+		set mainClass in Compile := Some("woshilaiceshide.sserver.test.EchoServer")
 		dist
 or
 
 		set unmanagedSourceDirectories in Compile := (unmanagedSourceDirectories in Compile).value ++ (unmanagedSourceDirectories in Test).value
-		set mainClass in Compile := Some("woshilaiceshide.sserver.SampleHttpServer")
+		set mainClass in Compile := Some("woshilaiceshide.sserver.test.SampleHttpServer")
 		dist
 
 ## Real Projects
