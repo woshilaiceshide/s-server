@@ -72,7 +72,7 @@ package object http {
       base_for_content_length_cache: Int = 1,
       size_for_content_length_cache: Int = 1024 * 4,
 
-      bytes_rendering_pool_size: Int = 8,
+      bytes_rendering_pool_size: Int = 2,
       bytes_rendering_length_in_pool: Int = 1024,
 
       header_parser_pool_size: Int = 8,
