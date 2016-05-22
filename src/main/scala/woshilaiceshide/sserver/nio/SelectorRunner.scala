@@ -136,7 +136,9 @@ abstract class SelectorRunner() {
   def wakeup_selector() = {
     val lock = lock_for_selector.readLock()
     lock.lock()
-    wokenup.compareAndSet(false, true)
+    if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
+      wokenup.compareAndSet(false, true)
+    }
     try {
       if (null != selector) selector.wakeup()
     } finally {
