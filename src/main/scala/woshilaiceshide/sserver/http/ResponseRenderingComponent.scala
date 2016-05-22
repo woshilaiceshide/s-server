@@ -160,7 +160,7 @@ trait ResponseRenderingComponent {
                 if (contentLengthDefined) suppressionWarning(x, "another `Content-Length` header was already rendered")
                 else {
                   //render(x)
-                  if (!configurator.render_content_length(r, x.length)) {
+                  if (!configurator.render_content_length(r, x.length, false)) {
                     x.renderValue(r ~~ `Content-Length-Bytes`)
                   }
                 }
@@ -241,9 +241,7 @@ trait ResponseRenderingComponent {
       */
       if ((response.protocol == `HTTP/1.1` || !close) && (ctx.requestMethod != HttpMethods.HEAD || transparentHeadRequests)) {
         //r ~~ `Content-Length` ~~ entity.data.length ~~ TwoCrLf
-        if (configurator.render_content_length(r, entity.data.length)) {
-          r ~~ TwoCrLf
-        } else {
+        if (!configurator.render_content_length(r, entity.data.length, true)) {
           r ~~ `Content-Length-Bytes` ~~ entity.data.length ~~ TwoCrLf
         }
       } else {
