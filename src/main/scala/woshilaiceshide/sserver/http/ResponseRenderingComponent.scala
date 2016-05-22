@@ -216,7 +216,9 @@ trait ResponseRenderingComponent {
       }
 
       import response._
-      if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
+      //status is rendered when retrieving the render.
+      //this optimization is ugly.
+      //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
       //TODO many optimizations can be done here: 
       //1. use 'ThreadLocal'
       //2. cache the last second's bytes

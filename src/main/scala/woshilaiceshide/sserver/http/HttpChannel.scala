@@ -49,7 +49,7 @@ final class HttpChannel(
       }
 
       //val r = new RevisedByteArrayRendering(sizeHint)
-      val r = configurator.borrow_bytes_rendering(sizeHint)
+      val r = configurator.borrow_bytes_rendering(sizeHint, response)
       val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, writeServerAndDateHeader)
 

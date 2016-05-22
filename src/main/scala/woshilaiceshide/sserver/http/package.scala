@@ -92,17 +92,63 @@ package object http {
         pool
       }
     }
+    private val tl_r_pool_with_status_200 = new java.lang.ThreadLocal[ArrayNodeStack[RevisedByteArrayRendering]]() {
+      override def initialValue(): ArrayNodeStack[RevisedByteArrayRendering] = {
+        val pool = new ArrayNodeStack[RevisedByteArrayRendering](bytes_rendering_pool_size)
+        for (i <- 0 until bytes_rendering_pool_size) {
+          val tmp = new Revised2ByteArrayRendering(bytes_rendering_length_in_pool)
+          tmp ~~ RenderSupport.DefaultStatusLine
+          tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
+          pool.push(tmp)
+        }
+        pool
+      }
+    }
 
-    def borrow_bytes_rendering(size: Int) = {
+    //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
+    def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart) = {
       if (size > bytes_rendering_length_in_pool) {
-        new Revised1ByteArrayRendering(size, 0)
+        val tmp = new Revised1ByteArrayRendering(size)
+        response_part match {
+          case response: HttpResponse => {
+            if (response.status eq StatusCodes.OK) tmp ~~ RenderSupport.DefaultStatusLine
+            else tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+          }
+          case _ =>
+        }
+        tmp
       } else {
-        val pool = tl_r_pool.get
-        val poped = pool.pop()
-        if (poped.isEmpty) {
-          new Revised1ByteArrayRendering(size, 0)
-        } else {
-          poped.get
+
+        response_part match {
+          case response: HttpResponse => {
+            if (response.status eq StatusCodes.OK) {
+              val poped = tl_r_pool_with_status_200.get().pop()
+              if (poped.isEmpty) {
+                val tmp = new Revised1ByteArrayRendering(size)
+                tmp ~~ RenderSupport.DefaultStatusLine
+                tmp
+              } else {
+                poped.get
+              }
+            } else {
+              val poped = tl_r_pool.get().pop()
+              if (poped.isEmpty) {
+                val tmp = new Revised1ByteArrayRendering(size)
+                tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+                tmp
+              } else {
+                poped.get ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+              }
+            }
+          }
+          case _ => {
+            val poped = tl_r_pool.get().pop()
+            if (poped.isEmpty) {
+              new Revised1ByteArrayRendering(size)
+            } else {
+              poped.get
+            }
+          }
         }
       }
     }
@@ -110,6 +156,10 @@ package object http {
     def return_bytes_rendering(r: RevisedByteArrayRendering) = {
       r match {
         case x: Revised1ByteArrayRendering => {}
+        case x: Revised2ByteArrayRendering => {
+          x.reset()
+          tl_r_pool_with_status_200.get.push(x)
+        }
         case x => {
           x.reset()
           tl_r_pool.get.push(x)
