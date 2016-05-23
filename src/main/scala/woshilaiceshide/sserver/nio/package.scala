@@ -16,6 +16,7 @@ import scala.annotation.tailrec
  */
 package object nio {
 
+  private[nio] val CHANNEL_UNKNOWN = -1
   private[nio] val CHANNEL_NORMAL = 0
   private[nio] val CHANNEL_CLOSING_GRACEFULLY = 1
   private[nio] val CHANNEL_CLOSING_RIGHT_NOW = 2

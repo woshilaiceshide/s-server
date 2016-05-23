@@ -526,7 +526,9 @@ class NioSocketReaderWriter private[nio] (
       var attachmentForClosed: Option[_] = None
 
       var generate_writing_event = false
-      val (should_close, status1) = this.synchronized {
+      var should_close: Boolean = false
+      var should_status: Int = CHANNEL_UNKNOWN
+      this.synchronized {
 
         generate_writing_event = should_generate_writing_event
         should_generate_writing_event = false
@@ -539,27 +541,34 @@ class NioSocketReaderWriter private[nio] (
           safeClose(channel)
           writes = null
           status = CHANNEL_CLOSED
-          (true, status)
+          should_close = true
+          should_status = status
         } else if (status == CHANNEL_CLOSED) {
-          (false, status)
+          should_close = false
+          should_status = status
         } else if (status == CHANNEL_CLOSING_GRACEFULLY && null == writes) {
           safeClose(channel)
           status = CHANNEL_CLOSED
-          (true, status)
+          should_close = true
+          should_status = status
         } else if (status == CHANNEL_CLOSING_GRACEFULLY) {
           //(closeIfFailed { setOpWrite() }, status)
-          (closeIfFailed {
+          should_close = closeIfFailed {
             justOpWriteIfNeededOrNoOp()
             //TODO tell the peer not to send data??? is it harmful to the peer if the peer can not response correctly?
             channel.shutdownInput()
-          }, status)
+          }
+          should_status = status
         } else if (status == CHANNEL_NORMAL && null == writes) {
           //(closeIfFailed { clearOpWrite() }, status)
-          (false, status)
+          should_close = false
+          should_status = status
         } else if (status == CHANNEL_NORMAL) {
-          (closeIfFailed { setOpWrite() }, status)
+          should_close = closeIfFailed { setOpWrite() }
+          should_status = status
         } else {
-          (false, status)
+          should_close = false
+          should_status = status
         }
       }
       //close outside, not in the "synchronization". keep locks clean.
@@ -581,7 +590,7 @@ class NioSocketReaderWriter private[nio] (
         }
 
       }
-      status1
+      should_status
     }
 
     private[nio] def justOpWriteIfNeededOrNoOp() = this.synchronized {
