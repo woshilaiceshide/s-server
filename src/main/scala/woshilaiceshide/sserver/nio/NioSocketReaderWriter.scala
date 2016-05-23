@@ -18,6 +18,8 @@ import scala.annotation.tailrec
 import woshilaiceshide.sserver.utility._
 import woshilaiceshide.sserver.utility.Utility
 
+import SelectorRunner._
+
 private[nio] object NioSocketReaderWriter {
 
   final class BytesNode(val bytes: Array[Byte], var next: BytesNode = null) {
@@ -113,7 +115,7 @@ class NioSocketReaderWriter private[nio] (
       }
       case Some(handler) => {
         val channelWrapper = new MyChannelWrapper(channel, handler)
-        Utility.closeIfFailed(channel) {
+        Utility.close_if_failed(channel) {
           val key = this.register(channel, SelectionKey.OP_READ, channelWrapper)
           channelWrapper.key = key
         }
@@ -129,7 +131,13 @@ class NioSocketReaderWriter private[nio] (
   //avoid instantiations in hot codes.
   private val io_checker = new (MyChannelWrapper => Unit) {
     def apply(channelWrapper: MyChannelWrapper): Unit = {
-      channelWrapper.checkIO()
+      //'check_io' is very hot! 
+      //but the codes produced by scala compiler is not good enough. 
+      //for example, xxx.synchronized{...} will often results in unnecessary closures(scala/runtime/ObjectRef:create).
+      //so, i write it using java.
+      //and, i refactored public apis so that they can be used in java.
+      //channelWrapper.checkIO()
+      JavaAccelerator.check_io(channelWrapper)
     }
   }
 
@@ -222,16 +230,16 @@ class NioSocketReaderWriter private[nio] (
     }
   }
 
-  protected class MyChannelWrapper(channel: SocketChannel, private[this] var handler: ChannelHandler) extends ChannelWrapper with SelectorRunner.HasKey {
+  protected[nio] class MyChannelWrapper(private[nio] val channel: SocketChannel, private[nio] var handler: ChannelHandler) extends ChannelWrapper with SelectorRunner.HasKey {
 
     private[nio] def isInputShutdown() = channel.socket().isInputShutdown()
     private[nio] def isOutputShutdown() = channel.socket().isOutputShutdown()
 
     private var last_active_time = System.currentTimeMillis()
 
-    private var status = CHANNEL_NORMAL
+    private[nio] var status = CHANNEL_NORMAL
 
-    private[NioSocketReaderWriter] var key: SelectionKey = null
+    private[nio] var key: SelectionKey = null
     def set_key(new_key: SelectionKey): Unit = this.key = new_key
 
     def remoteAddress: java.net.SocketAddress = channel.getRemoteAddress
@@ -264,8 +272,8 @@ class NioSocketReaderWriter private[nio] (
       close(rightNow, ChannelClosedCause.BY_BIZ, attachment)
     }
 
-    private var closed_cause = ChannelClosedCause.UNKNOWN
-    private var attachment_for_closed: Option[_] = None
+    private[nio] var closed_cause = ChannelClosedCause.UNKNOWN
+    private[nio] var attachment_for_closed: Option[_] = None
     private[NioSocketReaderWriter] def close(rightNow: Boolean = false, cause: ChannelClosedCause.Value, attachment: Option[_] = None): Unit = {
       val should_pend = this.synchronized {
         val rightNow1 = if (rightNow) true else writes == null
@@ -329,12 +337,12 @@ class NioSocketReaderWriter private[nio] (
 
     }
 
-    private var writes: BytesList = null
+    private[nio] var writes: BytesList = null
     private var bytes_waiting_for_written = 0
 
     //use a (byte)flag to store the following two fields?
-    private var already_pended = false
-    private var should_generate_writing_event = false
+    private[nio] var already_pended = false
+    private[nio] var should_generate_writing_event = false
     //if generate_writing_event is true, then 'bytesWritten' will be fired.
     def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
 
@@ -513,69 +521,61 @@ class NioSocketReaderWriter private[nio] (
       }
       status
     }
-    private def closeIfFailed(x: => Unit) = {
+    private[nio] def close_if_failed(x: => Unit) = {
       try {
         x; false;
       } catch {
         case _: Throwable => { safeClose(channel); status = CHANNEL_CLOSED; true; }
       }
     }
-    private[nio] def checkIO() = {
 
-      var closedCause: ChannelClosedCause.Value = null
-      var attachmentForClosed: Option[_] = None
+    private[nio] def checkIO(): Unit = {
 
+      var cause: ChannelClosedCause.Value = null
+      var attachment: Option[_] = None
       var generate_writing_event = false
-      var should_close: Boolean = false
-      var should_status: Int = CHANNEL_UNKNOWN
-      this.synchronized {
 
-        generate_writing_event = should_generate_writing_event
+      val should_close: Boolean = this.synchronized {
+
+        generate_writing_event = this.should_generate_writing_event
         should_generate_writing_event = false
 
-        closedCause = closed_cause
-        attachmentForClosed = attachment_for_closed
+        cause = this.closed_cause
+        attachment = this.attachment_for_closed
         already_pended = false
 
         if (status == CHANNEL_CLOSING_RIGHT_NOW) {
           safeClose(channel)
           writes = null
           status = CHANNEL_CLOSED
-          should_close = true
-          should_status = status
+          true
         } else if (status == CHANNEL_CLOSED) {
-          should_close = false
-          should_status = status
+          false
         } else if (status == CHANNEL_CLOSING_GRACEFULLY && null == writes) {
           safeClose(channel)
           status = CHANNEL_CLOSED
-          should_close = true
-          should_status = status
+          true
         } else if (status == CHANNEL_CLOSING_GRACEFULLY) {
-          //(closeIfFailed { setOpWrite() }, status)
-          should_close = closeIfFailed {
+          //close_if_failed { setOpWrite() }
+          close_if_failed {
             justOpWriteIfNeededOrNoOp()
             //TODO tell the peer not to send data??? is it harmful to the peer if the peer can not response correctly?
             channel.shutdownInput()
           }
-          should_status = status
         } else if (status == CHANNEL_NORMAL && null == writes) {
-          //(closeIfFailed { clearOpWrite() }, status)
-          should_close = false
-          should_status = status
+          //close_if_failed { clearOpWrite() }
+          false
         } else if (status == CHANNEL_NORMAL) {
-          should_close = closeIfFailed { setOpWrite() }
-          should_status = status
+          close_if_failed { setOpWrite() }
         } else {
-          should_close = false
-          should_status = status
+          false
         }
       }
       //close outside, not in the "synchronization". keep locks clean.
       if (should_close) {
         safeOp {
           if (null != handler) {
-            handler.channelClosed(this, closedCause, attachmentForClosed)
+            handler.channelClosed(this, cause, attachment)
             handler = null
           }
           key.cancel()
@@ -588,9 +588,7 @@ class NioSocketReaderWriter private[nio] (
             this.handler = newHandler
           }
         }
-
       }
-      should_status
     }
 
     private[nio] def justOpWriteIfNeededOrNoOp() = this.synchronized {

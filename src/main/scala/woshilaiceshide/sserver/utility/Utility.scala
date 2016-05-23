@@ -11,7 +11,7 @@ trait Utility {
     bytes
   }
 
-  def closeIfFailed(c: java.io.Closeable)(task: => Unit) = {
+  def close_if_failed(c: java.io.Closeable)(task: => Unit) = {
     try {
       task
     } catch {

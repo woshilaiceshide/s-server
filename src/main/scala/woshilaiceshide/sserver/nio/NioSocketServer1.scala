@@ -15,6 +15,8 @@ import java.nio.channels.SelectionKey._
 
 import woshilaiceshide.sserver.utility.Utility
 
+import SelectorRunner._
+
 /**
  * a nio socket server in a single thread.
  */

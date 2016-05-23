@@ -30,6 +30,9 @@ object SelectorRunner {
   class NotRunningException(msg: String) extends RuntimeException(msg)
   class NotInIOThreadException(msg: String) extends RuntimeException(msg)
 
+  def safeClose(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
+  def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
+
   final case class TimedTask(when_to_run: Long, runnable: Runnable)
 
   val INITIALIZED = 0
@@ -183,9 +186,6 @@ abstract class SelectorRunner() {
       } else throw new NotRunningException("selector runner is stopping or stopped or not started.")
     }
   }
-
-  def safeClose(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
-  def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
 
   private var worker_thread: Thread = null
   def get_worker_thread() = worker_thread

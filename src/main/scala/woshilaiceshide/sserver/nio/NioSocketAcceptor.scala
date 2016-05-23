@@ -15,6 +15,8 @@ import java.nio.channels.SelectionKey._
 
 import scala.annotation.tailrec
 
+import SelectorRunner._
+
 class NioSocketAcceptor private[nio] (
     interface: String,
     port: Int,
