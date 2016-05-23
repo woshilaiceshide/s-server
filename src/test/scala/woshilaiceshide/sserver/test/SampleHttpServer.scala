@@ -59,7 +59,7 @@ object SampleHttpServer extends App {
 
         ResponseAction.acceptWebsocket { websocket_demo }
       }
-      case _: HttpRequest if classifier.classification == RequestClassification.ChunkedHttpStart => {
+      case x: HttpRequest if classifier.classification(x) == RequestClassification.ChunkedHttpStart => {
         channel.writeResponse { new HttpResponse(400, "I DOES NOT support chunked request.") }
         ResponseAction.responseNormally
       }

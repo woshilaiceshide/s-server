@@ -217,8 +217,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                 }
 
                 current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
-                val classifier = DynamicRequestClassifier(x)
-                val action = handler.requestReceived(x, current_http_channel, classifier)
+                val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
                 action match {
                   case ResponseAction.ResponseNormally => {
                     process(continue)
@@ -309,8 +308,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           case x: HttpRequest => {
 
             current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
-            val classifier = DynamicRequestClassifier(x)
-            val action = handler.requestReceived(x, current_http_channel, classifier)
+            val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
             action match {
               case ResponseAction.ResponseNormally => {
                 this

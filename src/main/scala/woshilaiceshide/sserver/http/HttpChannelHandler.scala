@@ -82,16 +82,16 @@ object RequestClassification extends scala.Enumeration {
 }
 
 sealed abstract class RequestClassifier {
-  def classification: RequestClassification.Value
+  def classification(request: HttpRequest): RequestClassification.Value
 }
 
 private[http] object AChunkedRequestStart extends RequestClassifier {
-  def classification: RequestClassification.Value = RequestClassification.ChunkedHttpStart
+  def classification(request: HttpRequest): RequestClassification.Value = RequestClassification.ChunkedHttpStart
 }
 
-final case class DynamicRequestClassifier private[http] (request: HttpRequest) extends RequestClassifier {
+private[http] object DynamicRequestClassifier extends RequestClassifier {
 
-  lazy val classification: RequestClassification.Value = {
+  def classification(request: HttpRequest): RequestClassification.Value = {
     request match {
       case x if WebSocket13.isAWebSocketRequest(x) => RequestClassification.WebsocketStart
       case _ => RequestClassification.PlainHttp
