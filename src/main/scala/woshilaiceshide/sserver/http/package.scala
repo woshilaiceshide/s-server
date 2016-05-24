@@ -15,8 +15,12 @@ package object http {
       val part: HttpMessagePart
       val closeAfterResponseCompletion: Boolean
       def continue: Result
+      //TODO add 'remaining' stubs
+      def remainingInput: ByteString = throw new scala.NotImplementedError()
+      def remainingOffset: Int = throw new scala.NotImplementedError()
     }
     final case class EmitLazily(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, lazy_continue: () ⇒ Result) extends AbstractEmit {
+      throw new scala.NotImplementedError()
       def continue = lazy_continue()
     }
     //no lazy evaluation. this optimization is proved by facts.

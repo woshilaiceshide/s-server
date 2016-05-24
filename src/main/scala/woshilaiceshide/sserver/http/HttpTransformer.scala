@@ -110,7 +110,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
       result match {
         //closeAfterResponseCompletion will be fine even if it's a 'MessageChunk'
-        case r: Result.AbstractEmit if (r.part.isInstanceOf[HttpRequestPart]) => {
+        case r: Result.AbstractEmit /*if (r.part.isInstanceOf[HttpRequestPart])*/ /*it's HttpRequestPart definitely.*/ => {
 
           import r._
           val request = r.part.asInstanceOf[HttpRequestPart]
