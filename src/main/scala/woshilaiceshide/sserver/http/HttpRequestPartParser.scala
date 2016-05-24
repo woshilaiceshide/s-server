@@ -4,10 +4,16 @@ import java.lang.{ StringBuilder ⇒ JStringBuilder }
 import scala.annotation.tailrec
 import akka.util.ByteString
 import spray.http._
+import spray.http.parser.ParserInput
 import HttpMethods._
 import StatusCodes._
 import HttpHeaders._
 import CharUtils._
+
+object HttpRequestPartParser {
+  val `UTF8` = new woshilaiceshide.sserver.utility.CachedCharsetWrapper(spray.util.`UTF8`)
+  val `US_ASCII` = new woshilaiceshide.sserver.utility.CachedCharsetWrapper(spray.util.`US_ASCII`)
+}
 
 class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser)
     extends HttpMessagePartParser(_settings, _headerParser) {
@@ -83,7 +89,8 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
     val uriEnd = findUriEnd()
     try {
       uriBytes = input.iterator.slice(uriStart, uriEnd).toArray[Byte]
-      uri = Uri.parseHttpRequestTarget(uriBytes, mode = settings.uriParsingMode)
+      //uri = Uri.parseHttpRequestTarget(uriBytes, mode = settings.uriParsingMode)
+      uri = Uri.parseHttpRequestTarget(ParserInput(uriBytes, HttpRequestPartParser.`UTF8`), mode = settings.uriParsingMode)
     } catch {
       case e: IllegalUriException ⇒ throw new ParsingException(BadRequest, e.info)
     }
@@ -134,7 +141,8 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
 
   def message(headers: List[HttpHeader], entity: HttpEntity) = {
     val requestHeaders =
-      if (rawRequestUriHeader) `Raw-Request-URI`(new String(uriBytes, spray.util.US_ASCII)) :: headers else headers
+      //if (rawRequestUriHeader) `Raw-Request-URI`(new String(uriBytes, spray.util.US_ASCII)) :: headers else headers
+      if (rawRequestUriHeader) `Raw-Request-URI`(new String(uriBytes, HttpRequestPartParser.US_ASCII)) :: headers else headers
     HttpRequest(method, uri, requestHeaders, entity, protocol)
   }
   def chunkStartMessage(headers: List[HttpHeader]) = ChunkedRequestStart(message(headers, HttpEntity.Empty))
