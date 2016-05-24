@@ -100,11 +100,17 @@ private[http] object DynamicRequestClassifier extends RequestClassifier {
 
 }
 
+/**
+ * low level api. 'PlainRequestHttpChannelHandler' is enough in general.
+ */
 trait HttpChannelHandler {
 
   def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction
 }
 
+/**
+ * 'PlainRequestHttpChannelHandler' is enough in general. see 'HttpChannelHandler' if not enough.
+ */
 trait PlainRequestHttpChannelHandler extends HttpChannelHandler {
 
   def requestReceived(request: HttpRequest, channel: HttpChannel): Unit
