@@ -36,7 +36,7 @@ final class LinkedNodeQueue[@specialized(Int, Long, Short, Byte, Boolean, Double
 }
 final class LinkedNodeStack[@specialized(Int, Long, Short, Byte, Boolean, Double, Float) T](var head: Node[T], var tail: Node[T]) {
   var size = 0
-  private def append(node: Node[T]): Unit = {
+  private def append(node: Node[T]): this.type = {
     if (null == tail) {
       tail = node
     } else if (head == null) {
@@ -47,8 +47,9 @@ final class LinkedNodeStack[@specialized(Int, Long, Short, Byte, Boolean, Double
       head = node
     }
     size = size + 1
+    this
   }
-  def push(value: T): Unit = append(new Node(value, null))
+  def push(value: T): this.type = append(new Node(value, null))
   def pop(): Node[T] = {
     if (null == tail) {
       null
@@ -68,6 +69,24 @@ final class LinkedNodeStack[@specialized(Int, Long, Short, Byte, Boolean, Double
       tmp
     }
   }
+
+  @tailrec private def to_scala_list_0(already: List[T]): List[T] = {
+    val tmp = pop()
+    if (null != tmp) {
+      to_scala_list_0(tmp.value :: already)
+    } else {
+      already
+    }
+
+  }
+  /**
+   * not reversed, but the original stack is cleared.
+   */
+  def to_scala_list(): List[T] = to_scala_list_0(Nil)
+}
+
+object LinkedNodeStack {
+  def newEmpty[T]() = new LinkedNodeStack[T](null, null)
 }
 
 final class ArrayNodeStack[@specialized(Int, Long, Short, Byte, Boolean, Double, Float) T](capacity: Int)(implicit ctag: ClassTag[T]) {
@@ -97,13 +116,14 @@ final class ArrayNodeStack[@specialized(Int, Long, Short, Byte, Boolean, Double,
 
 }
 
-final class LinkedNodeList[@specialized(Int, Long) T](var head: Node[T], var tail: Node[T]) {
+final class LinkedNodeList[@specialized(Int, Long, Float, Double, Boolean, Short, Byte) T](var head: Node[T], var tail: Node[T]) {
 
   import LinkedNodeList._
 
-  var size = 0
+  //!!!
+  //var size = 0
 
-  private def append(node: Node[T]): Unit = {
+  private def append(node: Node[T]): this.type = {
     if (null == head) {
       head = node
     } else if (null == tail) {
@@ -113,9 +133,11 @@ final class LinkedNodeList[@specialized(Int, Long) T](var head: Node[T], var tai
       tail.next = node
       tail = node
     }
-    size = size + 1
+    //!!!
+    //size = size + 1
+    this
   }
-  def append(value: T): Unit = append(new Node(value, null))
+  def append(value: T): this.type = append(new Node(value, null))
 
   def isEmpty = head == null
 
@@ -154,6 +176,19 @@ final class LinkedNodeList[@specialized(Int, Long) T](var head: Node[T], var tai
 
     Filtered(filtered, unfiltered)
   }
+
+  @tailrec private def to_scala_list_0(first: Node[T], already: List[T]): List[T] = {
+    if (null != first) {
+      to_scala_list_0(first.next, first.value :: already)
+    } else {
+      already
+    }
+
+  }
+  /**
+   * but reversed
+   */
+  def to_scala_list(): List[T] = to_scala_list_0(head, Nil)
 }
 object LinkedNodeList {
   final case class Filtered[T](filtered: LinkedNodeList[T], unfiltered: LinkedNodeList[T])
