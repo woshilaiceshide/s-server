@@ -389,7 +389,6 @@ class NioSocketReaderWriter private[nio] (
               }
 
               //make i/o in the selector's thread
-              //TODO
               /*val node = new BytesNode(bytes)
               writes = new BytesList(node, node)*/
 
