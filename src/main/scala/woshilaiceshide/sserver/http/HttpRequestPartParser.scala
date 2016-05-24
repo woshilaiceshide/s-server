@@ -11,8 +11,12 @@ import HttpHeaders._
 import CharUtils._
 
 object HttpRequestPartParser {
-  val `UTF8` = new woshilaiceshide.sserver.utility.CachedCharsetWrapper(spray.util.`UTF8`)
-  val `US_ASCII` = new woshilaiceshide.sserver.utility.CachedCharsetWrapper(spray.util.`US_ASCII`)
+
+  //val `UTF8` = new woshilaiceshide.sserver.utility.CharsetWrapper(spray.util.`UTF8`)
+  //val `US_ASCII` = new woshilaiceshide.sserver.utility.CharsetWrapper(spray.util.`US_ASCII`)
+
+  val `UTF8` = spray.util.`UTF8`
+  val `US_ASCII` = spray.util.`US_ASCII`
 }
 
 class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser)
