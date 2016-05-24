@@ -51,7 +51,7 @@ package object http {
     "User-Agent" -> 32)
 
   val default_parser_settings = spray.can.parsing.ParserSettings(
-    maxUriLength = 256,
+    maxUriLength = 512,
     maxResponseReasonLength = 128,
     maxHeaderNameLength = 128,
     maxHeaderValueLength = 128,
