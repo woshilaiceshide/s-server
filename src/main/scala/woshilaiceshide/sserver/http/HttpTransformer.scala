@@ -33,34 +33,6 @@ object HttpTransformer {
 
   private[HttpTransformer] final case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper, var next: Node)
 
-  private[http] object FakeException extends Exception with scala.util.control.NoStackTrace
-  //TODO
-  private[http] class RevisedHttpRequestPartParser(parser_setting: spray.can.parsing.ParserSettings, raw_request_uri_header: Boolean, header_parser: HttpHeaderParser)
-      extends HttpRequestPartParser(parser_setting, raw_request_uri_header)(header_parser) {
-
-    //this instance will be used from the very beginning to the end fo this channel
-    var lastOffset = -1
-    var lastInput: ByteString = _
-    var just_check_positions = false
-
-    //1. method invocation is lay binding in java/scala
-    //2. super.parseMessageSafe will invoke parseMessageSafe, which is RevisedHttpRequestPartParser's parseMessageSafe.
-    override def parseMessageSafe(input: ByteString, offset: Int = 0): Result = {
-      if (just_check_positions) {
-        lastOffset = offset
-        lastInput = input
-        throw FakeException
-      } else {
-        super.parseMessageSafe(input, offset)
-      }
-    }
-
-    /**
-     * I've seen that 'copyWith' will be invoked in spray-scan's pipeline only, and not in this project.
-     */
-    override def copyWith(warnOnIllegalHeader: ErrorInfo ⇒ Unit): HttpRequestPartParser = throw new UnsupportedOperationException()
-  }
-
   final class MyChannelInformation(channel: HttpChannel) extends ChannelInformation {
     def remoteAddress = channel.remoteAddress
     def localAddress = channel.localAddress
@@ -78,11 +50,8 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
   import HttpTransformer._
 
-  private var original_parser: RevisedHttpRequestPartParser = null
+  private var original_parser: HttpRequestPartParser = null
   private var parser: Parser = null
-
-  def lastOffset = original_parser.lastOffset
-  def lastInput = original_parser.lastInput
 
   private[this] var current_sink: ResponseSink = null
 
@@ -224,20 +193,13 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                   }
                   case ResponseAction.AcceptWebsocket(factory) => {
 
-                    original_parser.just_check_positions = true
-                    try { continue } catch { case FakeException => {} }
-                    //!!!
-                    original_parser.just_check_positions = false
-
                     val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
                     val websocket_channel_handler = factory(websocket_channel)
                     val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
 
-                    if (null != lastInput && lastInput.length > lastOffset) {
-                      //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
-                      //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
-                      throw new RuntimeException("no data should be here because handshake does not complete.")
-                    }
+                    //1. no remaining data should be here because handshake does not complete. i does not check it here.
+                    //2. DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+                    //websocket.bytesReceived(...)
                     websocket
                   }
                   case ResponseAction.ResponseWithASink(sink) => {
