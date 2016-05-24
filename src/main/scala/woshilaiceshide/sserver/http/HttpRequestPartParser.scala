@@ -14,7 +14,7 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
 
   private[this] var method: HttpMethod = GET
   private[this] var uri: Uri = Uri.Empty
-  private[this] var uriBytes: Array[Byte] = Array()
+  private[this] var uriBytes: Array[Byte] = Array.emptyByteArray
 
   def copyWith(warnOnIllegalHeader: ErrorInfo ⇒ Unit): HttpRequestPartParser =
     new HttpRequestPartParser(settings, rawRequestUriHeader)(headerParser.copyWith(warnOnIllegalHeader))
