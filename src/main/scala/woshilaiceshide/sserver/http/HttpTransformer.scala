@@ -197,9 +197,9 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                     val websocket_channel_handler = factory(websocket_channel)
                     val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
 
-                    //1. no remaining data should be here because handshake does not complete. i does not check it here.
+                    //1. TODO no remaining data should be here because handshake does not complete. i does not check it here yet.
                     //2. DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
-                    //websocket.bytesReceived(...)
+                    //websocket.bytesReceived(r.remainingInput.drop(r.remainingOffset).asByteBuffer, channelWrapper)
                     websocket
                   }
                   case ResponseAction.ResponseWithASink(sink) => {
