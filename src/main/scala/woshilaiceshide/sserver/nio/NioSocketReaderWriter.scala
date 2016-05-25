@@ -372,6 +372,16 @@ class NioSocketReaderWriter private[nio] (
 
               @tailrec def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
                 if (0 < times) {
+                  /*
+                   * from java doc: 
+                   * ...
+                   * This method may be invoked at any time. 
+                   * If another thread has already initiated a write operation upon this channel, 
+                   * however, then an invocation of this method will block until the first operation is complete.
+                   * ...
+                   */
+                  //TODO move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
+                  //or the selector's i/o thread may collide with the writing thread, which will twice the cost.
                   channel.write(buffer)
                   if (buffer.hasRemaining()) {
                     write_immediately(buffer, times - 1)
