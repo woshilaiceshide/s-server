@@ -43,7 +43,7 @@ object HttpTransformer {
  * transform bytes to http.
  * when counting messages in the pipeline(see "http pipelining"), i take every chunked message into account as intended.
  *
- * TODO need to limit the un-processed bytes(related to the messages in pipeline).
+ * to limit the un-processed bytes(related to the messages in pipeline), use 'woshilaiceshide.sserver.http.HttpConfigurator' please.
  */
 class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurator)
     extends ChannelHandler {
