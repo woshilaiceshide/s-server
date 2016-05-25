@@ -53,9 +53,11 @@ final class HttpChannel(
       val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, writeServerAndDateHeader)
 
+      //TODO why it's error when finished is false
+
       //if finished, jump to the next request in the pipelining(if existed)
-      //TODO why it's error when finished is false 
-      val write_result = channel.write(r.get_underlying_array(), r.get_underlying_offset(), r.get_underlying_size(), true, finished)
+      val generate_writing_event = finished && configurator.max_request_in_pipeline > 1
+      val write_result = channel.write(r.get_underlying_array(), r.get_underlying_offset(), r.get_underlying_size(), true, generate_writing_event)
 
       configurator.return_bytes_rendering(r)
 
