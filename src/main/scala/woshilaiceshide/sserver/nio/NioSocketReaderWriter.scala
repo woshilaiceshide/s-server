@@ -144,7 +144,7 @@ class NioSocketReaderWriter private[nio] (
   private var last_check_for_idle_zombie: Long = System.currentTimeMillis()
   protected def before_next_loop(): Unit = {
 
-    if (!is_stopping() && waiting_for_register.size > 0) {
+    if (!is_stopping() && !waiting_for_register.isEmpty) {
       val tmp = waiting_for_register
       waiting_for_register = Nil
       tmp.map { channel =>
