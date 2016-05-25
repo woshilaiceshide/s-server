@@ -110,7 +110,10 @@ package object http {
     }
 
     //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
-    def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart) = {
+    /**
+     * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
+     */
+    private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart) = {
       if (size > bytes_rendering_length_in_pool) {
         val tmp = new Revised1ByteArrayRendering(size)
         response_part match {
@@ -157,7 +160,10 @@ package object http {
       }
     }
 
-    def return_bytes_rendering(r: RevisedByteArrayRendering) = {
+    /**
+     * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
+     */
+    private[http] def return_bytes_rendering(r: RevisedByteArrayRendering) = {
       r match {
         case x: Revised1ByteArrayRendering => {}
         case x: Revised2ByteArrayRendering => {
