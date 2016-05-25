@@ -119,7 +119,9 @@ trait ResponseRenderingComponent {
     }
 
   // returns a boolean indicating whether the connection is to be closed after this response was sent
-  def renderResponsePartRenderingContext(r: Rendering, ctx: ResponsePartRenderingContext,
+  def renderResponsePartRenderingContext(
+    r: Rendering,
+    ctx: ResponsePartRenderingContext,
     log: akka.event.LoggingAdapter,
     writeServerAndDateHeader: Boolean): CloseMode = {
 
@@ -191,9 +193,7 @@ trait ResponseRenderingComponent {
             }
           case _ ⇒
             response.entity match {
-              //case HttpEntity.NonEmpty(ContentTypes.NoContentType, _) ⇒
-              //!!!
-              case HttpEntity.NonEmpty(contentType, _) if ContentTypes.NoContentType eq contentType ⇒
+              case HttpEntity.NonEmpty(ContentTypes.NoContentType, _) ⇒
               case HttpEntity.NonEmpty(contentType, _) if !userContentType ⇒ {
                 if (contentType eq ContentTypes.`text/plain(UTF-8)`) {
                   r ~~ `Content-Type--text/plain(UTF-8)-CrLf-Bytes`

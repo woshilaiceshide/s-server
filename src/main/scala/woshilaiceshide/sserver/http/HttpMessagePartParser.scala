@@ -48,19 +48,36 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
 
   def badProtocol: Nothing
 
-  def connectionCloseExpected(protocol: HttpProtocol, connectionHeader: Option[Connection]): Boolean =
+  def connectionCloseExpected(protocol: HttpProtocol, connectionHeader: Connection): Boolean = {
+
+    /*
     protocol match {
       //case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && connectionHeader.get.hasClose
       //case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || !connectionHeader.get.hasKeepAlive
-      case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && OptimizedUtility.hasClose(connectionHeader.get)
-      case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || OptimizedUtility.hasNoKeepAlive(connectionHeader.get)
+      case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader != null && OptimizedUtility.hasClose(connectionHeader)
+      case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader == null || OptimizedUtility.hasNoKeepAlive(connectionHeader)
     }
+    */
 
-  @tailrec final def parseHeaderLines(input: ByteString, lineStart: Int,
+    if (protocol eq HttpProtocols.`HTTP/1.1`) {
+      connectionHeader != null && OptimizedUtility.hasClose(connectionHeader)
+    } else if (protocol eq HttpProtocols.`HTTP/1.0`) {
+      connectionHeader == null || OptimizedUtility.hasNoKeepAlive(connectionHeader)
+    } else {
+      throw new Error("supposed to be not here.")
+    }
+  }
+
+  @tailrec final def parseHeaderLines(
+    input: ByteString,
+    lineStart: Int,
     headers: ListBuffer[HttpHeader] = ListBuffer[HttpHeader](),
-    headerCount: Int = 0, ch: Option[Connection] = None,
-    clh: Option[`Content-Length`] = None, cth: Option[`Content-Type`] = None,
-    teh: Option[`Transfer-Encoding`] = None, e100: Boolean = false,
+    headerCount: Int = 0,
+    ch: Connection = null,
+    clh: `Content-Length` = null,
+    cth: `Content-Type` = null,
+    teh: `Transfer-Encoding` = null,
+    e100: Boolean = false,
     hh: Boolean = false): Result = {
     var lineEnd = 0
     val result: Result =
@@ -80,19 +97,19 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
         if (e100) Result.Expect100Continue(() ⇒ next) else next
 
       case h: Connection ⇒
-        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, Some(h), clh, cth, teh, e100, hh)
+        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, h, clh, cth, teh, e100, hh)
 
       case h: `Content-Length` ⇒
-        if (clh.isEmpty) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, Some(h), cth, teh, e100, hh)
+        if (clh == null) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, h, cth, teh, e100, hh)
         else fail("HTTP message must not contain more than one Content-Length header")
 
       case h: `Content-Type` ⇒
-        if (cth.isEmpty) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, Some(h), teh, e100, hh)
-        else if (cth.get == h) parseHeaderLines(input, lineEnd, headers, headerCount, ch, clh, cth, teh, e100, hh)
+        if (cth == null) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, h, teh, e100, hh)
+        else if (cth == h) parseHeaderLines(input, lineEnd, headers, headerCount, ch, clh, cth, teh, e100, hh)
         else fail("HTTP message must not contain more than one Content-Type header")
 
       case h: `Transfer-Encoding` ⇒
-        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, Some(h), e100, hh)
+        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, h, e100, hh)
 
       case h: Expect ⇒
         if (h.has100continue) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, teh, e100 = true, hh)
@@ -106,17 +123,36 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
   }
 
   // work-around for compiler bug complaining about non-tail-recursion if we inline this method
-  def parseHeaderLinesAux(input: ByteString, lineStart: Int, headers: ListBuffer[HttpHeader], headerCount: Int,
-    ch: Option[Connection], clh: Option[`Content-Length`], cth: Option[`Content-Type`],
-    teh: Option[`Transfer-Encoding`], e100: Boolean, hh: Boolean): Result =
+  def parseHeaderLinesAux(
+    input: ByteString,
+    lineStart: Int,
+    headers: ListBuffer[HttpHeader],
+    headerCount: Int,
+    ch: Connection,
+    clh: `Content-Length`,
+    cth: `Content-Type`,
+    teh: `Transfer-Encoding`,
+    e100: Boolean,
+    hh: Boolean): Result =
     parseHeaderLines(input, lineStart, headers, headerCount, ch, clh, cth, teh, e100, hh)
 
-  def parseEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: Option[`Content-Length`],
-    cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
+  def parseEntity(
+    headers: List[HttpHeader],
+    input: ByteString,
+    bodyStart: Int,
+    clh: `Content-Length`,
+    cth: `Content-Type`,
+    teh: `Transfer-Encoding`,
+    hostHeaderPresent: Boolean,
     closeAfterResponseCompletion: Boolean): Result
 
-  def parseFixedLengthBody(headers: List[HttpHeader], input: ByteString, bodyStart: Int, length: Long,
-    cth: Option[`Content-Type`], closeAfterResponseCompletion: Boolean): Result =
+  def parseFixedLengthBody(
+    headers: List[HttpHeader],
+    input: ByteString,
+    bodyStart: Int,
+    length: Long,
+    cth: `Content-Type`,
+    closeAfterResponseCompletion: Boolean): Result =
     if (length >= settings.autoChunkingThreshold) {
       val tmp = copy(input)
       emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
@@ -214,10 +250,11 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
     } else needMoreData(input, offset)(parseBodyWithAutoChunking(_, _, remainingBytes, closeAfterResponseCompletion))
   }
 
-  def entity(cth: Option[`Content-Type`], body: ByteString): HttpEntity = {
-    val contentType = cth match {
-      case Some(x) ⇒ x.contentType
-      case None ⇒ ContentTypes.`application/octet-stream`
+  def entity(cth: `Content-Type`, body: ByteString): HttpEntity = {
+    val contentType = if (null == cth) {
+      ContentTypes.`application/octet-stream`
+    } else {
+      cth.contentType
     }
     HttpEntity(contentType, HttpData(body.compact))
   }

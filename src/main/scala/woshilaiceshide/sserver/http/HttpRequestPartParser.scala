@@ -104,23 +104,30 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
   def badProtocol = throw new ParsingException(HTTPVersionNotSupported)
 
   // http://tools.ietf.org/html/draft-ietf-httpbis-p1-messaging-22#section-3.3
-  def parseEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: Option[`Content-Length`],
-    cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
+  def parseEntity(
+    headers: List[HttpHeader],
+    input: ByteString,
+    bodyStart: Int,
+    clh: `Content-Length`,
+    cth: `Content-Type`,
+    teh: `Transfer-Encoding`,
+    hostHeaderPresent: Boolean,
     closeAfterResponseCompletion: Boolean): Result =
     if (hostHeaderPresent || protocol == HttpProtocols.`HTTP/1.0`) {
       teh match {
-        case Some(`Transfer-Encoding`(Seq("chunked"))) ⇒
-          if (clh.isEmpty) {
+        case `Transfer-Encoding`(Seq("chunked")) ⇒
+          if (clh == null) {
             val tmp = copy(input)
             emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
               parseChunk(tmp, bodyStart, closeAfterResponseCompletion)
             }
           } else fail("A chunked request must not contain a Content-Length header.")
 
-        case None | Some(`Transfer-Encoding`(Seq("identity"))) ⇒
-          val contentLength = clh match {
-            case Some(`Content-Length`(len)) ⇒ len
-            case None ⇒ 0
+        case null | `Transfer-Encoding`(Seq("identity")) ⇒
+          val contentLength = if (null == clh) {
+            0
+          } else {
+            clh.length
           }
           if (contentLength == 0) {
             if (input.length > bodyStart) {
@@ -139,7 +146,7 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
           } else fail(RequestEntityTooLarge, s"Request Content-Length $contentLength exceeds the configured limit of " +
             settings.maxContentLength)
 
-        case Some(te) ⇒ fail(NotImplemented, s"$te is not supported by this server")
+        case te ⇒ fail(NotImplemented, s"$te is not supported by this server")
       }
     } else fail("Request is missing required `Host` header")
 
