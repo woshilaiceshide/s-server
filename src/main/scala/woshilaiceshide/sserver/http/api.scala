@@ -52,7 +52,14 @@ final case class HttpConfigurator(
     header_parser_pool_size: Int = 8,
 
     max_response_size: Int = 2048,
-    max_payload_length_in_websocket_frame: Int = 2048) {
+    max_payload_length_in_websocket_frame: Int = 2048,
+
+    /**
+     * when write http response, server and date headers should be written? 
+     * 
+     * its can be overridden using 'woshilaiceshide.sserver.http.HttpChannel.writeResponse(response: HttpResponsePart, sizeHint: Int, writeServerAndDateHeader: Boolean)'
+     */
+    write_server_and_date_headers: Boolean = false) {
 
   import woshilaiceshide.sserver.utility._
 

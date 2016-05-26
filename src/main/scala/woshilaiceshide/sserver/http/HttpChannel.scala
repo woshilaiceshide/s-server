@@ -35,7 +35,7 @@ final class HttpChannel(
    *
    * netty's 'hello world' example does not render 'server' and 'date' headers.
    */
-  def writeResponse(response: HttpResponsePart, sizeHint: Int = 1024, writeServerAndDateHeader: Boolean = false) = {
+  def writeResponse(response: HttpResponsePart, sizeHint: Int = 1024, writeServerAndDateHeader: Boolean = configurator.write_server_and_date_headers) = {
 
     val (_finished, wr, should_close) = synchronized {
 

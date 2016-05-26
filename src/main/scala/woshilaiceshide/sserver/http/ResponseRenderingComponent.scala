@@ -111,13 +111,6 @@ trait ResponseRenderingComponent {
   def chunklessStreaming: Boolean = configurator.chunkless_streaming
   def transparentHeadRequests: Boolean = configurator.transparent_header_requestes
 
-  //TODO ???
-  private[this] def serverHeaderPlusDateColonSP =
-    serverHeaderValue match {
-      case "" ⇒ "Date: ".getAsciiBytes
-      case x ⇒ ("Server: " + x + "\r\nDate: ").getAsciiBytes
-    }
-
   // returns a boolean indicating whether the connection is to be closed after this response was sent
   def renderResponsePartRenderingContext(
     r: Rendering,
@@ -214,11 +207,9 @@ trait ResponseRenderingComponent {
       //status is rendered when retrieving the render.
       //this optimization is ugly.
       //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
-      //TODO many optimizations can be done here: 
-      //1. use 'ThreadLocal'
-      //2. cache the last second's bytes
+
       if (writeServerAndDateHeader) {
-        r ~~ serverAndDateHeader
+        render_server_and_date_header(r)
       }
       renderHeaders(headers, contentLengthDefined)
     }
@@ -296,8 +287,21 @@ trait ResponseRenderingComponent {
     }
   }
 
+  private[this] def serverHeaderPlusDateColonSP =
+    serverHeaderValue match {
+      case "" ⇒ "Date: ".getAsciiBytes
+      case x ⇒ ("Server: " + x + "\r\nDate: ").getAsciiBytes
+    }
+
   // for max perf we cache the ServerAndDateHeader of the last second here
   @volatile private[this] var cachedServerAndDateHeader: (Long, Array[Byte]) = _
+
+  //TODO many optimizations can be done here: 
+  //1. use 'ThreadLocal'
+  //2. cache the last second's bytes
+  private def render_server_and_date_header(r: Rendering) = {
+    r ~~ serverAndDateHeader
+  }
 
   private def serverAndDateHeader: Array[Byte] = {
     var (cachedSeconds, cachedBytes) = if (cachedServerAndDateHeader != null) cachedServerAndDateHeader else (0L, null)
