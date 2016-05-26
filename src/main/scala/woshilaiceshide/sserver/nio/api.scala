@@ -181,15 +181,15 @@ trait ByteBufferPool {
 import woshilaiceshide.sserver.utility.ArrayNodeStack
 
 /**
- * this pool will cach a fixed count byte buffers in the thread locally, and every buffer is of size 'framge_size'.
+ * this pool will cache a fixed count byte buffers in the thread locally, and every buffer is of size 'fragment_size'.
  */
-final case class FragmentedByteBufferPool(fragement_size: Int = 512, cached_count: Int = 128) extends ByteBufferPool {
+final case class FragmentedByteBufferPool(fragment_size: Int = 512, cached_count: Int = 128) extends ByteBufferPool {
 
   private val tl_pool = new java.lang.ThreadLocal[ArrayNodeStack[ByteBuffer]]() {
     override def initialValue(): ArrayNodeStack[ByteBuffer] = {
       val pool = new ArrayNodeStack[ByteBuffer](cached_count)
       for (i <- 0 until cached_count) {
-        val tmp = ByteBuffer.allocate(fragement_size)
+        val tmp = ByteBuffer.allocate(fragment_size)
         pool.push(tmp)
       }
       pool
@@ -199,7 +199,7 @@ final case class FragmentedByteBufferPool(fragement_size: Int = 512, cached_coun
   def borrow_buffer(size_hint: Int): ByteBuffer = {
     val tmp = tl_pool.get().pop()
     if (tmp.isEmpty) {
-      ByteBuffer.allocate(fragement_size)
+      ByteBuffer.allocate(fragment_size)
     } else {
       tmp.get
     }
