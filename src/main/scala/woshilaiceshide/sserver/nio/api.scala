@@ -11,9 +11,8 @@ import java.nio.channels._
 
 import scala.annotation.tailrec
 
-/**
- * public 'api's here
- */
+//public 'api's here
+
 final class ServerSocketChannelWrapper(channel: ServerSocketChannel) {
   def setOption[T](name: java.net.SocketOption[T], value: T) = {
     channel.setOption(name, value)
@@ -174,7 +173,46 @@ trait SelectorRunnerConfigurator {
   def enable_fuzzy_scheduler: Boolean
 }
 
+trait ByteBufferPool {
+  def borrow_buffer(size_hint: Int): ByteBuffer
+  def return_buffer(buffer: ByteBuffer): Unit
+}
+
+import woshilaiceshide.sserver.utility.ArrayNodeStack
+
+/**
+ * this pool will cach a fixed count byte buffers in the thread locally, and every buffer is of size 'framge_size'.
+ */
+final case class FragmentedByteBufferPool(fragement_size: Int = 1024, cached_count: Int = 128) extends ByteBufferPool {
+
+  private val tl_pool = new java.lang.ThreadLocal[ArrayNodeStack[ByteBuffer]]() {
+    override def initialValue(): ArrayNodeStack[ByteBuffer] = {
+      val pool = new ArrayNodeStack[ByteBuffer](cached_count)
+      for (i <- 0 until cached_count) {
+        val tmp = ByteBuffer.allocate(fragement_size)
+        pool.push(tmp)
+      }
+      pool
+    }
+  }
+
+  def borrow_buffer(size_hint: Int): ByteBuffer = {
+    val tmp = tl_pool.get().pop()
+    if (tmp.isEmpty) {
+      ByteBuffer.allocate(fragement_size)
+    } else {
+      tmp.get
+    }
+  }
+  def return_buffer(buffer: ByteBuffer): Unit = {
+    tl_pool.get().push(buffer)
+
+  }
+
+}
+
 trait NioConfigurator extends SelectorRunnerConfigurator {
+
   def count_for_reader_writers: Int
   def listening_channel_configurator: ServerSocketChannelWrapper => Unit
   def accepted_channel_configurator: SocketChannelWrapper => Unit
@@ -190,6 +228,11 @@ trait NioConfigurator extends SelectorRunnerConfigurator {
    * see woshilaiceshide.sserver.nio.ChannelHandler.inputEnded(channelWrapper: ChannelWrapper)
    */
   def allow_hafl_closure: Boolean
+
+  /**
+   * this pool is only used by 'SelectorRunner' internally.
+   */
+  def buffer_pool: ByteBufferPool
 }
 
 final case class XNioConfigurator(
@@ -217,7 +260,8 @@ final case class XNioConfigurator(
    *
    * a good suggestion is keep it 'false'
    */
-  allow_hafl_closure: Boolean = false) extends NioConfigurator
+  allow_hafl_closure: Boolean = false,
+  buffer_pool: ByteBufferPool = FragmentedByteBufferPool()) extends NioConfigurator
 
 object NioSocketServer {
 
