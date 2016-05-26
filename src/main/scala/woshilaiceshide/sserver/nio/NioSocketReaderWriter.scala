@@ -22,20 +22,30 @@ import SelectorRunner._
 
 private[nio] object NioSocketReaderWriter {
 
-  final class BytesNode(val bytes: Array[Byte], var next: BytesNode = null) {
-    def append(x: Array[Byte]) = {
-      if (null == x || 0 == x.length) {
+  final class BytesNode(val bytes: ByteBuffer, var next: BytesNode = null)
+  final class BytesList(val head: BytesNode, var last: BytesNode = null) {
+    def append(x: ByteBuffer) = {
+      val newed = new BytesNode(x)
+      if (null == last) {
+        head.next = newed
+        last = newed
         this
       } else {
-        this.next = new BytesNode(x)
-        this.next
+        last.next = newed
+        last = newed
+        this
       }
-
     }
-  }
-  final class BytesList(val head: BytesNode, var last: BytesNode) {
-    def append(x: Array[Byte]) = {
-      last = last.append(x)
+    def append(x: BytesList) = {
+      if (null == last) {
+        head.next = x.head
+        last = x.last
+        this
+      } else {
+        last.next = x.head
+        last = x.last
+        this
+      }
     }
   }
 
@@ -343,6 +353,25 @@ class NioSocketReaderWriter private[nio] (
     //use a (byte)flag to store the following two fields?
     private[nio] var already_pended = false
     private[nio] var should_generate_writing_event = false
+
+    @tailrec private final def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
+      if (0 < times) {
+        /*
+                   * from java doc: 
+                   * ...
+                   * This method may be invoked at any time. 
+                   * If another thread has already initiated a write operation upon this channel, 
+                   * however, then an invocation of this method will block until the first operation is complete.
+                   * ...
+                   */
+        channel.write(buffer)
+        if (buffer.hasRemaining()) {
+          write_immediately(buffer, times - 1)
+        }
+      }
+    }
+
+    //TODO what if the writer want to submit a bytes that never changed, and the bytes will used again and again? such as cached http response.
     //if generate_writing_event is true, then 'bytesWritten' will be fired.
     def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
 
@@ -368,45 +397,46 @@ class NioSocketReaderWriter private[nio] (
 
           } else {
 
-            if (null == writes) {
+            @tailrec def pend_bytes(buffer: ByteBuffer): Unit = {
+              if (buffer.hasRemaining()) {
+                val tmp = configurator.buffer_pool.borrow_buffer(512)
+                if (buffer.remaining() > tmp.capacity()) {
+                  val limit = buffer.limit()
+                  buffer.limit(buffer.position() + tmp.capacity())
+                  tmp.put(buffer)
+                  tmp.flip()
+                  buffer.limit(limit)
 
-              @tailrec def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
-                if (0 < times) {
-                  /*
-                   * from java doc: 
-                   * ...
-                   * This method may be invoked at any time. 
-                   * If another thread has already initiated a write operation upon this channel, 
-                   * however, then an invocation of this method will block until the first operation is complete.
-                   * ...
-                   */
-                  //TODO move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
-                  //or the selector's i/o thread may collide with the writing thread, which will twice the cost.
-                  channel.write(buffer)
-                  if (buffer.hasRemaining()) {
-                    write_immediately(buffer, times - 1)
-                  }
+                } else {
+                  tmp.put(buffer)
+                  tmp.flip()
+                }
+
+                if (writes == null) {
+                  writes = new BytesList(new BytesNode(tmp), null)
+                } else {
+                  writes.append(tmp)
+                }
+                if (buffer.hasRemaining()) {
+                  pend_bytes(buffer)
                 }
               }
-              //no spin here
-              val buffer = ByteBuffer.wrap(bytes, offset, length)
-              write_immediately(buffer, 1)
-              if (buffer.hasRemaining()) {
-                val tmp = new Array[Byte](buffer.remaining())
-                buffer.get(tmp)
-                val node = new BytesNode(tmp)
-                writes = new BytesList(node, node)
-              }
-
-              //make i/o in the selector's thread
-              /*val node = new BytesNode(bytes)
-              writes = new BytesList(node, node)*/
-
-            } else {
-              writes.append(bytes)
             }
 
-            bytes_waiting_for_written = bytes_waiting_for_written + bytes.length
+            val buffer = ByteBuffer.wrap(bytes, offset, length)
+
+            //move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
+            //or the selector's i/o thread may collide with the writing thread, which will twice the cost.
+            if (null == writes && NioSocketReaderWriter.this.is_in_io_worker_thread()) {
+              write_immediately(buffer, configurator.spin_count_when_write_immediately)
+              if (buffer.hasRemaining()) {
+                bytes_waiting_for_written = bytes_waiting_for_written + buffer.remaining()
+                pend_bytes(buffer)
+              }
+            } else {
+              bytes_waiting_for_written = bytes_waiting_for_written + length - offset
+              pend_bytes(buffer)
+            }
 
             /*if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
               WriteResult.WR_OK_BUT_OVERFLOWED
@@ -448,7 +478,7 @@ class NioSocketReaderWriter private[nio] (
         x
       }
       if (null != tmp) {
-        val remain = writing0(tmp.head, tmp.last, 0)
+        val remain = writing0(tmp, tmp.head, 0)
 
         var become_writable = false
         this.synchronized {
@@ -468,7 +498,7 @@ class NioSocketReaderWriter private[nio] (
           if (null == writes) {
             writes = remain._1
           } else if (null != remain._1) {
-            remain._1.last.next = writes.head
+            remain._1.append(writes)
             writes = remain._1
           }
 
@@ -484,23 +514,27 @@ class NioSocketReaderWriter private[nio] (
       }
 
     }
-    @tailrec private[nio] final def writing0(head: BytesNode, last: BytesNode, written_bytes: Int): (BytesList, Int) = {
+    @tailrec private[nio] final def writing0(original_list: BytesList, node: BytesNode, written_bytes: Int): (BytesList, Int) = {
 
-      head match {
+      node match {
+
         case null => (null, written_bytes)
-        case node => {
-          val written = channel.write(ByteBuffer.wrap(node.bytes))
-          if (written == node.bytes.length) {
-            writing0(head.next, last, written_bytes + written)
-          } else if (written > 0) {
-            val remain = new Array[Byte](node.bytes.length - written)
-            System.arraycopy(node.bytes, written, remain, 0, remain.length)
-            val newNode = new BytesNode(remain, head.next)
-            (new BytesList(newNode, if (head eq last) newNode else last), written_bytes + written)
-          } else if (0 == written) {
-            (new BytesList(head, last), written_bytes)
+        case _ => {
+
+          val bytes = node.bytes
+          val remaining = bytes.remaining()
+          val written = channel.write(bytes)
+
+          if (written == remaining) {
+            configurator.buffer_pool.return_buffer(bytes)
+            writing0(original_list, node.next, written_bytes + written)
+
           } else {
-            (new BytesList(head, last), written_bytes)
+            if (original_list.head eq node) {
+              (original_list, written_bytes + written)
+            } else {
+              (new BytesList(node, original_list.last), written_bytes + written)
+            }
           }
         }
       }
@@ -555,7 +589,15 @@ class NioSocketReaderWriter private[nio] (
 
         if (status == CHANNEL_CLOSING_RIGHT_NOW) {
           safeClose(channel)
+          @tailrec def return_writes(node: BytesNode): Unit = {
+            configurator.buffer_pool.return_buffer(node.bytes)
+            if (null != node.next) {
+              return_writes(node.next)
+            }
+          }
+          val tmp = writes
           writes = null
+          return_writes(tmp.head)
           status = CHANNEL_CLOSED
           true
         } else if (status == CHANNEL_CLOSED) {
@@ -575,6 +617,7 @@ class NioSocketReaderWriter private[nio] (
           //close_if_failed { clearOpWrite() }
           false
         } else if (status == CHANNEL_NORMAL) {
+          //TODO write immediately???
           close_if_failed { setOpWrite() }
         } else {
           false

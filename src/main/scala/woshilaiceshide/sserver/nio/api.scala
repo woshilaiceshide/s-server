@@ -183,7 +183,7 @@ import woshilaiceshide.sserver.utility.ArrayNodeStack
 /**
  * this pool will cach a fixed count byte buffers in the thread locally, and every buffer is of size 'framge_size'.
  */
-final case class FragmentedByteBufferPool(fragement_size: Int = 1024, cached_count: Int = 128) extends ByteBufferPool {
+final case class FragmentedByteBufferPool(fragement_size: Int = 512, cached_count: Int = 128) extends ByteBufferPool {
 
   private val tl_pool = new java.lang.ThreadLocal[ArrayNodeStack[ByteBuffer]]() {
     override def initialValue(): ArrayNodeStack[ByteBuffer] = {
@@ -205,6 +205,7 @@ final case class FragmentedByteBufferPool(fragement_size: Int = 1024, cached_cou
     }
   }
   def return_buffer(buffer: ByteBuffer): Unit = {
+    buffer.clear()
     tl_pool.get().push(buffer)
 
   }
@@ -230,9 +231,13 @@ trait NioConfigurator extends SelectorRunnerConfigurator {
   def allow_hafl_closure: Boolean
 
   /**
-   * this pool is only used by 'SelectorRunner' internally.
+   * this pool is only used by 'SelectorRunner' for the bytes those will be written to the socket internally.
+   *
+   * you can use 'woshilaiceshide.sserver.nio.FragmentedByteBufferPool' with your own parameters.
    */
   def buffer_pool: ByteBufferPool
+
+  def spin_count_when_write_immediately: Int
 }
 
 final case class XNioConfigurator(
@@ -261,7 +266,8 @@ final case class XNioConfigurator(
    * a good suggestion is keep it 'false'
    */
   allow_hafl_closure: Boolean = false,
-  buffer_pool: ByteBufferPool = FragmentedByteBufferPool()) extends NioConfigurator
+  buffer_pool: ByteBufferPool = FragmentedByteBufferPool(),
+  spin_count_when_write_immediately: Int = 3) extends NioConfigurator
 
 object NioSocketServer {
 
