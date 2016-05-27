@@ -22,10 +22,10 @@ import SelectorRunner._
 
 private[nio] object NioSocketReaderWriter {
 
-  final class BytesNode(val bytes: ByteBuffer, var next: BytesNode = null)
+  final class BytesNode(val bytes: ByteBuffer, var next: BytesNode = null, val helper: Byte)
   final class BytesList(val head: BytesNode, var last: BytesNode = null) {
-    def append(x: ByteBuffer) = {
-      val newed = new BytesNode(x)
+    def append(x: ByteBuffer, helper: Byte) = {
+      val newed = new BytesNode(x, null, helper)
       if (null == last) {
         head.next = newed
         last = newed
@@ -60,6 +60,9 @@ class NioSocketReaderWriter private[nio] (
 
   private val socket_max_idle_time_in_seconds_1 = if (0 < socket_max_idle_time_in_seconds) socket_max_idle_time_in_seconds else 60
   select_timeout = Math.min(socket_max_idle_time_in_seconds_1 * 1000, default_select_timeout)
+
+  private var buffer_pool_used_by_io_thread = configurator.buffer_pool_factory.get_pool_used_by_io_thread()
+  private var buffer_pool_used_by_biz_thread = configurator.buffer_pool_factory.get_pool_used_by_biz_thread()
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
   //this only client buffer will become read only before it's given to the handler
@@ -397,28 +400,35 @@ class NioSocketReaderWriter private[nio] (
 
           } else {
 
-            @tailrec def pend_bytes(buffer: ByteBuffer): Unit = {
+            @tailrec def pend_bytes(buffer: ByteBuffer, pool: ByteBufferPool, used_by_io_thread: Boolean): Unit = {
               if (buffer.hasRemaining()) {
-                val tmp = configurator.buffer_pool.borrow_buffer(512)
-                if (buffer.remaining() > tmp.capacity()) {
+
+                val borrowed = pool.borrow_buffer(512)
+                if (0 >= borrowed.helper) {
+                  throw new Error("supposed to be not here!")
+                }
+
+                if (buffer.remaining() > borrowed.buffer.capacity()) {
                   val limit = buffer.limit()
-                  buffer.limit(buffer.position() + tmp.capacity())
-                  tmp.put(buffer)
-                  tmp.flip()
+                  buffer.limit(buffer.position() + borrowed.buffer.capacity())
+                  borrowed.buffer.put(buffer)
+                  borrowed.buffer.flip()
                   buffer.limit(limit)
 
                 } else {
-                  tmp.put(buffer)
-                  tmp.flip()
+                  borrowed.buffer.put(buffer)
+                  borrowed.buffer.flip()
                 }
 
+                val helper = if (used_by_io_thread) -borrowed.helper else borrowed.helper
+
                 if (writes == null) {
-                  writes = new BytesList(new BytesNode(tmp), null)
+                  writes = new BytesList(new BytesNode(borrowed.buffer, null, borrowed.helper), null)
                 } else {
-                  writes.append(tmp)
+                  writes.append(borrowed.buffer, borrowed.helper)
                 }
                 if (buffer.hasRemaining()) {
-                  pend_bytes(buffer)
+                  pend_bytes(buffer, pool, used_by_io_thread)
                 }
               }
             }
@@ -431,11 +441,17 @@ class NioSocketReaderWriter private[nio] (
               write_immediately(buffer, configurator.spin_count_when_write_immediately)
               if (buffer.hasRemaining()) {
                 bytes_waiting_for_written = bytes_waiting_for_written + buffer.remaining()
-                pend_bytes(buffer)
+                pend_bytes(buffer, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
               }
+
+            } else if (NioSocketReaderWriter.this.is_in_io_worker_thread()) {
+              bytes_waiting_for_written = bytes_waiting_for_written + length - offset
+              pend_bytes(buffer, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+
             } else {
               bytes_waiting_for_written = bytes_waiting_for_written + length - offset
-              pend_bytes(buffer)
+              pend_bytes(buffer, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, false)
+
             }
 
             /*if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
@@ -527,7 +543,11 @@ class NioSocketReaderWriter private[nio] (
           val written = channel.write(bytes)
 
           if (written == remaining) {
-            configurator.buffer_pool.return_buffer(bytes)
+            if (node.helper > 0) {
+              NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread.return_buffer(bytes, node.helper)
+            } else {
+              NioSocketReaderWriter.this.buffer_pool_used_by_io_thread.return_buffer(bytes, node.helper)
+            }
             writing0(original_list, node.next, written_bytes + written)
 
           } else {
@@ -591,7 +611,11 @@ class NioSocketReaderWriter private[nio] (
         if (status == CHANNEL_CLOSING_RIGHT_NOW) {
           safeClose(channel)
           @tailrec def return_writes(node: BytesNode): Unit = {
-            configurator.buffer_pool.return_buffer(node.bytes)
+            if (node.helper > 0) {
+              NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread.return_buffer(node.bytes, node.helper)
+            } else {
+              NioSocketReaderWriter.this.buffer_pool_used_by_io_thread.return_buffer(node.bytes, node.helper)
+            }
             if (null != node.next) {
               return_writes(node.next)
             }

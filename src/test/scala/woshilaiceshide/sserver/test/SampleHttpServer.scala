@@ -96,7 +96,7 @@ object SampleHttpServer extends App {
   val configurator = XNioConfigurator(count_for_reader_writers = 2,
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator,
-    buffer_pool = FragmentedByteBufferPool(128, 32))
+    buffer_pool_factory = DefaultByteBufferPoolFactory(128, 32))
 
   val port = 8787
 

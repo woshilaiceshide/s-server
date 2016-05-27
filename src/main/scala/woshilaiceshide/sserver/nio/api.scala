@@ -174,40 +174,83 @@ trait SelectorRunnerConfigurator {
 }
 
 trait ByteBufferPool {
-  def borrow_buffer(size_hint: Int): ByteBuffer
-  def return_buffer(buffer: ByteBuffer): Unit
+  def borrow_buffer(size_hint: Int): Borrowed
+  def return_buffer(buffer: ByteBuffer, helper: Byte): Unit
 }
 
 import woshilaiceshide.sserver.utility.ArrayNodeStack
 
+final case class Borrowed(helper: Byte, buffer: ByteBuffer)
 /**
  * this pool will cache a fixed count byte buffers in the thread locally, and every buffer is of size 'fragment_size'.
  */
-final case class FragmentedByteBufferPool(fragment_size: Int = 512, cached_count: Int = 128) extends ByteBufferPool {
+final case class FragmentedByteBufferPool(fragment_size: Int, cached_count: Int, direct: Boolean) extends ByteBufferPool {
 
-  private val tl_pool = new java.lang.ThreadLocal[ArrayNodeStack[ByteBuffer]]() {
-    override def initialValue(): ArrayNodeStack[ByteBuffer] = {
-      val pool = new ArrayNodeStack[ByteBuffer](cached_count)
-      for (i <- 0 until cached_count) {
-        val tmp = ByteBuffer.allocate(fragment_size)
-        pool.push(tmp)
-      }
-      pool
-    }
+  private var pool = new ArrayNodeStack[ByteBuffer](cached_count)
+  for (i <- 0 until cached_count) {
+    val tmp = if (!direct) ByteBuffer.allocate(fragment_size) else ByteBuffer.allocateDirect(fragment_size)
+    pool.push(tmp)
   }
-
-  def borrow_buffer(size_hint: Int): ByteBuffer = {
-    val tmp = tl_pool.get().pop()
+  def borrow_buffer(size_hint: Int): Borrowed = {
+    val tmp = pool.pop()
     if (tmp.isEmpty) {
-      ByteBuffer.allocate(fragment_size)
+      Borrowed(2, ByteBuffer.allocate(fragment_size))
     } else {
-      tmp.get
+      Borrowed(1, tmp.get)
     }
   }
-  def return_buffer(buffer: ByteBuffer): Unit = {
-    buffer.clear()
-    tl_pool.get().push(buffer)
+  def return_buffer(buffer: ByteBuffer, helper: Byte): Unit = {
+    if (1 != helper) {
+      buffer.clear()
+      pool.push(buffer)
+    }
+  }
+  def free(): Unit = {
+    pool.clear()
+    pool = null
+  }
+}
 
+final case class SynchronizedFragmentedByteBufferPool(fragment_size: Int, cached_count: Int, direct: Boolean) extends ByteBufferPool {
+
+  private var pool = new ArrayNodeStack[ByteBuffer](cached_count)
+  for (i <- 0 until cached_count) {
+    val tmp = if (!direct) ByteBuffer.allocate(fragment_size) else ByteBuffer.allocateDirect(fragment_size)
+    pool.push(tmp)
+  }
+  def borrow_buffer(size_hint: Int): Borrowed = this.synchronized {
+    val tmp = pool.pop()
+    if (tmp.isEmpty) {
+      Borrowed(2, ByteBuffer.allocate(fragment_size))
+    } else {
+      Borrowed(1, tmp.get)
+    }
+  }
+  def return_buffer(buffer: ByteBuffer, helper: Byte): Unit = this.synchronized {
+    if (1 != helper) {
+      buffer.clear()
+      pool.push(buffer)
+    }
+  }
+  def free(): Unit = {
+    pool.clear()
+    pool = null
+  }
+}
+
+trait ByteBufferPoolFactory {
+  def get_pool_used_by_io_thread(): ByteBufferPool
+  def get_pool_used_by_biz_thread(): ByteBufferPool
+}
+
+final case class DefaultByteBufferPoolFactory(fragment_size: Int = 512, cached_count: Int = 64, direct: Boolean = true) extends ByteBufferPoolFactory {
+
+  def get_pool_used_by_io_thread(): ByteBufferPool = {
+    FragmentedByteBufferPool(fragment_size, cached_count, direct)
+  }
+
+  def get_pool_used_by_biz_thread(): ByteBufferPool = {
+    FragmentedByteBufferPool(fragment_size, cached_count, direct)
   }
 
 }
@@ -235,7 +278,7 @@ trait NioConfigurator extends SelectorRunnerConfigurator {
    *
    * you can use 'woshilaiceshide.sserver.nio.FragmentedByteBufferPool' with your own parameters.
    */
-  def buffer_pool: ByteBufferPool
+  def buffer_pool_factory: ByteBufferPoolFactory
 
   def spin_count_when_write_immediately: Int
 }
@@ -266,7 +309,7 @@ final case class XNioConfigurator(
    * a good suggestion is keep it 'false'
    */
   allow_hafl_closure: Boolean = false,
-  buffer_pool: ByteBufferPool = FragmentedByteBufferPool(),
+  buffer_pool_factory: ByteBufferPoolFactory = DefaultByteBufferPoolFactory(),
   spin_count_when_write_immediately: Int = 3) extends NioConfigurator
 
 object NioSocketServer {

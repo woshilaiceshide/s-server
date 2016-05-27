@@ -91,7 +91,7 @@ object LinkedNodeStack {
 
 final class ArrayNodeStack[@specialized(Int, Long, Short, Byte, Boolean, Double, Float) T](capacity: Int)(implicit ctag: ClassTag[T]) {
 
-  private val array = new Array[T](capacity)
+  private var array = new Array[T](capacity)
   private var cursor: Int = 0
 
   def push(value: T): Boolean = {
@@ -112,6 +112,11 @@ final class ArrayNodeStack[@specialized(Int, Long, Short, Byte, Boolean, Double,
       cursor = cursor - 1
       Some(tmp)
     }
+  }
+
+  def clear(): Unit = {
+    array = null
+    cursor = 0
   }
 
 }
