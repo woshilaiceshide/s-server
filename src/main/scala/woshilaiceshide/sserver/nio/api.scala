@@ -176,6 +176,7 @@ trait SelectorRunnerConfigurator {
 trait ByteBufferPool {
   def borrow_buffer(size_hint: Int): Borrowed
   def return_buffer(buffer: ByteBuffer, helper: Byte): Unit
+  def free(): Unit
 }
 
 import woshilaiceshide.sserver.utility.ArrayNodeStack
@@ -241,6 +242,7 @@ final case class SynchronizedFragmentedByteBufferPool(fragment_size: Int, cached
 trait ByteBufferPoolFactory {
   def get_pool_used_by_io_thread(): ByteBufferPool
   def get_pool_used_by_biz_thread(): ByteBufferPool
+  def free(): Unit
 }
 
 final case class DefaultByteBufferPoolFactory(fragment_size: Int = 512, cached_count: Int = 64, direct: Boolean = true) extends ByteBufferPoolFactory {
@@ -252,6 +254,8 @@ final case class DefaultByteBufferPoolFactory(fragment_size: Int = 512, cached_c
   def get_pool_used_by_biz_thread(): ByteBufferPool = {
     FragmentedByteBufferPool(fragment_size, cached_count, direct)
   }
+
+  def free(): Unit = {}
 
 }
 

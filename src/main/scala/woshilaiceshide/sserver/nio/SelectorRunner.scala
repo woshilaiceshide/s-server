@@ -260,7 +260,7 @@ abstract class SelectorRunner() {
   private var terminated = false
   private val lock_for_terminated = new Object
   private var when_terminated: LinkedNodeList[Runnable] = LinkedNodeList.newEmpty()
-  def registerOnTermination[T](code: => T) = lock_for_terminated.synchronized {
+  def register_on_termination[T](code: => T) = lock_for_terminated.synchronized {
     if (terminated) {
       false
     } else {

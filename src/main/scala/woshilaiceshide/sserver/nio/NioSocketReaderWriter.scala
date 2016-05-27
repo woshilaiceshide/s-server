@@ -64,6 +64,14 @@ class NioSocketReaderWriter private[nio] (
   private var buffer_pool_used_by_io_thread = configurator.buffer_pool_factory.get_pool_used_by_io_thread()
   private var buffer_pool_used_by_biz_thread = configurator.buffer_pool_factory.get_pool_used_by_biz_thread()
 
+  this.register_on_termination {
+    buffer_pool_used_by_io_thread.free()
+    buffer_pool_used_by_io_thread = null
+    buffer_pool_used_by_biz_thread.free()
+    buffer_pool_used_by_biz_thread = null
+    configurator.buffer_pool_factory.free()
+  }
+
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
   //this only client buffer will become read only before it's given to the handler
   private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
