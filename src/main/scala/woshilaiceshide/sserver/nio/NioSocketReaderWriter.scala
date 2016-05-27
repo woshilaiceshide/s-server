@@ -480,8 +480,7 @@ class NioSocketReaderWriter private[nio] (
       if (null != tmp) {
         val remain = writing0(tmp, tmp.head, 0)
 
-        var become_writable = false
-        this.synchronized {
+        val become_writable = this.synchronized {
 
           //clear op_write just here for optimization.
           if (null == remain._1 && writes == null) {
@@ -503,7 +502,9 @@ class NioSocketReaderWriter private[nio] (
           }
 
           if (prev_bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
-            become_writable = bytes_waiting_for_written < max_bytes_waiting_for_written_per_channel
+            bytes_waiting_for_written < max_bytes_waiting_for_written_per_channel
+          } else {
+            false
           }
         }
         //invoked if needed only.
