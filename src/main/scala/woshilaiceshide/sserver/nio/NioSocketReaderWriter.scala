@@ -97,7 +97,7 @@ class NioSocketReaderWriter private[nio] (
     this.iterate_registered_keys { key =>
       val attach = key.attachment()
       attach match {
-        case c: MyChannelWrapper => c.closeDirectly()
+        case c: NioSocketReaderWriter#MyChannelWrapper => c.closeDirectly()
         case _ =>
       }
     }
@@ -114,7 +114,7 @@ class NioSocketReaderWriter private[nio] (
       this.iterate_registered_keys { key =>
         val attach = key.attachment()
         attach match {
-          case c: MyChannelWrapper => {
+          case c: NioSocketReaderWriter#MyChannelWrapper => {
             c.close(false, ChannelClosedCause.SERVER_STOPPING)
             safeOp { c.justOpWriteIfNeededOrNoOp() }
           }
@@ -180,7 +180,7 @@ class NioSocketReaderWriter private[nio] (
       last_check_for_idle_zombie = now
       this.iterate_registered_keys { key =>
         key.attachment() match {
-          case c: MyChannelWrapper =>
+          case c: NioSocketReaderWriter#MyChannelWrapper =>
             c.checkIdle(now)
             c.checkZombie(now)
         }
@@ -251,7 +251,7 @@ class NioSocketReaderWriter private[nio] (
     }
   }
 
-  protected[nio] class MyChannelWrapper(private[nio] val channel: SocketChannel, private[nio] var handler: ChannelHandler) extends ChannelWrapper with SelectorRunner.HasKey {
+  protected[nio] final class MyChannelWrapper(private[nio] val channel: SocketChannel, private[nio] var handler: ChannelHandler) extends ChannelWrapper with SelectorRunner.HasKey {
 
     private[nio] def isInputShutdown() = channel.socket().isInputShutdown()
     private[nio] def isOutputShutdown() = channel.socket().isOutputShutdown()
@@ -384,7 +384,8 @@ class NioSocketReaderWriter private[nio] (
 
     //TODO what if the writer want to submit a bytes that never changed, and the bytes will used again and again? such as cached http response.
     //if generate_writing_event is true, then 'bytesWritten' will be fired.
-    def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
+    //def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
+    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
 
       var please_pend = false
       var please_wakeup = false
@@ -400,7 +401,13 @@ class NioSocketReaderWriter private[nio] (
 
           this.last_active_time = System.currentTimeMillis()
 
-          val (wr, should_pend) = if (null == bytes || 0 == bytes.length) {
+          val remaining = if (null == bytes) {
+            0
+          } else {
+            bytes.remaining()
+          }
+
+          val (wr, should_pend) = if (0 == remaining) {
             (WriteResult.WR_OK, false)
 
           } else if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
@@ -441,24 +448,22 @@ class NioSocketReaderWriter private[nio] (
               }
             }
 
-            val buffer = ByteBuffer.wrap(bytes, offset, length)
-
             //move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
             //or the selector's i/o thread may collide with the writing thread, which will twice the cost.
             if (null == writes && NioSocketReaderWriter.this.is_in_io_worker_thread()) {
-              write_immediately(buffer, configurator.spin_count_when_write_immediately)
-              if (buffer.hasRemaining()) {
-                bytes_waiting_for_written = bytes_waiting_for_written + buffer.remaining()
-                pend_bytes(buffer, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+              write_immediately(bytes, configurator.spin_count_when_write_immediately)
+              if (bytes.hasRemaining()) {
+                bytes_waiting_for_written = bytes_waiting_for_written + bytes.remaining()
+                pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
               }
 
             } else if (NioSocketReaderWriter.this.is_in_io_worker_thread()) {
-              bytes_waiting_for_written = bytes_waiting_for_written + length - offset
-              pend_bytes(buffer, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+              bytes_waiting_for_written = bytes_waiting_for_written + remaining
+              pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
 
             } else {
-              bytes_waiting_for_written = bytes_waiting_for_written + length - offset
-              pend_bytes(buffer, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, false)
+              bytes_waiting_for_written = bytes_waiting_for_written + remaining
+              pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, false)
 
             }
 

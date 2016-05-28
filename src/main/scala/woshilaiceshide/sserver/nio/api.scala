@@ -102,7 +102,11 @@ trait ChannelWrapper {
     write(bytes, 0, bytes.length, write_even_if_too_busy, generate_writing_event)
   }
 
-  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value
+  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
+    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_writing_event)
+  }
+
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value
 }
 
 /**
