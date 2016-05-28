@@ -274,10 +274,12 @@ abstract class SelectorRunner() {
       terminated = true
       val tmp = when_terminated
       when_terminated = null
-      this.notifyAll()
       tmp
     }
     termination_sinks.foreach { x => safeOp(x.run()) }
+    this.synchronized {
+      this.notifyAll()
+    }
   }
 
   /**
@@ -312,9 +314,11 @@ abstract class SelectorRunner() {
       true
     } catch {
       case ex: Throwable => {
+        warn(ex)
+        //also run stop_roughly()
+        stop_roughly()
         status.set(BAD)
         close_selector()
-        warn(ex)
         false
       }
     }
