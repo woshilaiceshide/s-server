@@ -46,8 +46,7 @@ final case class HttpConfigurator(
     base_for_content_length_cache: Int = 1,
     size_for_content_length_cache: Int = 1024 * 4,
 
-    bytes_rendering_pool_size: Int = 2,
-    bytes_rendering_length_in_pool: Int = 1024,
+    cached_bytes_rendering_length: Int = 1024,
 
     header_parser_pool_size: Int = 8,
 
@@ -55,8 +54,8 @@ final case class HttpConfigurator(
     max_payload_length_in_websocket_frame: Int = 2048,
 
     /**
-     * when write http response, server and date headers should be written? 
-     * 
+     * when write http response, server and date headers should be written?
+     *
      * its can be overridden using 'woshilaiceshide.sserver.http.HttpChannel.writeResponse(response: HttpResponsePart, sizeHint: Int, writeServerAndDateHeader: Boolean)'
      */
     write_server_and_date_headers: Boolean = false) {
@@ -64,25 +63,17 @@ final case class HttpConfigurator(
   import woshilaiceshide.sserver.utility._
 
   //a huge optimization. bytes copy and allocation is terrible in general.
-  private val tl_r_pool = new java.lang.ThreadLocal[ArrayNodeStack[RevisedByteArrayRendering]]() {
-    override def initialValue(): ArrayNodeStack[RevisedByteArrayRendering] = {
-      val pool = new ArrayNodeStack[RevisedByteArrayRendering](bytes_rendering_pool_size)
-      for (i <- 0 until bytes_rendering_pool_size) {
-        pool.push(new RevisedByteArrayRendering(bytes_rendering_length_in_pool))
-      }
-      pool
+  private val cached_bytes_rendering = new java.lang.ThreadLocal[RichBytesRendering]() {
+    override def initialValue(): RichBytesRendering = {
+      new RevisedByteArrayRendering(cached_bytes_rendering_length)
     }
   }
-  private val tl_r_pool_with_status_200 = new java.lang.ThreadLocal[ArrayNodeStack[RevisedByteArrayRendering]]() {
-    override def initialValue(): ArrayNodeStack[RevisedByteArrayRendering] = {
-      val pool = new ArrayNodeStack[RevisedByteArrayRendering](bytes_rendering_pool_size)
-      for (i <- 0 until bytes_rendering_pool_size) {
-        val tmp = new Revised2ByteArrayRendering(bytes_rendering_length_in_pool)
-        tmp ~~ RenderSupport.DefaultStatusLine
-        tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
-        pool.push(tmp)
-      }
-      pool
+  private val cached_bytes_rendering_with_status_200 = new java.lang.ThreadLocal[RichBytesRendering]() {
+    override def initialValue(): RichBytesRendering = {
+      val tmp = new RevisedByteArrayRendering(cached_bytes_rendering_length)
+      tmp ~~ RenderSupport.DefaultStatusLine
+      tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
+      tmp
     }
   }
 
@@ -90,9 +81,9 @@ final case class HttpConfigurator(
   /**
    * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
    */
-  private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart) = {
-    if (size > bytes_rendering_length_in_pool) {
-      val tmp = new Revised1ByteArrayRendering(size)
+  private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
+    if (size > cached_bytes_rendering_length) {
+      val tmp = new RevisedByteArrayRendering(size)
       response_part match {
         case response: HttpResponse => {
           if (response.status eq StatusCodes.OK) tmp ~~ RenderSupport.DefaultStatusLine
@@ -106,31 +97,34 @@ final case class HttpConfigurator(
       response_part match {
         case response: HttpResponse => {
           if (response.status eq StatusCodes.OK) {
-            val poped = tl_r_pool_with_status_200.get().pop()
-            if (poped.isEmpty) {
-              val tmp = new Revised1ByteArrayRendering(size)
+            var cached = cached_bytes_rendering_with_status_200.get()
+            if (cached == null) {
+              val tmp = new RevisedByteArrayRendering(size)
               tmp ~~ RenderSupport.DefaultStatusLine
-              tmp
-            } else {
-              poped.get
+              tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
+              cached_bytes_rendering_with_status_200.set(tmp)
+              cached = tmp
             }
+            cached
           } else {
-            val poped = tl_r_pool.get().pop()
-            if (poped.isEmpty) {
-              val tmp = new Revised1ByteArrayRendering(size)
+            var cached = cached_bytes_rendering.get()
+            if (cached == null) {
+              val tmp = new RevisedByteArrayRendering(size)
               tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-              tmp
+              cached_bytes_rendering.set(tmp)
+              cached = tmp
             } else {
-              poped.get ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+              cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
             }
+            cached
           }
         }
         case _ => {
-          val poped = tl_r_pool.get().pop()
-          if (poped.isEmpty) {
-            new Revised1ByteArrayRendering(size)
+          val cached = cached_bytes_rendering.get()
+          if (cached == null) {
+            new RevisedByteArrayRendering(size)
           } else {
-            poped.get
+            cached
           }
         }
       }
@@ -140,18 +134,8 @@ final case class HttpConfigurator(
   /**
    * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
    */
-  private[http] def return_bytes_rendering(r: RevisedByteArrayRendering) = {
-    r match {
-      case x: Revised1ByteArrayRendering => {}
-      case x: Revised2ByteArrayRendering => {
-        x.reset()
-        tl_r_pool_with_status_200.get.push(x)
-      }
-      case x => {
-        x.reset()
-        tl_r_pool.get.push(x)
-      }
-    }
+  private[http] def return_bytes_rendering(r: RichBytesRendering) = {
+    r.reset()
   }
 
   //a huge optimization. header parser has a trie, which consumes lots of cpu.
