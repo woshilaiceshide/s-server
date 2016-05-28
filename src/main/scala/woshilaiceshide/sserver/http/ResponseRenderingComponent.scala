@@ -27,6 +27,9 @@ private[http] object RenderSupport {
     r ~~ l
     r.get
   }
+  def getBytes(s: String) = {
+    s.getAsciiBytes
+  }
 
   val CrLf = getBytes(Rendering.CrLf)
   val TwoCrLf = getBytes(Rendering.CrLf) ++ getBytes(Rendering.CrLf)
@@ -116,7 +119,7 @@ trait ResponseRenderingComponent {
     r: Rendering,
     ctx: ResponsePartRenderingContext,
     log: akka.event.LoggingAdapter,
-    writeServerAndDateHeader: Boolean): CloseMode = {
+    write_server_and_date_headers: Boolean): CloseMode = {
 
     def renderResponseStart(response: HttpResponse, allowUserContentType: Boolean,
       contentLengthDefined: Boolean): Boolean = {
@@ -208,8 +211,8 @@ trait ResponseRenderingComponent {
       //this optimization is ugly.
       //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
 
-      if (writeServerAndDateHeader) {
-        render_server_and_date_header(r)
+      if (write_server_and_date_headers) {
+        configurator.render_server_and_date_header(r)
       }
       renderHeaders(headers, contentLengthDefined)
     }
@@ -286,36 +289,5 @@ trait ResponseRenderingComponent {
         CloseMode.closeNowIf(ctx.closeAfterResponseCompletion)
     }
   }
-
-  private[this] def serverHeaderPlusDateColonSP =
-    serverHeaderValue match {
-      case "" ⇒ "Date: ".getAsciiBytes
-      case x ⇒ ("Server: " + x + "\r\nDate: ").getAsciiBytes
-    }
-
-  // for max perf we cache the ServerAndDateHeader of the last second here
-  @volatile private[this] var cachedServerAndDateHeader: (Long, Array[Byte]) = _
-
-  //TODO many optimizations can be done here: 
-  //1. use 'ThreadLocal'
-  //2. cache the last second's bytes
-  private def render_server_and_date_header(r: Rendering) = {
-    r ~~ serverAndDateHeader
-  }
-
-  private def serverAndDateHeader: Array[Byte] = {
-    var (cachedSeconds, cachedBytes) = if (cachedServerAndDateHeader != null) cachedServerAndDateHeader else (0L, null)
-    val now = System.currentTimeMillis
-    if (now / 1000 != cachedSeconds) {
-      cachedSeconds = now / 1000
-      val r = new ByteArrayRendering(serverHeaderPlusDateColonSP.length + 31)
-      dateTime(now).renderRfc1123DateTimeString(r ~~ serverHeaderPlusDateColonSP) ~~ CrLf
-      cachedBytes = r.get
-      cachedServerAndDateHeader = cachedSeconds -> cachedBytes
-    }
-    cachedBytes
-  }
-
-  protected def dateTime(now: Long) = DateTime(now) // split out so we can stabilize by overriding in tests
 
 }

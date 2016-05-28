@@ -33,6 +33,8 @@ object HttpConfigurator {
     illegalHeaderWarnings = false,
     sslSessionInfoHeader = false,
     headerValueCacheLimits = headerValueCacheLimits)
+
+  private final case class BytesWithTimestamp(bytes: Array[Byte], timestamp: Long)
 }
 
 final case class HttpConfigurator(
@@ -73,7 +75,7 @@ final case class HttpConfigurator(
      *
      * its can be overridden using 'woshilaiceshide.sserver.http.HttpChannel.writeResponse(response: HttpResponsePart, sizeHint: Int, writeServerAndDateHeader: Boolean)'
      */
-    write_server_and_date_headers: Boolean = false) {
+    write_server_and_date_headers: Boolean = true) {
 
   import woshilaiceshide.sserver.utility._
 
@@ -221,6 +223,24 @@ final case class HttpConfigurator(
       r ~~ RenderSupport.`Content-Length-Bytes` ~~ length
       if (with_two_crlf) r ~~ RenderSupport.TwoCrLf
     }
+  }
+
+  private val server_header_bytes = RenderSupport.getBytes(s"Server: ${server_name}\r\nDate: ")
+  private val cached_server_date_headers = new java.lang.ThreadLocal[HttpConfigurator.BytesWithTimestamp]()
+  def render_server_and_date_header(r: Rendering) = {
+
+    val now = System.currentTimeMillis()
+    val now1000 = now / 1000
+    var cached = cached_server_date_headers.get
+    if (null == cached || 1 < now1000 - cached.timestamp) {
+
+      val r = new ByteArrayRendering(server_header_bytes.length + 31)
+      DateTime(now).renderRfc1123DateTimeString(r ~~ server_header_bytes) ~~ RenderSupport.CrLf
+      cached = HttpConfigurator.BytesWithTimestamp(r.get, now1000)
+      cached_server_date_headers.set(cached)
+
+    }
+    r ~~ cached.bytes
   }
 
 }
