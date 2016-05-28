@@ -61,6 +61,7 @@ If your development touches `'s-server'`, you may tell me to write your project 
 ## Optimizations & TODO
 * optimize socket i/o operations: 1). reducing i/o operations, 2). making i/o just carried out as directly as possible without repost them to the underlying executor.
 * optimize the http parsing processes. Spray's http parser is not good enough, and some tweaks are needed.
+* reuse more objects, especially for i/o, parsing, rendering.
 * write test cases
 * ...
 
