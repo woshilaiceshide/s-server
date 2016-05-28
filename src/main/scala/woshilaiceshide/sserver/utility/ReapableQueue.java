@@ -40,7 +40,7 @@ public class ReapableQueue<T> {
 		// please see
 		// http://robsjava.blogspot.com/2013/06/a-faster-volatile.html
 		void set_next(Node<T> new_next) {
-			next_updater.lazySet(this, new_next);
+			next_updater.set(this, new_next);
 			return;
 		}
 
