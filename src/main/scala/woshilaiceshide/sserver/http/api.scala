@@ -61,7 +61,7 @@ final case class HttpConfigurator(
      */
     use_direct_byte_buffer_for_cached_bytes_rendering: Boolean = false,
     /**
-     * keep it large enough please. every thead that write http response will keep one cached render locally.
+     * keep it large enough please. every thread that writes http response will keep one cached render locally.
      */
     cached_bytes_rendering_length: Int = 1024,
 
