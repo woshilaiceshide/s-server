@@ -15,7 +15,10 @@ trait RichBytesRendering extends Rendering {
 
 private[http] final class RevisedByteArrayRendering(sizeHint: Int) extends ByteArrayRendering(sizeHint) with RichBytesRendering {
 
+  private val original_array = this.array
+
   override def reset() = {
+    this.array = this.original_array
     this.size = original_start
     buffer.clear()
   }
@@ -48,12 +51,17 @@ private[http] final class ByteBufferRendering(sizeHint: Int) extends Rendering w
   }
 
   def reset(): Unit = {
+    flipped = false
     buffer = original_buffer
     original_buffer.clear()
     original_buffer.position(original_start)
   }
 
   def to_byte_buffer(): ByteBuffer = {
+    if (!flipped) {
+      flipped = true
+      buffer.flip()
+    }
     buffer
   }
 
@@ -111,7 +119,6 @@ private[http] final class ByteBufferRendering(sizeHint: Int) extends Rendering w
     if (data.nonEmpty) {
       if (data.length <= Int.MaxValue) {
         growBy(data.length.toInt)
-        //data.copyToArray(array, targetOffset = oldSize)
 
         data match {
           case HttpData.Bytes(bytes) => {

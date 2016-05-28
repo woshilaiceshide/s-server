@@ -46,6 +46,21 @@ final case class HttpConfigurator(
     base_for_content_length_cache: Int = 1,
     size_for_content_length_cache: Int = 1024 * 4,
 
+    /**
+     * direct byte buffers will save memory copy when doing i/o.
+     * but read/write direct byte buffers in jvm codes(not jni codes) would be slower in general.
+     * and in different platforms and/or different jvms, things are different.
+     *
+     * so do your own test to determine this option's value.
+     *
+     * I just keep it false by default.
+     *
+     * for more information, please see http://stackoverflow.com/questions/5670862/bytebuffer-allocate-vs-bytebuffer-allocatedirect
+     */
+    use_direct_byte_buffer_for_cached_bytes_rendering: Boolean = false,
+    /**
+     * keep it large enough please. every thead that write http response will keep one cached render locally.
+     */
     cached_bytes_rendering_length: Int = 1024,
 
     header_parser_pool_size: Int = 8,
@@ -62,15 +77,24 @@ final case class HttpConfigurator(
 
   import woshilaiceshide.sserver.utility._
 
+  private def get_rendering(size: Int) = {
+    if (use_direct_byte_buffer_for_cached_bytes_rendering) {
+      new ByteBufferRendering(size)
+    } else {
+      new RevisedByteArrayRendering(size)
+    }
+  }
+
   //a huge optimization. bytes copy and allocation is terrible in general.
   private val cached_bytes_rendering = new java.lang.ThreadLocal[RichBytesRendering]() {
     override def initialValue(): RichBytesRendering = {
-      new RevisedByteArrayRendering(cached_bytes_rendering_length)
+      get_rendering(cached_bytes_rendering_length)
     }
   }
+
   private val cached_bytes_rendering_with_status_200 = new java.lang.ThreadLocal[RichBytesRendering]() {
     override def initialValue(): RichBytesRendering = {
-      val tmp = new RevisedByteArrayRendering(cached_bytes_rendering_length)
+      val tmp = get_rendering(cached_bytes_rendering_length)
       tmp ~~ RenderSupport.DefaultStatusLine
       tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
       tmp
@@ -99,7 +123,7 @@ final case class HttpConfigurator(
           if (response.status eq StatusCodes.OK) {
             var cached = cached_bytes_rendering_with_status_200.get()
             if (cached == null) {
-              val tmp = new RevisedByteArrayRendering(size)
+              val tmp = get_rendering(cached_bytes_rendering_length)
               tmp ~~ RenderSupport.DefaultStatusLine
               tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
               cached_bytes_rendering_with_status_200.set(tmp)
@@ -109,7 +133,7 @@ final case class HttpConfigurator(
           } else {
             var cached = cached_bytes_rendering.get()
             if (cached == null) {
-              val tmp = new RevisedByteArrayRendering(size)
+              val tmp = get_rendering(cached_bytes_rendering_length)
               tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
               cached_bytes_rendering.set(tmp)
               cached = tmp
@@ -120,12 +144,13 @@ final case class HttpConfigurator(
           }
         }
         case _ => {
-          val cached = cached_bytes_rendering.get()
+          var cached = cached_bytes_rendering.get()
           if (cached == null) {
-            new RevisedByteArrayRendering(size)
-          } else {
-            cached
+            val tmp = get_rendering(cached_bytes_rendering_length)
+            cached_bytes_rendering.set(tmp)
+            cached = tmp
           }
+          cached
         }
       }
     }
