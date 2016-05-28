@@ -75,7 +75,7 @@ final case class HttpConfigurator(
      *
      * its can be overridden using 'woshilaiceshide.sserver.http.HttpChannel.writeResponse(response: HttpResponsePart, sizeHint: Int, writeServerAndDateHeader: Boolean)'
      */
-    write_server_and_date_headers: Boolean = true) {
+    write_server_and_date_headers: Boolean = false) {
 
   import woshilaiceshide.sserver.utility._
 
