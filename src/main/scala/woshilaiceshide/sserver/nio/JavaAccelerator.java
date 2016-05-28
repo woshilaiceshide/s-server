@@ -12,12 +12,12 @@ public class JavaAccelerator {
 
 		scala.Enumeration.Value cause = null;
 		scala.Option<?> attachment = scala.Option.empty();
-		boolean generate_writing_event = false;
+		boolean generate_written_event = false;
 		boolean should_close = false;
 
 		synchronized (wrapper) {
-			generate_writing_event = wrapper.should_generate_writing_event();
-			wrapper.should_generate_writing_event_$eq(false);
+			generate_written_event = wrapper.should_generate_written_event();
+			wrapper.should_generate_written_event_$eq(false);
 			cause = wrapper.closed_cause();
 			attachment = wrapper.attachment_for_closed();
 
@@ -78,7 +78,7 @@ public class JavaAccelerator {
 				// TODO
 			}
 		} else {
-			if (generate_writing_event) {
+			if (generate_written_event) {
 				if (null != wrapper.handler()) {
 					// nothing to do with oldHandler
 					wrapper.handler_$eq(wrapper.handler().writtenHappened(wrapper));

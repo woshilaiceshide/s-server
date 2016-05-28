@@ -94,19 +94,19 @@ trait ChannelWrapper {
    *   all bytes are written successfully, or none written(no partial written).
    *
    * 3.
-   *   if generate_writing_event is true, then 'writtenHappend' will be fired.
+   *   if generate_written_event is true, then 'writtenHappend' will be fired.
    *   note that 'writtenHappened' means just an "writing' event, and zero byte may be written.
-   *   multiple 'generate_writing_event' may be folded into one.
+   *   multiple 'generate_written_event' may be folded into one.
    */
-  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
-    write(bytes, 0, bytes.length, write_even_if_too_busy, generate_writing_event)
+  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
+    write(bytes, 0, bytes.length, write_even_if_too_busy, generate_written_event)
   }
 
-  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
-    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_writing_event)
+  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
+    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_written_event)
   }
 
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value
 }
 
 /**

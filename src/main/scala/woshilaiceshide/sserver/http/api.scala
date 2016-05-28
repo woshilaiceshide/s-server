@@ -34,7 +34,7 @@ object HttpConfigurator {
     sslSessionInfoHeader = false,
     headerValueCacheLimits = headerValueCacheLimits)
 
-  private final case class BytesWithTimestamp(bytes: Array[Byte], timestamp: Long)
+  private final case class BytesWithTimestamp(bytes: RichByteArrayRendering, var timestamp: Long)
 }
 
 final case class HttpConfigurator(
@@ -81,9 +81,9 @@ final case class HttpConfigurator(
 
   private def get_rendering(size: Int) = {
     if (use_direct_byte_buffer_for_cached_bytes_rendering) {
-      new ByteBufferRendering(size)
+      new RichByteBufferRendering(size)
     } else {
-      new RevisedByteArrayRendering(size)
+      new RichByteArrayRendering(size)
     }
   }
 
@@ -109,7 +109,7 @@ final case class HttpConfigurator(
    */
   private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
     if (size > cached_bytes_rendering_length) {
-      val tmp = new RevisedByteArrayRendering(size)
+      val tmp = new RichByteArrayRendering(size)
       response_part match {
         case response: HttpResponse => {
           if (response.status eq StatusCodes.OK) tmp ~~ RenderSupport.DefaultStatusLine
@@ -227,20 +227,28 @@ final case class HttpConfigurator(
 
   private val server_header_bytes = RenderSupport.getBytes(s"Server: ${server_name}\r\nDate: ")
   private val cached_server_date_headers = new java.lang.ThreadLocal[HttpConfigurator.BytesWithTimestamp]()
-  def render_server_and_date_header(r: Rendering) = {
+  def render_server_and_date_header(r: RichBytesRendering) = {
 
     val now = System.currentTimeMillis()
     val now1000 = now / 1000
     var cached = cached_server_date_headers.get
-    if (null == cached || 1 < now1000 - cached.timestamp) {
 
-      val r = new ByteArrayRendering(server_header_bytes.length + 31)
-      DateTime(now).renderRfc1123DateTimeString(r ~~ server_header_bytes) ~~ RenderSupport.CrLf
-      cached = HttpConfigurator.BytesWithTimestamp(r.get, now1000)
+    if (null == cached) {
+      val tmp = new RichByteArrayRendering(server_header_bytes.length + 31)
+      tmp ~~ server_header_bytes
+      tmp.set_original_start(server_header_bytes.length)
+
+      DateTime(now).renderRfc1123DateTimeString(tmp) ~~ RenderSupport.CrLf
+      cached = HttpConfigurator.BytesWithTimestamp(tmp, now1000)
       cached_server_date_headers.set(cached)
+    } else if (1 < now1000 - cached.timestamp) {
+
+      cached.bytes.reset()
+      DateTime(now).renderRfc1123DateTimeString(cached.bytes) ~~ RenderSupport.CrLf
+      cached.timestamp = now1000
 
     }
-    r ~~ cached.bytes
+    cached.bytes.render(r)
   }
 
 }

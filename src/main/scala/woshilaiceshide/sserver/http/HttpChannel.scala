@@ -56,8 +56,8 @@ final class HttpChannel(
       //TODO why it's error when finished is false
 
       //if finished, jump to the next request in the pipelining(if existed)
-      val generate_writing_event = finished && configurator.max_request_in_pipeline > 1
-      val write_result = channel.write(r.to_byte_buffer(), true, generate_writing_event)
+      val generate_written_event = finished && configurator.max_request_in_pipeline > 1
+      val write_result = channel.write(r.to_byte_buffer(), true, generate_written_event)
 
       configurator.return_bytes_rendering(r)
 

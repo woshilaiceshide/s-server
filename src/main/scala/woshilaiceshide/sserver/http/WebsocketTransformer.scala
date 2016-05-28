@@ -99,14 +99,15 @@ class WebSocketChannel(channel: ChannelWrapper,
 
   private def writeWebSocketResponse(response: HttpResponse, writeServerAndDateHeader: Boolean = false) = {
 
-    val r = new ByteArrayRendering(maxResponseSize)
+    val r = configurator.borrow_bytes_rendering(maxResponseSize, response)
     val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
     val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, writeServerAndDateHeader)
 
     val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
     if (closeMode == ResponseRenderingComponent.CloseMode.CloseAfterEnd) closeAfterEnd = true
 
-    channel.write(r.get, true, false)
+    channel.write(r.to_byte_buffer(), true, false)
+
   }
 
   def writeString(s: String) = {

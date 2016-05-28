@@ -116,7 +116,7 @@ trait ResponseRenderingComponent {
 
   // returns a boolean indicating whether the connection is to be closed after this response was sent
   def renderResponsePartRenderingContext(
-    r: Rendering,
+    r: RichBytesRendering,
     ctx: ResponsePartRenderingContext,
     log: akka.event.LoggingAdapter,
     write_server_and_date_headers: Boolean): CloseMode = {

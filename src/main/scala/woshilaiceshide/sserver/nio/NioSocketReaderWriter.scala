@@ -363,7 +363,7 @@ class NioSocketReaderWriter private[nio] (
 
     //use a (byte)flag to store the following two fields?
     private[nio] var already_pended = false
-    private[nio] var should_generate_writing_event = false
+    private[nio] var should_generate_written_event = false
 
     @tailrec private final def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
       if (0 < times) {
@@ -383,9 +383,9 @@ class NioSocketReaderWriter private[nio] (
     }
 
     //TODO what if the writer want to submit a bytes that never changed, and the bytes will used again and again? such as cached http response.
-    //if generate_writing_event is true, then 'bytesWritten' will be fired.
-    //def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
-    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_writing_event: Boolean): WriteResult.Value = {
+    //if generate_written_event is true, then 'bytesWritten' will be fired.
+    //def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
+    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
 
       var please_pend = false
       var please_wakeup = false
@@ -394,8 +394,8 @@ class NioSocketReaderWriter private[nio] (
         if (CHANNEL_NORMAL == status) {
 
           var force_pend = false
-          if (should_generate_writing_event == false && generate_writing_event == true) {
-            should_generate_writing_event = generate_writing_event
+          if (should_generate_written_event == false && generate_written_event == true) {
+            should_generate_written_event = generate_written_event
             force_pend = true
           }
 
@@ -610,12 +610,12 @@ class NioSocketReaderWriter private[nio] (
 
       var cause: ChannelClosedCause.Value = null
       var attachment: Option[_] = None
-      var generate_writing_event = false
+      var generate_written_event = false
 
       val should_close: Boolean = this.synchronized {
 
-        generate_writing_event = this.should_generate_writing_event
-        should_generate_writing_event = false
+        generate_written_event = this.should_generate_written_event
+        should_generate_written_event = false
 
         cause = this.closed_cause
         attachment = this.attachment_for_closed
@@ -671,7 +671,7 @@ class NioSocketReaderWriter private[nio] (
           key.cancel()
         }
       } else {
-        if (generate_writing_event) {
+        if (generate_written_event) {
           if (null != this.handler) {
             val newHandler = this.handler.writtenHappened(this)
             //nothing to do with oldHandler

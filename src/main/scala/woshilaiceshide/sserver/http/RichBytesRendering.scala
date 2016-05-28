@@ -7,13 +7,16 @@ trait RichBytesRendering extends Rendering {
 
   def reset(): Unit
   def to_byte_buffer(): ByteBuffer
+  def ~~(bytes: Array[Byte], offset: Int, length: Int): this.type
 
   protected var original_start: Int = 0
   def set_original_start(i: Int) = this.original_start = i
 
+  def render(r: RichBytesRendering): r.type
+
 }
 
-private[http] final class RevisedByteArrayRendering(sizeHint: Int) extends ByteArrayRendering(sizeHint) with RichBytesRendering {
+private[http] final class RichByteArrayRendering(sizeHint: Int) extends ByteArrayRendering(sizeHint) with RichBytesRendering {
 
   private val original_array = this.array
 
@@ -29,9 +32,35 @@ private[http] final class RevisedByteArrayRendering(sizeHint: Int) extends ByteA
     buffer.limit(this.size)
     buffer
   }
+
+  private def growBy(delta: Int): Int = {
+    val oldSize = size
+    val neededSize = oldSize.toLong + delta
+    if (array.length < neededSize)
+      if (neededSize < Int.MaxValue) {
+        val newLen = math.min(math.max(array.length.toLong * 2, neededSize), Int.MaxValue).toInt
+        val newArray = new Array[Byte](newLen)
+        System.arraycopy(array, 0, newArray, 0, array.length)
+        array = newArray
+      } else sys.error("Cannot create byte array greater than 2GB in size")
+    size = neededSize.toInt
+    oldSize
+  }
+
+  def ~~(bytes: Array[Byte], offset: Int, length: Int): this.type = {
+    if (length > 0 && length + offset <= bytes.length) {
+      val oldSize = growBy(length)
+      System.arraycopy(bytes, offset, array, oldSize, length)
+    }
+    this
+  }
+
+  def render(r: RichBytesRendering): r.type = {
+    r ~~ (this.array, 0, this.size)
+  }
 }
 
-private[http] final class ByteBufferRendering(sizeHint: Int) extends Rendering with RichBytesRendering {
+private[http] final class RichByteBufferRendering(sizeHint: Int) extends Rendering with RichBytesRendering {
 
   protected var original_buffer = ByteBuffer.allocateDirect(sizeHint)
   protected var buffer = original_buffer
@@ -66,18 +95,27 @@ private[http] final class ByteBufferRendering(sizeHint: Int) extends Rendering w
   }
 
   def ~~(char: Char): this.type = {
-    val oldSize = growBy(1)
+    growBy(1)
     buffer.put(char.toByte)
     this
   }
 
   def ~~(bytes: Array[Byte]): this.type = {
     if (bytes.length > 0) {
-      val oldSize = growBy(bytes.length)
+      growBy(bytes.length)
       buffer.put(bytes, 0, bytes.length)
     }
     this
   }
+
+  def ~~(bytes: Array[Byte], offset: Int, length: Int): this.type = {
+    if (length > 0 && length + offset < bytes.length) {
+      growBy(length)
+      buffer.put(bytes, offset, length)
+    }
+    this
+  }
+  def render(r: RichBytesRendering): r.type = throw new java.lang.UnsupportedOperationException("")
 
   @scala.annotation.tailrec
   private def ~~(head: HttpData, tail: List[HttpData.NonEmpty]): Unit = {
