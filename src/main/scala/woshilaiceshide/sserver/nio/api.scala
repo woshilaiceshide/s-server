@@ -112,7 +112,11 @@ trait ChannelWrapper {
     write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_written_event, bytes_is_reusable)
   }
 
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean = false): WriteResult.Value
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
+    write(buffer, write_even_if_too_busy, generate_written_event, false)
+  }
+
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value
 }
 
 /**
