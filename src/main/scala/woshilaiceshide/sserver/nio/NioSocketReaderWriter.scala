@@ -74,7 +74,8 @@ class NioSocketReaderWriter private[nio] (
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
   //this only client buffer will become read only before it's given to the handler
-  private val CLIENT_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
+  //use head byte buffer here, because it may be read many times. 
+  private val READ_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
 
   //some i/o operations related to those channels are pending
   //note that those operations will be checked in the order they are pended as soon as possible.
@@ -207,11 +208,11 @@ class NioSocketReaderWriter private[nio] (
 
     if ((ready_ops & OP_READ) > 0) {
       try {
-        val readCount = channel.read(CLIENT_BUFFER)
+        val readCount = channel.read(READ_BUFFER)
         if (readCount > 0) {
-          CLIENT_BUFFER.flip()
-          //channelWrapper.bytesReceived(CLIENT_BUFFER.asReadOnlyBuffer())
-          channelWrapper.bytesReceived(CLIENT_BUFFER)
+          READ_BUFFER.flip()
+          //channelWrapper.bytesReceived(READ_BUFFER.asReadOnlyBuffer())
+          channelWrapper.bytesReceived(READ_BUFFER)
         } else {
           if (!key.isValid() || !channel.isOpen()) {
             channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
@@ -232,7 +233,7 @@ class NioSocketReaderWriter private[nio] (
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       } finally {
-        CLIENT_BUFFER.clear()
+        READ_BUFFER.clear()
       }
     }
 
