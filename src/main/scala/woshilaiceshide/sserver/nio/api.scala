@@ -110,11 +110,18 @@ trait ChannelWrapper {
 }
 
 /**
- * this trait is full of sinks. Every sink receives a channel wrapper,
- * so that business codes could leave the channel wrapper off.
+ * this trait is full of sinks:
+ *
+ * 1. Every sink receives a channel wrapper, so that business codes could leave the channel wrapper off.
+ *
+ * 2. all the sinks are executed in the same thread(or fed to the same custom executor.
+ * so put your initialization codes in 'channelOpened(...)' instead of constructors.
  */
 trait ChannelHandler {
 
+  /**
+   * put your initialization codes here, instead of constructors..
+   */
   def channelOpened(channelWrapper: ChannelWrapper): Unit
   /**
    * input ended but output may be still open.
