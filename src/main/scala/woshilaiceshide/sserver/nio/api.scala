@@ -318,7 +318,7 @@ final case class XNioConfigurator(
   count_for_reader_writers: Int,
   listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
   accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
-  receive_buffer_size: Int = 1024,
+  receive_buffer_size: Int = 1024 * 4,
   socket_max_idle_time_in_seconds: Int = 90,
   max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
   check_idle_interval_in_seconds: Int = 60,
