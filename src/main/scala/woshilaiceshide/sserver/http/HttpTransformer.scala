@@ -263,6 +263,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
           }
 
+          //TODO
           case x: MessageChunk => this
           case x: ChunkedMessageEnd => this
 

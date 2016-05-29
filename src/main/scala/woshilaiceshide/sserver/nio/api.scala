@@ -84,6 +84,11 @@ trait ChannelWrapper {
 
   /**
    *
+   * @param bytes_is_reusable
+   * this parameter is an advanced one. it should be false in general.
+   * if bytes_is_reusable is true, then the given 'bytes' will be reused directly.
+   * if it's false, s-server will use its own internal buffer to copy the memory for the following socket writes.
+   *
    * 1.
    *   if bytes that are already waiting for written is more than max_bytes_waiting_for_written_per_channel,
    *   then no bytes will be written, except for write_even_if_too_busy is true.
@@ -97,16 +102,17 @@ trait ChannelWrapper {
    *   if generate_written_event is true, then 'writtenHappend' will be fired.
    *   note that 'writtenHappened' means just an "writing' event, and zero byte may be written.
    *   multiple 'generate_written_event' may be folded into one.
+   *
    */
-  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
-    write(bytes, 0, bytes.length, write_even_if_too_busy, generate_written_event)
+  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value = {
+    write(bytes, 0, bytes.length, write_even_if_too_busy, generate_written_event, bytes_is_reusable)
   }
 
-  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
-    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_written_event)
+  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value = {
+    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_written_event, bytes_is_reusable)
   }
 
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean = false): WriteResult.Value
 }
 
 /**

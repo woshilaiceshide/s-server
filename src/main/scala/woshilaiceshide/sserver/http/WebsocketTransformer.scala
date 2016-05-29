@@ -112,11 +112,11 @@ class WebSocketChannel(channel: ChannelWrapper,
 
   def writeString(s: String) = {
     val rendered = render(s)
-    channel.write(rendered.toArray, true, false)
+    channel.write(rendered.toArray, true, false, false)
   }
   def writeBytes(bytes: Array[Byte]) = {
     val rendered = render(bytes, WebSocket13.OpCode.BINARY)
-    channel.write(rendered.toArray, true, false)
+    channel.write(rendered.toArray, true, false, false)
   }
   def close(closeCode: Option[CloseCode.Value] = CloseCode.NORMAL_CLOSURE_OPTION) = {
 
@@ -132,13 +132,13 @@ class WebSocketChannel(channel: ChannelWrapper,
     if (continued) {
       val frame = WSClose(closeCode.getOrElse(CloseCode.NORMAL_CLOSURE), why(null), EMPTY_BYTE_ARRAY, true, false, EMPTY_BYTE_ARRAY)
       val rendered = render(frame)
-      channel.write(rendered.toArray, true, false)
+      channel.write(rendered.toArray, true, false, false)
       channel.closeChannel(false, closeCode)
     }
   }
   def ping() = {
     val rendered = render(WebSocket13.EMPTY_BYTE_ARRAY, WebSocket13.OpCode.PING)
-    channel.write(rendered.toArray, true, false)
+    channel.write(rendered.toArray, true, false, false)
   }
 }
 

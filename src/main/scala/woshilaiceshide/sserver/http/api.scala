@@ -75,9 +75,35 @@ final case class HttpConfigurator(
      *
      * its can be overridden using 'woshilaiceshide.sserver.http.HttpChannel.writeResponse(response: HttpResponsePart, sizeHint: Int, writeServerAndDateHeader: Boolean)'
      */
-    write_server_and_date_headers: Boolean = false) {
+    write_server_and_date_headers: Boolean = true) {
 
   import woshilaiceshide.sserver.utility._
+
+  //a huge optimization. header parser has a trie, which consumes lots of cpu.
+  private val tl_header_parser = new java.lang.ThreadLocal[HttpHeaderParser]() {
+    override def initialValue(): HttpHeaderParser = {
+      HttpHeaderParser(parser_settings)
+    }
+  }
+
+  private def get_header_parser() = {
+    var tmp = tl_header_parser.get
+    if (null == tmp) {
+      tmp = HttpHeaderParser(parser_settings)
+      tl_header_parser.set(tmp)
+    }
+    tmp
+  }
+
+  def get_request_parser(): HttpRequestPartParser = {
+    new HttpRequestPartParser(parser_settings, raw_request_uri_header)(get_header_parser())
+  }
+
+  def get_websocket_parser(): WebSocket13.WSFrameParser = {
+    WebSocket13.default_parser(max_payload_length_in_websocket_frame)
+  }
+
+  //rendering and parsing helpers below
 
   private def get_rendering(size: Int) = {
     if (use_direct_byte_buffer_for_cached_bytes_rendering) {
@@ -163,30 +189,6 @@ final case class HttpConfigurator(
    */
   private[http] def return_bytes_rendering(r: RichBytesRendering) = {
     r.reset()
-  }
-
-  //a huge optimization. header parser has a trie, which consumes lots of cpu.
-  private val tl_header_parser = new java.lang.ThreadLocal[HttpHeaderParser]() {
-    override def initialValue(): HttpHeaderParser = {
-      HttpHeaderParser(parser_settings)
-    }
-  }
-
-  private def get_header_parser() = {
-    var tmp = tl_header_parser.get
-    if (null == tmp) {
-      tmp = HttpHeaderParser(parser_settings)
-      tl_header_parser.set(tmp)
-    }
-    tmp
-  }
-
-  def get_request_parser(): HttpRequestPartParser = {
-    new HttpRequestPartParser(parser_settings, raw_request_uri_header)(get_header_parser())
-  }
-
-  def get_websocket_parser(): WebSocket13.WSFrameParser = {
-    WebSocket13.default_parser(max_payload_length_in_websocket_frame)
   }
 
   //if rendering has '~~(Array[Byte], offset: Int, length: Int)', 

@@ -383,10 +383,11 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    //TODO what if the writer want to submit a bytes that never changed, and the bytes will used again and again? such as cached http response.
-    //if generate_written_event is true, then 'bytesWritten' will be fired.
-    //def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
-    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
+    /**
+     * if generate_written_event is true, then 'bytesWritten' will be fired.
+     *
+     */
+    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value = {
 
       var please_pend = false
       var please_wakeup = false
@@ -449,14 +450,31 @@ class NioSocketReaderWriter private[nio] (
               }
             }
 
+            def pend_reusable_bytes(buffer: ByteBuffer): Unit = {
+              val helper = 0.toByte
+              if (writes == null) {
+                writes = new BytesList(new BytesNode(buffer, null, helper), null)
+              } else {
+                writes.append(buffer, helper)
+              }
+            }
+
             //move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
             //or the selector's i/o thread may collide with the writing thread, which will twice the cost.
             if (null == writes && NioSocketReaderWriter.this.is_in_io_worker_thread()) {
               write_immediately(bytes, configurator.spin_count_when_write_immediately)
               if (bytes.hasRemaining()) {
                 bytes_waiting_for_written = bytes_waiting_for_written + bytes.remaining()
-                pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+                if (bytes_is_reusable) {
+                  pend_reusable_bytes(bytes)
+                } else {
+                  pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+                }
+
               }
+            } else if (bytes_is_reusable) {
+              bytes_waiting_for_written = bytes_waiting_for_written + remaining
+              pend_reusable_bytes(bytes)
 
             } else if (NioSocketReaderWriter.this.is_in_io_worker_thread()) {
               bytes_waiting_for_written = bytes_waiting_for_written + remaining
@@ -559,8 +577,10 @@ class NioSocketReaderWriter private[nio] (
           if (written == remaining) {
             if (node.helper > 0) {
               NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread.return_buffer(bytes, node.helper)
+            } else if (node.helper < 0) {
+              NioSocketReaderWriter.this.buffer_pool_used_by_io_thread.return_buffer(bytes, (0 - node.helper).toByte)
             } else {
-              NioSocketReaderWriter.this.buffer_pool_used_by_io_thread.return_buffer(bytes, node.helper)
+              //when helper is zero, the buffer is not internal, it's just a reusable buffer from the outside. 
             }
             writing0(original_list, node.next, written_bytes + written)
 
