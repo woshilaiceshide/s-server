@@ -186,6 +186,11 @@ trait SelectorRunnerConfigurator {
 
 trait ByteBufferPool {
   def borrow_buffer(size_hint: Int): Borrowed
+  /**
+   * @param helper
+   * used by the pool when previous buffers returned.
+   * for example, you can use 'helper' to identify the internal bucket from which the returned buffer is borrowed, and lock conflicts may be reduced.
+   */
   def return_buffer(buffer: ByteBuffer, helper: Byte): Unit
   def free(): Unit
 }
@@ -194,9 +199,9 @@ import woshilaiceshide.sserver.utility.ArrayNodeStack
 
 final case class Borrowed(helper: Byte, buffer: ByteBuffer)
 /**
- * this pool will cache a fixed count byte buffers in the thread locally, and every buffer is of size 'fragment_size'.
+ * this pool will cache a fixed count of byte buffers in the thread locally, and every buffer is of size 'fragment_size'.
  */
-final case class FragmentedByteBufferPool(fragment_size: Int, cached_count: Int, direct: Boolean) extends ByteBufferPool {
+final case class FixedByteBufferPool(fragment_size: Int, cached_count: Int, direct: Boolean) extends ByteBufferPool {
 
   private var pool = new ArrayNodeStack[ByteBuffer](cached_count)
   for (i <- 0 until cached_count) {
@@ -259,11 +264,11 @@ trait ByteBufferPoolFactory {
 final case class DefaultByteBufferPoolFactory(fragment_size: Int = 512, cached_count: Int = 64, direct: Boolean = true) extends ByteBufferPoolFactory {
 
   def get_pool_used_by_io_thread(): ByteBufferPool = {
-    FragmentedByteBufferPool(fragment_size, cached_count, direct)
+    FixedByteBufferPool(fragment_size, cached_count, direct)
   }
 
   def get_pool_used_by_biz_thread(): ByteBufferPool = {
-    FragmentedByteBufferPool(fragment_size, cached_count, direct)
+    FixedByteBufferPool(fragment_size, cached_count, direct)
   }
 
   def free(): Unit = {}
@@ -291,7 +296,7 @@ trait NioConfigurator extends SelectorRunnerConfigurator {
   /**
    * this pool is only used by 'SelectorRunner' for the bytes those will be written to the socket internally.
    *
-   * you can use 'woshilaiceshide.sserver.nio.FragmentedByteBufferPool' with your own parameters.
+   * you can use 'woshilaiceshide.sserver.nio.FixedByteBufferPool' with your own parameters.
    */
   def buffer_pool_factory: ByteBufferPoolFactory
 
