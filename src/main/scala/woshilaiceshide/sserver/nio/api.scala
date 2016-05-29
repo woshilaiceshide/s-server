@@ -284,7 +284,7 @@ trait NioConfigurator extends SelectorRunnerConfigurator {
    */
   def revise_sun_jdk_bug_level: Boolean
   /**
-   * see woshilaiceshide.sserver.nio.ChannelHandler.inputEnded(channelWrapper: ChannelWrapper)
+   * see 'woshilaiceshide.sserver.nio.ChannelHandler.inputEnded(channelWrapper: ChannelWrapper)'
    */
   def allow_hafl_closure: Boolean
 

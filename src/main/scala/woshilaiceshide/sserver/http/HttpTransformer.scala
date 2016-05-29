@@ -54,10 +54,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
   private var parser: Parser = null
 
   private[this] var current_sink: ResponseSink = null
-
   private[this] var current_http_channel: HttpChannel = _
-
-  @inline private def has_next(): Boolean = null != head
 
   //get parser from ThreadLocal here! so that all the codes related to parser is in the same thread.
   def channelOpened(channelWrapper: ChannelWrapper): Unit = {
@@ -68,6 +65,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
   private var head: Node = null
   private var tail: Node = null
   private var pipeline_size = 0
+  @inline private def has_next(): Boolean = null != head
 
   @inline private def en_queue(request: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper) = {
     if (null == head) {
@@ -90,6 +88,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     } else {
       val tmp = head
       head = head.next
+      if (null == head) tail = null
       pipeline_size = pipeline_size - 1
       tmp
     }
