@@ -404,6 +404,7 @@ abstract class SelectorRunner() {
     }
   }
 
+  //a just normal field, not labeled as volatile
   private var already_in_stopping = false
   protected def is_stopping() = already_in_stopping
   //no keys selected and no time waited, it's for epoll's 100% cpu bug.
