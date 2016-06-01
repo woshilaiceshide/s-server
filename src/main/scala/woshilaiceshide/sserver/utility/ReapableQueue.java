@@ -104,10 +104,14 @@ public class ReapableQueue<T> {
 	// track the chain of transformation
 	private java.util.concurrent.atomic.AtomicInteger ended = new AtomicInteger(0);
 
-	@SuppressWarnings("unused")
+	// kick false sharing
+	@sun.misc.Contended
+	// @SuppressWarnings("unused")
 	private volatile Node<T> head = null;
 
-	@SuppressWarnings("unused")
+	// kick false sharing
+	@sun.misc.Contended
+	// @SuppressWarnings("unused")
 	private volatile Node<T> tail = null;
 
 	/**

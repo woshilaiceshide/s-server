@@ -1,7 +1,9 @@
 # s-server
-Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only).
+Some Small & Smart Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only).
 
 It's targeted for small footprint when running, with extensibility for mulit-threading when processing http requests' business.
+
+`s-server` uses `'sun.misc.@Contended'` to kick `false sharing` off, so run it on `jvm-8` with `-XX:-RestrictContended` if asynchronous responses are needed. 
 
 Note that I've refactored s-server very much since version 1.x. Version 2.x is not compatible with version 1.x, and the latter one is not be supported any more. 
 
