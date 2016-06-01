@@ -22,7 +22,8 @@ import SelectorRunner._
 
 private[nio] object NioSocketReaderWriter {
 
-  final class BytesNode(val bytes: ByteBuffer, var next: BytesNode = null, val helper: Byte)
+  //Byte or Int for helper given padding/alignment, object sizes are the same.
+  final class BytesNode(val bytes: ByteBuffer, var next: BytesNode = null, val helper: Int)
   final class BytesList(val head: BytesNode, var last: BytesNode = null) {
     def append(x: ByteBuffer, helper: Byte) = {
       val newed = new BytesNode(x, null, helper)

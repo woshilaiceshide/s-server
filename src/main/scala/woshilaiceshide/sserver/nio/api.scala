@@ -201,7 +201,7 @@ trait ByteBufferPool {
    * used by the pool when previous buffers returned.
    * for example, you can use 'helper' to identify the internal bucket from which the returned buffer is borrowed, and lock conflicts may be reduced.
    */
-  def return_buffer(buffer: ByteBuffer, helper: Byte): Unit
+  def return_buffer(buffer: ByteBuffer, helper: Int): Unit
   def free(): Unit
 }
 
@@ -226,7 +226,7 @@ final case class FixedByteBufferPool(fragment_size: Int, cached_count: Int, dire
       Borrowed(1, tmp.get)
     }
   }
-  def return_buffer(buffer: ByteBuffer, helper: Byte): Unit = {
+  def return_buffer(buffer: ByteBuffer, helper: Int): Unit = {
     if (1 != helper) {
       buffer.clear()
       pool.push(buffer)
@@ -253,7 +253,7 @@ final case class SynchronizedFragmentedByteBufferPool(fragment_size: Int, cached
       Borrowed(1, tmp.get)
     }
   }
-  def return_buffer(buffer: ByteBuffer, helper: Byte): Unit = this.synchronized {
+  def return_buffer(buffer: ByteBuffer, helper: Int): Unit = this.synchronized {
     if (1 != helper) {
       buffer.clear()
       pool.push(buffer)
