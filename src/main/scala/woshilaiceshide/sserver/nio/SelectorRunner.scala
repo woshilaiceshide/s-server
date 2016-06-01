@@ -324,16 +324,21 @@ abstract class SelectorRunner() {
     }
   }
 
+  private var async: Boolean = false
+  def is_async = async
+
   def start(asynchronously: Boolean = true) = {
     var continued = status.compareAndSet(INITIALIZED, STARTED)
     if (continued) {
       if (asynchronously) {
+        async = true
         //worker_thread should not be assigned in the new thread's running.
         worker_thread = new Thread(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}") {
           override def run() = if (start0()) { safe_loop() }
         }
         worker_thread.start()
       } else {
+        async = false
         worker_thread = Thread.currentThread()
         if (start0()) { safe_loop() }
       }
