@@ -396,7 +396,7 @@ abstract class SelectorRunner() {
     }
   }
 
-  def getStatus() = status.get()
+  def get_status() = status.get()
 
   //avoid instantiations in hot codes.
   private val safe_runner = new (Runnable => Unit) {

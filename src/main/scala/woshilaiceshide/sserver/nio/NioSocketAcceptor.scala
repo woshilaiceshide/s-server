@@ -60,7 +60,7 @@ class NioSocketAcceptor private[nio] (
     true
   }
   protected def has_remaining_work(): Boolean = {
-    io_workers.exists { x => x.getStatus() == SelectorRunner.STARTED }
+    io_workers.exists { x => x.get_status() == SelectorRunner.STARTED }
   }
   protected def before_next_loop(): Unit = {
     //nothing else
