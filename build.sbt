@@ -61,6 +61,12 @@ libraryDependencies ++= {
   )
 }
 
+//use jol to inspect object layout schemes.
+//see 'http://openjdk.java.net/projects/code-tools/jol/'
+libraryDependencies in Test += "org.openjdk.jol" % "jol-core" % "0.5"
+libraryDependencies in Test += "org.openjdk.jol" % "jol-cli" % "0.5"
+//mainClass in (Test, run) := Some("org.openjdk.jol.Main")
+
 mappings in Universal ++= (baseDirectory.value / "conf" * "*" get) map (x => x -> ("conf/" + x.getName))
 
 //or woshilaiceshide.sserver.SampleHttpServer
