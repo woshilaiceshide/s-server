@@ -38,7 +38,7 @@ To test the above examples, just type the following command in your sbt console:
 
 * type `'test:runMain'` in your sbt console followed by a `'TAB'` to prompt you the valid choices
 
-* type the following commands in your sbt console to make a standalone package with all the tests:
+* type the following commands in your sbt console to make a standalone distribution with all the tests using sbt-native-packager:
 
 		set unmanagedSourceDirectories in Compile := (unmanagedSourceDirectories in Compile).value ++ (unmanagedSourceDirectories in Test).value
 		set mainClass in Compile := Some("woshilaiceshide.sserver.test.EchoServer")

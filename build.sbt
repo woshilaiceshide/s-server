@@ -63,12 +63,12 @@ libraryDependencies ++= {
 
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'
-libraryDependencies in Test += "org.openjdk.jol" % "jol-core" % "0.5"
-libraryDependencies in Test += "org.openjdk.jol" % "jol-cli" % "0.5"
-//mainClass in (Test, run) := Some("org.openjdk.jol.Main")
+val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
+//jol := Seq("org.openjdk.jol" % "jol-core" % "0.5", "org.openjdk.jol" % "jol-cli" % "0.5")
+//mainClass in Compile := Some("org.openjdk.jol.Main")
 
 mappings in Universal ++= (baseDirectory.value / "conf" * "*" get) map (x => x -> ("conf/" + x.getName))
 
-//or woshilaiceshide.sserver.SampleHttpServer
+//or woshilaiceshide.sserver.EchoHttpServer
 mainClass in (Test, run) := Some("woshilaiceshide.sserver.test.SampleHttpServer")
 
