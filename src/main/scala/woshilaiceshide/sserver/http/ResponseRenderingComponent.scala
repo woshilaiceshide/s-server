@@ -114,6 +114,12 @@ trait ResponseRenderingComponent {
   def chunklessStreaming: Boolean = configurator.chunkless_streaming
   def transparentHeadRequests: Boolean = configurator.transparent_header_requestes
 
+  private def suppressionWarning(log: akka.event.LoggingAdapter, h: HttpHeader): Unit =
+    suppressionWarning(log, h, "this header is set internally and automatically!")
+
+  private def suppressionWarning(log: akka.event.LoggingAdapter, h: HttpHeader, msg: String = "this header is set internally and automatically!"): Unit =
+    log.warning("Explicitly set response header '{}' is ignored, {}", h, msg)
+
   // returns a boolean indicating whether the connection is to be closed after this response was sent
   def renderResponsePartRenderingContext(
     r: RichBytesRendering,
@@ -126,83 +132,98 @@ trait ResponseRenderingComponent {
 
       def render(h: HttpHeader) = r ~~ h ~~ CrLf
 
-      def suppressionWarning(h: HttpHeader, msg: String = "the spray-can HTTP layer sets this header automatically!"): Unit =
-        log.warning("Explicitly set response header '{}' is ignored, {}", h, msg)
-
       def shouldClose(contentLengthDefined: Boolean, connectionHeader: Connection) =
         ctx.closeAfterResponseCompletion || // request wants to close
           (connectionHeader != null && OptimizedUtility.hasClose(connectionHeader)) || // application wants to close
           (chunkless && !contentLengthDefined) // missing content-length, close needed as data boundary
 
-      @tailrec def renderHeaders(remaining: List[HttpHeader], contentLengthDefined: Boolean,
-        userContentType: Boolean = false, connHeader: Connection = null): Boolean = {
+      def renderContentType(x: `Content-Type`, userContentType: Boolean): Boolean = {
+        if (userContentType) { suppressionWarning(log, x, "another `Content-Type` header was already rendered"); true }
+        else if (!allowUserContentType) { suppressionWarning(log, x, "the response Content-Type is set via the response's HttpEntity!"); false }
+        else {
+          //optimization
+          //render(x);
+          if (x.contentType eq ContentTypes.`text/plain(UTF-8)`) {
+            r ~~ `Content-Type--text/plain(UTF-8)-Bytes`
+          } else if (x.contentType eq ContentTypes.`text/plain`) {
+            r ~~ `Content-Type--text/plain-Bytes`
+          } else {
+            x.renderValue(r ~~ `Content-Type-Bytes`)
+          }
+          true
+        }
+
+      }
+
+      def renderConnection(old_header: Connection, current_header: `Connection`) = {
+        val new_header = if (old_header eq null) current_header else Connection(current_header.tokens ++ old_header.tokens)
+        if (OptimizedUtility.hasUpgrade(current_header)) render(current_header)
+        new_header
+      }
+
+      def isThisRawHeaderIllegal(x: HttpHeader) = {
+        x.lowercaseName == "content-type" ||
+          x.lowercaseName == "content-length" ||
+          x.lowercaseName == "transfer-encoding" ||
+          x.lowercaseName == "date" ||
+          x.lowercaseName == "server" ||
+          x.lowercaseName == "connection"
+      }
+
+      def renderGeneralHeader(x: HttpHeader) = {
+        if (x.isInstanceOf[RawHeader] && isThisRawHeaderIllegal(x)) {
+          suppressionWarning(log, x, "illegal RawHeader")
+        } else {
+          render(x)
+        }
+      }
+
+      def renderEntity(userContentType: Boolean, connHeader: Connection) = {
+        response.entity match {
+          case HttpEntity.NonEmpty(ContentTypes.NoContentType, _) ⇒
+          case HttpEntity.NonEmpty(contentType, _) if !userContentType ⇒ {
+            if (contentType eq ContentTypes.`text/plain(UTF-8)`) {
+              r ~~ `Content-Type--text/plain(UTF-8)-CrLf-Bytes`
+            } else if (contentType eq ContentTypes.`text/plain`) {
+              r ~~ `Content-Type--text/plain-CrLf-Bytes`
+            } else {
+              r ~~ `Content-Type` ~~ contentType ~~ CrLf
+            }
+          }
+          case _ ⇒
+        }
+        shouldClose(contentLengthDefined, connHeader)
+      }
+
+      @tailrec def renderHeaders(remaining: List[HttpHeader], contentLengthDefined: Boolean, userContentType: Boolean = false, connHeader: Connection = null): Boolean = {
         remaining match {
           case head :: tail ⇒
             head match {
               case x: `Content-Type` ⇒
-                val userCT =
-                  if (userContentType) { suppressionWarning(x, "another `Content-Type` header was already rendered"); true }
-                  else if (!allowUserContentType) { suppressionWarning(x, "the response Content-Type is set via the response's HttpEntity!"); false }
-                  else {
-                    //optimization
-                    //render(x);
-                    if (x.contentType eq ContentTypes.`text/plain(UTF-8)`) {
-                      r ~~ `Content-Type--text/plain(UTF-8)-Bytes`
-                    } else if (x.contentType eq ContentTypes.`text/plain`) {
-                      r ~~ `Content-Type--text/plain-Bytes`
-                    } else {
-                      x.renderValue(r ~~ `Content-Type-Bytes`)
-                    }
-                    true
-                  }
+                val userCT = renderContentType(x, userContentType)
                 renderHeaders(tail, contentLengthDefined, userContentType = userCT, connHeader)
 
               case x: `Content-Length` ⇒
-                if (contentLengthDefined) suppressionWarning(x, "another `Content-Length` header was already rendered")
+                if (contentLengthDefined) suppressionWarning(log, x, "another `Content-Length` header was already rendered")
                 else {
                   //render(x)
                   configurator.render_content_length(r, x.length, false)
                 }
-                renderHeaders(tail, contentLengthDefined = true, userContentType, connHeader)
+                renderHeaders(tail, true, userContentType, connHeader)
 
               case `Transfer-Encoding`(_) | Date(_) | Server(_) ⇒
-                suppressionWarning(head)
+                suppressionWarning(log, head)
                 renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
 
               case x: `Connection` ⇒
-                val connectionHeader = if (connHeader eq null) x else Connection(x.tokens ++ connHeader.tokens)
-                if (OptimizedUtility.hasUpgrade(x)) render(x)
-                renderHeaders(tail, contentLengthDefined, userContentType, connectionHeader)
-
-              case x: RawHeader if x.lowercaseName == "content-type" ||
-                x.lowercaseName == "content-length" ||
-                x.lowercaseName == "transfer-encoding" ||
-                x.lowercaseName == "date" ||
-                x.lowercaseName == "server" ||
-                x.lowercaseName == "connection" ⇒
-                suppressionWarning(x, "illegal RawHeader")
-                renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
+                val newHeader = renderConnection(connHeader, x)
+                renderHeaders(tail, contentLengthDefined, userContentType, newHeader)
 
               case x ⇒
-                render(x)
+                renderGeneralHeader(x)
                 renderHeaders(tail, contentLengthDefined, userContentType, connHeader)
             }
-          case _ ⇒
-            response.entity match {
-              case HttpEntity.NonEmpty(ContentTypes.NoContentType, _) ⇒
-              case HttpEntity.NonEmpty(contentType, _) if !userContentType ⇒ {
-                if (contentType eq ContentTypes.`text/plain(UTF-8)`) {
-                  r ~~ `Content-Type--text/plain(UTF-8)-CrLf-Bytes`
-                } else if (contentType eq ContentTypes.`text/plain`) {
-                  r ~~ `Content-Type--text/plain-CrLf-Bytes`
-                } else {
-                  r ~~ `Content-Type` ~~ contentType ~~ CrLf
-                }
-              }
-              case _ ⇒
-            }
-
-            shouldClose(contentLengthDefined, connHeader)
+          case _ ⇒ renderEntity(userContentType, connHeader)
         }
       }
 

@@ -25,6 +25,19 @@ final class HttpChannel(
 
   def isCompleted = this.synchronized { finished }
 
+  private def check_finished(response: HttpResponsePart) = {
+
+    if (finished) {
+      throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
+    }
+
+    response match {
+      case _: HttpResponse => finished = true
+      case _: ChunkedMessageEnd => finished = true
+      case _ => {}
+    }
+  }
+
   //TODO test chunked responding
   //TODO a cached response build utility.
   /**
@@ -39,14 +52,7 @@ final class HttpChannel(
 
     val (_finished, wr, should_close) = synchronized {
 
-      if (finished) {
-        throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
-      }
-      response match {
-        case _: HttpResponse => finished = true
-        case _: ChunkedMessageEnd => finished = true
-        case _ => {}
-      }
+      check_finished(response)
 
       //val r = new RevisedByteArrayRendering(sizeHint)
       val r = configurator.borrow_bytes_rendering(sizeHint, response)

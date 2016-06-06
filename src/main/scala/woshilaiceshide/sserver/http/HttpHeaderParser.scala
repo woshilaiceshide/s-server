@@ -83,6 +83,28 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
   def copyWith(warnOnIllegalHeader: ErrorInfo ⇒ Unit) =
     new HttpHeaderParser(settings, warnOnIllegalHeader, nodes, nodeCount, branchData, branchDataCount, values, valueCount)
 
+  private def startValueBranch(input: ByteString, cursor: Int, rootValueIx: Int, valueParser: HeaderValueParser) = {
+    val (header, endIx) = valueParser(input, cursor, warnOnIllegalHeader)
+    if (valueParser.maxValueCount > 0)
+      try {
+        val valueIx = newValueIndex // compute early in order to trigger OutOfTrieSpaceExceptions before any change
+        unshareIfRequired()
+        values(rootValueIx) = ValueBranch(rootValueIx, valueParser, branchRootNodeIx = nodeCount, valueCount = 1)
+        insertRemainingCharsAsNewNodes(input, header)(cursor, endIx, valueIx)
+      } catch { case OutOfTrieSpaceException ⇒ /* if we cannot insert then we simply don't */ }
+    resultHeader = header
+    endIx
+  }
+
+  private def leafNodeWhenParsingHeaderLine(input: ByteString, cursor: Int, node: Char) = {
+    val valueIx = (node >>> 8) - 1
+    values(valueIx) match {
+      case branch: ValueBranch ⇒ parseHeaderValue(input, cursor, branch)()
+      case valueParser: HeaderValueParser ⇒ startValueBranch(input, cursor, valueIx, valueParser) // no header yet of this type
+      case EmptyHeader ⇒ resultHeader = EmptyHeader; cursor
+    }
+  }
+
   /**
    * Parses a header line and returns the line start index of the subsequent line.
    * The parsed header instance is written to the `resultHeader` member.
@@ -93,27 +115,10 @@ final class HttpHeaderParser private (val settings: spray.can.parsing.ParserSett
    * If the header is invalid a respective `ParsingException` is thrown.
    */
   @tailrec final def parseHeaderLine(input: ByteString, lineStart: Int = 0)(cursor: Int = lineStart, nodeIx: Int = 0): Int = {
-    def startValueBranch(rootValueIx: Int, valueParser: HeaderValueParser) = {
-      val (header, endIx) = valueParser(input, cursor, warnOnIllegalHeader)
-      if (valueParser.maxValueCount > 0)
-        try {
-          val valueIx = newValueIndex // compute early in order to trigger OutOfTrieSpaceExceptions before any change
-          unshareIfRequired()
-          values(rootValueIx) = ValueBranch(rootValueIx, valueParser, branchRootNodeIx = nodeCount, valueCount = 1)
-          insertRemainingCharsAsNewNodes(input, header)(cursor, endIx, valueIx)
-        } catch { case OutOfTrieSpaceException ⇒ /* if we cannot insert then we simply don't */ }
-      resultHeader = header
-      endIx
-    }
     val node = nodes(nodeIx)
     node & 0xFF match {
       case 0 ⇒ // leaf node
-        val valueIx = (node >>> 8) - 1
-        values(valueIx) match {
-          case branch: ValueBranch ⇒ parseHeaderValue(input, cursor, branch)()
-          case valueParser: HeaderValueParser ⇒ startValueBranch(valueIx, valueParser) // no header yet of this type
-          case EmptyHeader ⇒ resultHeader = EmptyHeader; cursor
-        }
+        leafNodeWhenParsingHeaderLine(input, cursor, node)
       case nodeChar ⇒
         val char = toLowerCase(byteChar(input, cursor))
         if (char == node) // fast match, advance and descend

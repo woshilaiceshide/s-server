@@ -40,33 +40,43 @@ object SampleHttpServer extends App {
     }
 
     private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World"))
+    private def write_ping(channel: HttpChannel) = {
+      channel.writeResponse { ping }
+      ResponseAction.responseNormally
+    }
     private val path_ping = Uri.Path("/ping")
-    def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
-      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => {
-        channel.writeResponse {
-          ping
-        }
-        ResponseAction.responseNormally
-      }
-      case HttpRequest(HttpMethods.GET, Uri.Path("/ping0"), _, _, _) => {
-        Future {
-          Thread.sleep(3 * 1000);
-          channel.writeResponse(new HttpResponse(200, "pong0\r\n"))
-        }
-        ResponseAction.responseNormally
-      }
-      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket_demo"), _, _, _) => {
 
-        ResponseAction.acceptWebsocket { websocket_demo }
+    private def write_404(channel: HttpChannel) = {
+      channel.writeResponse { new HttpResponse(400) }
+      ResponseAction.responseNormally
+    }
+
+    private def write_ping_asynchronously(channel: HttpChannel) = {
+      Future {
+        Thread.sleep(3 * 1000);
+        channel.writeResponse(new HttpResponse(200, "pong0\r\n"))
       }
-      case x: HttpRequest if classifier.classification(x) == RequestClassification.ChunkedHttpStart => {
-        channel.writeResponse { new HttpResponse(400, "I DOES NOT support chunked request.") }
-        ResponseAction.responseNormally
-      }
-      case _: HttpRequest => {
-        channel.writeResponse { new HttpResponse(400) }
-        ResponseAction.responseNormally
-      }
+      ResponseAction.responseNormally
+    }
+
+    private def accept_websocket() = ResponseAction.acceptWebsocket { websocket_demo }
+
+    private def do_not_support_chunked_request(channel: HttpChannel) = {
+      channel.writeResponse { new HttpResponse(400, "I DOES NOT support chunked request.") }
+      ResponseAction.responseNormally
+    }
+
+    def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
+
+      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping(channel)
+
+      case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
+
+      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket_demo"), _, _, _) => accept_websocket()
+
+      case x: HttpRequest if classifier.classification(x) == RequestClassification.ChunkedHttpStart => do_not_support_chunked_request(channel)
+
+      case _: HttpRequest => write_404(channel)
     }
 
   }

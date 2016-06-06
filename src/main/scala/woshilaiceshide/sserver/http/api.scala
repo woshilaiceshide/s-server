@@ -129,21 +129,25 @@ final case class HttpConfigurator(
     }
   }
 
+  private final def borrow_fresh_bytes_rendering(size: Int, response_part: HttpResponsePart) = {
+    val tmp = new RichByteArrayRendering(size)
+    response_part match {
+      case response: HttpResponse => {
+        if (response.status eq StatusCodes.OK) tmp ~~ RenderSupport.DefaultStatusLine
+        else tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+      }
+      case _ =>
+    }
+    tmp
+
+  }
   //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
   /**
    * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
    */
   private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
     if (size > cached_bytes_rendering_length) {
-      val tmp = new RichByteArrayRendering(size)
-      response_part match {
-        case response: HttpResponse => {
-          if (response.status eq StatusCodes.OK) tmp ~~ RenderSupport.DefaultStatusLine
-          else tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-        }
-        case _ =>
-      }
-      tmp
+      borrow_fresh_bytes_rendering(size, response_part)
     } else {
 
       response_part match {

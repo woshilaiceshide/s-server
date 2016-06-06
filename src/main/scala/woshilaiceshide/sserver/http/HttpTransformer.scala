@@ -230,6 +230,73 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     process(result)
   }
 
+  final private def process_request_in_pipeline(next: Node, channelWrapper: ChannelWrapper) = {
+
+    val request = next.value
+    val closeAfterResponseCompletion = next.closeAfterResponseCompletion
+    next.value match {
+
+      case x: ChunkedRequestStart => {
+
+        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
+        val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
+        action match {
+          case ResponseAction.AcceptChunking(h) => {
+            current_sink = h
+            this
+          }
+          case ResponseAction.ResponseNormally => {
+            this
+          }
+          case _ => {
+            channelWrapper.closeChannel(false)
+            null
+          }
+        }
+
+      }
+
+      //TODO
+      case x: MessageChunk => this
+      case x: ChunkedMessageEnd => this
+
+      case x: HttpRequest => {
+
+        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
+        val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
+        action match {
+          case ResponseAction.ResponseNormally => {
+            this
+          }
+          case ResponseAction.AcceptWebsocket(factory) => {
+
+            val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
+            val websocket_channel_handler = factory(websocket_channel)
+            val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
+
+            if (!is_queue_empty()) {
+              //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+              //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
+              throw new RuntimeException("no data should be here because handshake does not complete.")
+            }
+            websocket
+          }
+          case ResponseAction.ResponseWithASink(sink) => {
+            current_sink = sink
+            this
+          }
+          case _ => {
+            channelWrapper.closeChannel(false)
+            null
+          }
+        }
+
+      }
+
+    }
+
+  }
+
   def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler = {
 
     if (null == current_http_channel || (current_http_channel != null && current_http_channel.isCompleted)) {
@@ -239,68 +306,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
       val next = de_queue()
       if (null != next) {
-        val request = next.value
-        val closeAfterResponseCompletion = next.closeAfterResponseCompletion
-        next.value match {
-
-          case x: ChunkedRequestStart => {
-
-            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
-            val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
-            action match {
-              case ResponseAction.AcceptChunking(h) => {
-                current_sink = h
-                this
-              }
-              case ResponseAction.ResponseNormally => {
-                this
-              }
-              case _ => {
-                channelWrapper.closeChannel(false)
-                null
-              }
-            }
-
-          }
-
-          //TODO
-          case x: MessageChunk => this
-          case x: ChunkedMessageEnd => this
-
-          case x: HttpRequest => {
-
-            current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
-            val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
-            action match {
-              case ResponseAction.ResponseNormally => {
-                this
-              }
-              case ResponseAction.AcceptWebsocket(factory) => {
-
-                val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
-                val websocket_channel_handler = factory(websocket_channel)
-                val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
-
-                if (!is_queue_empty()) {
-                  //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
-                  //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
-                  throw new RuntimeException("no data should be here because handshake does not complete.")
-                }
-                websocket
-              }
-              case ResponseAction.ResponseWithASink(sink) => {
-                current_sink = sink
-                this
-              }
-              case _ => {
-                channelWrapper.closeChannel(false)
-                null
-              }
-            }
-
-          }
-
-        }
+        process_request_in_pipeline(next, channelWrapper)
       } else {
         this
       }

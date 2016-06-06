@@ -66,7 +66,8 @@ libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.21"
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'
 val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
-//jol := Seq("org.openjdk.jol" % "jol-core" % "0.5", "org.openjdk.jol" % "jol-cli" % "0.5")
+jol := Seq("org.openjdk.jol" % "jol-core" % "0.5", "org.openjdk.jol" % "jol-cli" % "0.5")
+//libraryDependencies ++= jol.value
 //mainClass in Compile := Some("org.openjdk.jol.Main")
 
 mappings in Universal ++= (baseDirectory.value / "conf" * "*" get) map (x => x -> ("conf/" + x.getName))
