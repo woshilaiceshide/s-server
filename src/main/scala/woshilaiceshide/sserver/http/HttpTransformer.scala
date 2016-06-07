@@ -115,65 +115,6 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           val request = r.part.asInstanceOf[HttpRequestPart]
 
           request match {
-            case x: ChunkedRequestStart => {
-              if (current_http_channel != null) {
-                en_queue(x, closeAfterResponseCompletion, channelWrapper)
-                process(continue)
-              } else {
-                if (current_sink != null) {
-                  current_sink = null
-                }
-
-                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
-                val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
-                action match {
-                  case ResponseAction.AcceptChunking(h) => {
-                    current_sink = h
-                    process(continue)
-                  }
-                  case ResponseAction.ResponseNormally => {
-                    process(continue)
-                  }
-                  case _ => {
-                    channelWrapper.closeChannel(false)
-                    null
-                  }
-                }
-
-              }
-            }
-            case x: MessageChunk => {
-
-              if (head == null) {
-                if (current_sink != null) {
-                  current_sink match {
-                    case c: ChunkedRequestHandler => c.chunkReceived(x)
-                    case _ => channelWrapper.closeChannel(true)
-                  }
-                }
-                process(continue)
-              } else {
-                en_queue(x, closeAfterResponseCompletion, channelWrapper)
-                process(continue)
-              }
-            }
-            case x: ChunkedMessageEnd => {
-
-              if (head == null) {
-                if (current_sink != null) {
-                  current_sink match {
-                    case c: ChunkedRequestHandler => c.chunkEnded(x)
-                    case _ => channelWrapper.closeChannel(true)
-                  }
-                  //do not make it null now!!!
-                  //current_sink = null
-                }
-                process(continue)
-              } else {
-                en_queue(x, closeAfterResponseCompletion, channelWrapper)
-                process(continue)
-              }
-            }
             case x: HttpRequest => {
 
               if (current_http_channel != null) {
@@ -212,7 +153,64 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                 }
 
               }
+            }
+            case x: MessageChunk => {
+              if (head == null) {
+                if (current_sink != null) {
+                  current_sink match {
+                    case c: ChunkedRequestHandler => c.chunkReceived(x)
+                    case _ => channelWrapper.closeChannel(true)
+                  }
+                }
+                process(continue)
+              } else {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue)
+              }
+            }
+            case x: ChunkedRequestStart => {
+              if (current_http_channel != null) {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue)
+              } else {
+                if (current_sink != null) {
+                  current_sink = null
+                }
 
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
+                val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
+                action match {
+                  case ResponseAction.AcceptChunking(h) => {
+                    current_sink = h
+                    process(continue)
+                  }
+                  case ResponseAction.ResponseNormally => {
+                    process(continue)
+                  }
+                  case _ => {
+                    channelWrapper.closeChannel(false)
+                    null
+                  }
+                }
+
+              }
+            }
+            case x: ChunkedMessageEnd => {
+
+              if (head == null) {
+                if (current_sink != null) {
+                  current_sink match {
+                    case c: ChunkedRequestHandler => c.chunkEnded(x)
+                    case _ => channelWrapper.closeChannel(true)
+                  }
+                  //do not make it null now!!!
+                  //current_sink = null
+                }
+                process(continue)
+              } else {
+                en_queue(x, closeAfterResponseCompletion, channelWrapper)
+                process(continue)
+              }
             }
           }
         }
