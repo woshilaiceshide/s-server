@@ -128,11 +128,11 @@ public class ReapableQueue<T> {
 
 		Node<T> new_tail = new Node<T>(value);
 		Node<T> old_tail = tail_updater.getAndSet(this, new_tail);
-		if (null == old_tail) {
-			head_updater.set(this, new_tail);
-		} else {
+		if (null != old_tail) {
 			// if reaped right now, then do not set_next(...)
 			old_tail.set_next(null, new_tail);
+		} else {
+			head_updater.set(this, new_tail);
 		}
 
 		if (ended.get() == 0) {
@@ -192,6 +192,7 @@ public class ReapableQueue<T> {
 	 */
 	public Reaped<T> reap(final boolean is_last_reap) {
 
+		// do not re-order for readability
 		if (is_last_reap) {
 			if (!ended.compareAndSet(1, 2)) {
 				// already ended and reaped.
@@ -200,25 +201,28 @@ public class ReapableQueue<T> {
 		}
 
 		Node<T> old_head = head_updater.get(this);
-		if (old_head == null) {
+		if (old_head != null) {
+
+			Node<T> old_tail = tail_updater.getAndSet(this, null);
+			if (old_tail == null) {
+				// it can not happen!!!
+				// if happened, this class is coded uncorrectly.
+				throw new Error("supposed to be not here!!!");
+			}
+			// for jvm's gc.
+			old_tail.set_next(old_tail);
+
+			head_updater.compareAndSet(this, old_head, null);
+
+			if (is_last_reap)
+				ended.compareAndSet(2, 3);
+
+			return new Reaped<T>(old_head, old_tail);
+
+		} else {
+
 			return null;
 		}
-
-		Node<T> old_tail = tail_updater.getAndSet(this, null);
-		if (old_tail == null) {
-			// it can not happen!!!
-			// if happened, this class is coded uncorrectly.
-			throw new Error("supposed to be not here!!!");
-		}
-		// for jvm's gc.
-		old_tail.set_next(old_tail);
-
-		head_updater.compareAndSet(this, old_head, null);
-
-		if (is_last_reap)
-			ended.compareAndSet(2, 3);
-
-		return new Reaped<T>(old_head, old_tail);
 
 	}
 
