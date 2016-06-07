@@ -159,7 +159,7 @@ class NioSocketReaderWriter private[nio] (
       //for example, xxx.synchronized{...} will often results in unnecessary closures(scala/runtime/ObjectRef:create).
       //so, i write it using java.
       //and, i refactored public apis so that they can be used in java.
-      //channelWrapper.checkIO()
+      //channelWrapper.check_io()
       JavaAccelerator.check_io(channelWrapper)
     }
   }
@@ -404,10 +404,10 @@ class NioSocketReaderWriter private[nio] (
 
           this.last_active_time = System.currentTimeMillis()
 
-          val remaining = if (null == bytes) {
-            0
-          } else {
+          val remaining = if (null != bytes) {
             bytes.remaining()
+          } else {
+            0
           }
 
           val (wr, should_pend) = if (0 == remaining) {
@@ -628,7 +628,7 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    private[nio] def checkIO(): Unit = {
+    private[nio] def check_io(): Unit = {
 
       var cause: ChannelClosedCause.Value = null
       var attachment: Option[_] = None
