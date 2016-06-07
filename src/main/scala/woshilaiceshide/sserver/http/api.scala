@@ -146,10 +146,7 @@ final case class HttpConfigurator(
    * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
    */
   private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
-    if (size > cached_bytes_rendering_length) {
-      borrow_fresh_bytes_rendering(size, response_part)
-    } else {
-
+    if (size <= cached_bytes_rendering_length) {
       response_part match {
         case response: HttpResponse => {
           if (response.status eq StatusCodes.OK) {
@@ -185,6 +182,10 @@ final case class HttpConfigurator(
           cached
         }
       }
+
+    } else {
+
+      borrow_fresh_bytes_rendering(size, response_part)
     }
   }
 
