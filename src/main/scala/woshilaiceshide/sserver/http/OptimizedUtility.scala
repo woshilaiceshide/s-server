@@ -5,7 +5,7 @@ import spray.http.HttpHeaders._
 
 object OptimizedUtility {
 
-  val isUpgrade: String => Boolean = { s =>
+  def isUpgrade(s: String): Boolean = {
     val len = 7 //"upgrade".length
     s.length() == len &&
       ('U' == s.charAt(0) || 'u' == s.charAt(0)) &&
@@ -17,9 +17,18 @@ object OptimizedUtility {
       ('e' == s.charAt(6) || 'E' == s.charAt(6))
   }
 
-  def hasUpgrade(c: Connection) = c.tokens.exists { isUpgrade }
+  def hasUpgrade(c: Connection): Boolean = {
 
-  val isClose: String => Boolean = { s =>
+    var these = c.tokens
+    while (!these.isEmpty) {
+      if (isUpgrade(these.head)) return true
+      these = these.tail
+    }
+    return false
+
+  }
+
+  def isClose(s: String): Boolean = {
     val len = 5 //"close".length
     s.length() == len &&
       ('C' == s.charAt(0) || 'c' == s.charAt(0)) &&
@@ -29,9 +38,18 @@ object OptimizedUtility {
       ('e' == s.charAt(4) || 'E' == s.charAt(4))
   }
 
-  def hasClose(c: Connection) = c.tokens.exists { isClose }
+  def hasClose(c: Connection): Boolean = {
 
-  val isNotKeepAlive: String => Boolean = { s =>
+    var these = c.tokens
+    while (!these.isEmpty) {
+      if (isClose(these.head)) return true
+      these = these.tail
+    }
+    return false
+
+  }
+
+  def isNotKeepAlive(s: String): Boolean = {
     val len = 10 //"keep-alive".length
     s.length() != len ||
       ('K' != s.charAt(0) && 'k' != s.charAt(0)) ||
@@ -46,10 +64,18 @@ object OptimizedUtility {
       ('e' != s.charAt(9) && 'E' != s.charAt(9))
   }
 
-  val isKeepAlive: String => Boolean = { s =>
+  def isKeepAlive(s: String): Boolean = {
     !isNotKeepAlive(s)
   }
 
-  def hasNoKeepAlive(c: Connection) = !c.tokens.exists { isKeepAlive }
+  def hasNoKeepAlive(c: Connection): Boolean = {
+
+    var these = c.tokens
+    while (!these.isEmpty) {
+      if (isKeepAlive(these.head)) return false
+      these = these.tail
+    }
+    return true
+  }
 
 }
