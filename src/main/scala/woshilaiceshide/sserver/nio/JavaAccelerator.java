@@ -24,13 +24,23 @@ public class JavaAccelerator {
 			wrapper.already_pended_$eq(false);
 			int status = wrapper.status();
 
-			if (status == CHANNEL_CLOSING_RIGHT_NOW) {
+			if (status == CHANNEL_NORMAL && null != wrapper.writes()) {
+				try {
+					wrapper.justOpWriteIfNeededOrNoOp();
+					wrapper.setOpWrite();
+					should_close = false;
+				} catch (Throwable thread) {
+					SelectorRunner.safeClose(wrapper.channel());
+					wrapper.status_$eq(CHANNEL_CLOSED);
+					should_close = true;
+				}
+			} else if (status == CHANNEL_CLOSED) {
+				should_close = false;
+			} else if (status == CHANNEL_CLOSING_RIGHT_NOW) {
 				SelectorRunner.safeClose(wrapper.channel());
 				wrapper.writes_$eq(null);
 				wrapper.status_$eq(CHANNEL_CLOSED);
 				should_close = true;
-			} else if (status == CHANNEL_CLOSED) {
-				should_close = false;
 			} else if (status == CHANNEL_CLOSING_GRACEFULLY && null == wrapper.writes()) {
 				SelectorRunner.safeClose(wrapper.channel());
 				wrapper.status_$eq(CHANNEL_CLOSED);
@@ -48,19 +58,10 @@ public class JavaAccelerator {
 					wrapper.status_$eq(CHANNEL_CLOSED);
 					should_close = true;
 				}
-			} else if (status == CHANNEL_NORMAL && null == wrapper.writes()) {
+			} else if (status == CHANNEL_NORMAL) {
+				// now 'null == wrapper.writes()' is true
 				// closeIfFailed { clearOpWrite() }
 				should_close = false;
-			} else if (status == CHANNEL_NORMAL) {
-				try {
-					wrapper.justOpWriteIfNeededOrNoOp();
-					wrapper.setOpWrite();
-					should_close = false;
-				} catch (Throwable thread) {
-					SelectorRunner.safeClose(wrapper.channel());
-					wrapper.status_$eq(CHANNEL_CLOSED);
-					should_close = true;
-				}
 			} else {
 				should_close = false;
 			}
