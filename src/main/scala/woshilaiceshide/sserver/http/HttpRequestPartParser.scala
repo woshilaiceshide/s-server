@@ -103,52 +103,58 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
 
   def badProtocol = throw new ParsingException(HTTPVersionNotSupported)
 
+  private def parseChunkedEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: `Content-Length`, cth: `Content-Type`, closeAfterResponseCompletion: Boolean) = {
+    if (clh == null) {
+      val tmp = copy(input)
+      emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
+        parseChunk(tmp, bodyStart, closeAfterResponseCompletion)
+      }
+    } else fail("A chunked request must not contain a Content-Length header.")
+  }
+
+  private def parseNonChunkedEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: `Content-Length`, cth: `Content-Type`, closeAfterResponseCompletion: Boolean) = {
+    val contentLength = if (null == clh) {
+      0
+    } else {
+      clh.length
+    }
+    if (contentLength == 0) {
+      if (input.length > bodyStart) {
+        val tmp = copy(input)
+        emitLazily(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
+          parseMessageSafe(tmp, bodyStart)
+        }
+      } else {
+        emitDirectly(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
+          Result.NeedMoreData(this)
+        }
+      }
+    } else if (contentLength <= settings.maxContentLength) {
+      parseFixedLengthBody(headers, input, bodyStart, contentLength, cth, closeAfterResponseCompletion)
+
+    } else fail(RequestEntityTooLarge, s"Request Content-Length $contentLength exceeds the configured limit of " +
+      settings.maxContentLength)
+  }
+
   // http://tools.ietf.org/html/draft-ietf-httpbis-p1-messaging-22#section-3.3
-  def parseEntity(
-    headers: List[HttpHeader],
-    input: ByteString,
-    bodyStart: Int,
-    clh: `Content-Length`,
-    cth: `Content-Type`,
-    teh: `Transfer-Encoding`,
-    hostHeaderPresent: Boolean,
-    closeAfterResponseCompletion: Boolean): Result =
-    if (hostHeaderPresent || protocol == HttpProtocols.`HTTP/1.0`) {
+  def parseEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: `Content-Length`, cth: `Content-Type`, teh: `Transfer-Encoding`, hostHeaderPresent: Boolean, closeAfterResponseCompletion: Boolean): Result = {
+
+    def parseEntity1() = {
       teh match {
         case `Transfer-Encoding`(Seq("chunked")) ⇒
-          if (clh == null) {
-            val tmp = copy(input)
-            emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
-              parseChunk(tmp, bodyStart, closeAfterResponseCompletion)
-            }
-          } else fail("A chunked request must not contain a Content-Length header.")
-
+          parseChunkedEntity(headers, input, bodyStart, clh, cth, closeAfterResponseCompletion)
         case null | `Transfer-Encoding`(Seq("identity")) ⇒
-          val contentLength = if (null == clh) {
-            0
-          } else {
-            clh.length
-          }
-          if (contentLength == 0) {
-            if (input.length > bodyStart) {
-              val tmp = copy(input)
-              emitLazily(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
-                parseMessageSafe(tmp, bodyStart)
-              }
-            } else {
-              emitDirectly(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
-                Result.NeedMoreData(this)
-              }
-            }
-          } else if (contentLength <= settings.maxContentLength) {
-            parseFixedLengthBody(headers, input, bodyStart, contentLength, cth, closeAfterResponseCompletion)
-
-          } else fail(RequestEntityTooLarge, s"Request Content-Length $contentLength exceeds the configured limit of " +
-            settings.maxContentLength)
-
+          parseNonChunkedEntity(headers, input, bodyStart, clh, cth, closeAfterResponseCompletion)
         case te ⇒ fail(NotImplemented, s"$te is not supported by this server")
       }
-    } else fail("Request is missing required `Host` header")
+    }
+
+    if (hostHeaderPresent || protocol == HttpProtocols.`HTTP/1.0`) {
+      parseEntity1()
+    } else {
+      fail("Request is missing required `Host` header")
+    }
+  }
 
   def message(headers: List[HttpHeader], entity: HttpEntity) = {
     val requestHeaders =
