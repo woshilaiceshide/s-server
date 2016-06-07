@@ -234,30 +234,6 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     val closeAfterResponseCompletion = next.closeAfterResponseCompletion
     next.value match {
 
-      case x: ChunkedRequestStart => {
-
-        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
-        val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
-        action match {
-          case ResponseAction.AcceptChunking(h) => {
-            current_sink = h
-            this
-          }
-          case ResponseAction.ResponseNormally => {
-            this
-          }
-          case _ => {
-            channelWrapper.closeChannel(false)
-            null
-          }
-        }
-
-      }
-
-      //TODO
-      case x: MessageChunk => this
-      case x: ChunkedMessageEnd => this
-
       case x: HttpRequest => {
 
         current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
@@ -290,6 +266,32 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
         }
 
       }
+
+      //TODO
+      case x: MessageChunk => this
+
+      case x: ChunkedRequestStart => {
+
+        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
+        val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
+        action match {
+          case ResponseAction.AcceptChunking(h) => {
+            current_sink = h
+            this
+          }
+          case ResponseAction.ResponseNormally => {
+            this
+          }
+          case _ => {
+            channelWrapper.closeChannel(false)
+            null
+          }
+        }
+
+      }
+
+      //TODO
+      case x: ChunkedMessageEnd => this
 
     }
 
