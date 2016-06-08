@@ -141,10 +141,10 @@ class HttpRequestPartParser(_settings: spray.can.parsing.ParserSettings, rawRequ
 
     def parseEntity1() = {
       teh match {
-        case `Transfer-Encoding`(Seq("chunked")) ⇒
-          parseChunkedEntity(headers, input, bodyStart, clh, cth, closeAfterResponseCompletion)
         case null | `Transfer-Encoding`(Seq("identity")) ⇒
           parseNonChunkedEntity(headers, input, bodyStart, clh, cth, closeAfterResponseCompletion)
+        case `Transfer-Encoding`(Seq("chunked")) ⇒
+          parseChunkedEntity(headers, input, bodyStart, clh, cth, closeAfterResponseCompletion)
         case te ⇒ fail(NotImplemented, s"$te is not supported by this server")
       }
     }
