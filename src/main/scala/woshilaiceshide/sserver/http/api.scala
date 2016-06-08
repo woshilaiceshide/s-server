@@ -157,42 +157,47 @@ final case class HttpConfigurator(
       response_part match {
         case response: HttpResponse => {
           if (response.status eq StatusCodes.OK) {
-            Thread.currentThread() match {
-              case aux: AuxThread => {
-                if (aux.cached_bytes_rendering_with_status_200 != null) {
-                  aux.cached_bytes_rendering_with_status_200
-                } else {
-                  val tmp = get_rendering(cached_bytes_rendering_length)
-                  tmp ~~ RenderSupport.DefaultStatusLine
-                  tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
-                  aux.cached_bytes_rendering_with_status_200 = tmp
-                  tmp
+            def for_200() = {
+              Thread.currentThread() match {
+                case aux: AuxThread => {
+                  if (aux.cached_bytes_rendering_with_status_200 != null) {
+                    aux.cached_bytes_rendering_with_status_200
+                  } else {
+                    val tmp = get_rendering(cached_bytes_rendering_length)
+                    tmp ~~ RenderSupport.DefaultStatusLine
+                    tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
+                    aux.cached_bytes_rendering_with_status_200 = tmp
+                    tmp
+                  }
                 }
+                case _ => cached_bytes_rendering_with_status_200.get()
               }
-              case _ => cached_bytes_rendering_with_status_200.get()
             }
-
+            for_200()
           } else {
-            Thread.currentThread() match {
-              case aux: AuxThread => {
-                if (aux.cached_bytes_rendering != null) {
-                  val tmp = aux.cached_bytes_rendering
-                  tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-                  tmp
-                } else {
-                  val tmp = get_rendering(cached_bytes_rendering_length)
-                  tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-                  aux.cached_bytes_rendering = tmp
-                  tmp
+            def for_not_200() = {
+              Thread.currentThread() match {
+                case aux: AuxThread => {
+                  if (aux.cached_bytes_rendering != null) {
+                    val tmp = aux.cached_bytes_rendering
+                    tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+                    tmp
+                  } else {
+                    val tmp = get_rendering(cached_bytes_rendering_length)
+                    tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+                    aux.cached_bytes_rendering = tmp
+                    tmp
+                  }
+                }
+                case _ => {
+                  var cached = cached_bytes_rendering.get()
+                  cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+                  cached
                 }
               }
-              case _ => {
-                var cached = cached_bytes_rendering.get()
-                cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-                cached
-              }
-            }
 
+            }
+            for_not_200()
           }
         }
         case _ => {
