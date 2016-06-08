@@ -335,7 +335,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
           val tmp = configurator.io_thread_factory.newThread(new Runnable {
             override def run() = if (start0()) { safe_loop() }
           })
-          worker_thread.setName(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}")
+          tmp.setName(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}")
           tmp
         }
         worker_thread.start()
