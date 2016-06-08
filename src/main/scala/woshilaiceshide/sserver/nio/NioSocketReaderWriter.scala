@@ -54,7 +54,7 @@ private[nio] object NioSocketReaderWriter {
 
 class NioSocketReaderWriter private[nio] (
     channel_hander_factory: ChannelHandlerFactory,
-    val configurator: NioConfigurator) extends SelectorRunner() {
+    configurator: NioConfigurator) extends SelectorRunner(configurator) {
 
   import NioSocketReaderWriter._
   import configurator._

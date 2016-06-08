@@ -49,11 +49,9 @@ object SelectorRunner {
  *
  * note that all the operations on the SelectionKey should be in the i/o thread.
  */
-abstract class SelectorRunner() {
+abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
   import SelectorRunner._
-
-  def configurator: SelectorRunnerConfigurator
 
   //private val default_select_timeout = 30 * 1000
   protected var select_timeout = configurator.default_select_timeout

@@ -21,7 +21,7 @@ class NioSocketAcceptor private[nio] (
     interface: String,
     port: Int,
     channel_hander_factory: ChannelHandlerFactory,
-    val configurator: NioConfigurator) extends SelectorRunner() {
+    configurator: NioConfigurator) extends SelectorRunner(configurator) {
 
   import configurator._
 
