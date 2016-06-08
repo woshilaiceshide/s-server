@@ -193,6 +193,7 @@ trait SelectorRunnerConfigurator {
   def try_to_optimize_selector_key_set: Boolean
   def default_select_timeout: Int
   def enable_fuzzy_scheduler: Boolean
+  def io_thread_factory: java.util.concurrent.ThreadFactory
 }
 
 trait ByteBufferPool {
@@ -321,6 +322,11 @@ final case class XNioConfigurator(
   try_to_optimize_selector_key_set: Boolean = true,
   default_select_timeout: Int = 30 * 1000,
   enable_fuzzy_scheduler: Boolean = false,
+  io_thread_factory: java.util.concurrent.ThreadFactory = new java.util.concurrent.ThreadFactory() {
+    def newThread(r: Runnable) = {
+      new Thread(r)
+    }
+  },
 
   /**
    * if count_for_reader_writers is 0, then read/write will be in the same thread as the acceptor,

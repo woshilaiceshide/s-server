@@ -80,19 +80,26 @@ final case class HttpConfigurator(
   import woshilaiceshide.sserver.utility._
 
   //a huge optimization. header parser has a trie, which consumes lots of cpu.
-  private val tl_header_parser = new java.lang.ThreadLocal[HttpHeaderParser]() {
+  private val cached_header_parser = new java.lang.ThreadLocal[HttpHeaderParser]() {
     override def initialValue(): HttpHeaderParser = {
       HttpHeaderParser(parser_settings)
     }
   }
 
   private def get_header_parser() = {
-    var tmp = tl_header_parser.get
-    if (null == tmp) {
-      tmp = HttpHeaderParser(parser_settings)
-      tl_header_parser.set(tmp)
+
+    Thread.currentThread() match {
+      case aux: AuxThread => {
+        if (aux.cached_header_parser != null) {
+          aux.cached_header_parser
+        } else {
+          val tmp = HttpHeaderParser(parser_settings)
+          aux.cached_header_parser = tmp
+          tmp
+        }
+      }
+      case _ => cached_header_parser.get
     }
-    tmp
   }
 
   def get_request_parser(): HttpRequestPartParser = {
@@ -150,36 +157,59 @@ final case class HttpConfigurator(
       response_part match {
         case response: HttpResponse => {
           if (response.status eq StatusCodes.OK) {
-            var cached = cached_bytes_rendering_with_status_200.get()
-            if (cached == null) {
-              val tmp = get_rendering(cached_bytes_rendering_length)
-              tmp ~~ RenderSupport.DefaultStatusLine
-              tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
-              cached_bytes_rendering_with_status_200.set(tmp)
-              cached = tmp
+            Thread.currentThread() match {
+              case aux: AuxThread => {
+                if (aux.cached_bytes_rendering_with_status_200 != null) {
+                  aux.cached_bytes_rendering_with_status_200
+                } else {
+                  val tmp = get_rendering(cached_bytes_rendering_length)
+                  tmp ~~ RenderSupport.DefaultStatusLine
+                  tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
+                  aux.cached_bytes_rendering_with_status_200 = tmp
+                  tmp
+                }
+              }
+              case _ => cached_bytes_rendering_with_status_200.get()
             }
-            cached
+
           } else {
-            var cached = cached_bytes_rendering.get()
-            if (cached == null) {
-              val tmp = get_rendering(cached_bytes_rendering_length)
-              tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-              cached_bytes_rendering.set(tmp)
-              cached = tmp
-            } else {
-              cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+            Thread.currentThread() match {
+              case aux: AuxThread => {
+                if (aux.cached_bytes_rendering != null) {
+                  val tmp = aux.cached_bytes_rendering
+                  tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+                  tmp
+                } else {
+                  val tmp = get_rendering(cached_bytes_rendering_length)
+                  tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+                  aux.cached_bytes_rendering = tmp
+                  tmp
+                }
+              }
+              case _ => {
+                var cached = cached_bytes_rendering.get()
+                cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+                cached
+              }
             }
-            cached
+
           }
         }
         case _ => {
-          var cached = cached_bytes_rendering.get()
-          if (cached == null) {
-            val tmp = get_rendering(cached_bytes_rendering_length)
-            cached_bytes_rendering.set(tmp)
-            cached = tmp
+
+          Thread.currentThread() match {
+            case aux: AuxThread => {
+              if (aux.cached_bytes_rendering != null) {
+                aux.cached_bytes_rendering
+              } else {
+                val tmp = get_rendering(cached_bytes_rendering_length)
+                aux.cached_bytes_rendering = tmp
+                tmp
+              }
+            }
+            case _ => cached_bytes_rendering.get()
           }
-          cached
+
         }
       }
 

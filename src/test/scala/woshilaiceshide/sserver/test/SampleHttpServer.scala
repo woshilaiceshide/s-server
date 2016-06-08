@@ -106,7 +106,8 @@ object SampleHttpServer extends App {
   val configurator = XNioConfigurator(count_for_reader_writers = 2,
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator,
-    buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1))
+    buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1),
+    io_thread_factory = new woshilaiceshide.sserver.http.AuxThreadFactory())
 
   val port = 8787
 

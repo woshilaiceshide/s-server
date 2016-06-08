@@ -331,8 +331,12 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       if (asynchronously) {
         async = true
         //worker_thread should not be assigned in the new thread's running.
-        worker_thread = new Thread(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}") {
-          override def run() = if (start0()) { safe_loop() }
+        worker_thread = {
+          val tmp = configurator.io_thread_factory.newThread(new Runnable {
+            override def run() = if (start0()) { safe_loop() }
+          })
+          worker_thread.setName(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}")
+          tmp
         }
         worker_thread.start()
       } else {
