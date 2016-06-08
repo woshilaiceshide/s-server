@@ -45,6 +45,7 @@ object ChannelClosedCause extends scala.Enumeration {
 }
 
 object WriteResult extends scala.Enumeration {
+  val WR_UKNOWN = Value
   val WR_OK = Value
 
   //commented. this value makes no sense in practice.
