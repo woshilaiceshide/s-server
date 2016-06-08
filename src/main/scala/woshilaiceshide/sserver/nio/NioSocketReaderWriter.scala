@@ -204,9 +204,9 @@ class NioSocketReaderWriter private[nio] (
       var has = false
 
       {
-        val reaped = synchronousely_pended_io_operations
-        synchronousely_pended_io_operations = Nil
-        if (!reaped.isEmpty) {
+        if (!synchronousely_pended_io_operations.isEmpty) {
+          val reaped = synchronousely_pended_io_operations
+          synchronousely_pended_io_operations = Nil
           reaped.foreach(io_checker)
           has = true
         }
