@@ -26,8 +26,8 @@ public class JavaAccelerator {
 
 			if (status == CHANNEL_NORMAL && null != wrapper.writes()) {
 				try {
-					wrapper.justOpWriteIfNeededOrNoOp();
-					wrapper.setOpWrite();
+					wrapper.just_op_write_if_needed_or_no_op();
+					wrapper.set_op_write();
 					should_close = false;
 				} catch (Throwable thread) {
 					SelectorRunner.safeClose(wrapper.channel());
@@ -48,7 +48,7 @@ public class JavaAccelerator {
 			} else if (status == CHANNEL_CLOSING_GRACEFULLY) {
 				// closeIfFailed { setOpWrite() }
 				try {
-					wrapper.justOpWriteIfNeededOrNoOp();
+					wrapper.just_op_write_if_needed_or_no_op();
 					// TODO tell the peer not to send data??? is it harmful
 					// to the peer if the peer can not response correctly?
 					wrapper.channel().shutdownInput();

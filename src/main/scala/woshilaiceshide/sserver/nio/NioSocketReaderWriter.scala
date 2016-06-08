@@ -102,6 +102,9 @@ class NioSocketReaderWriter private[nio] (
   protected def do_start(): Unit = {}
   protected def stop_roughly(): Unit = {
 
+    synchronousely_pended_io_operations = null
+    asynchronousely_pended_io_operations = null
+
     waiting_for_register.map { safeClose(_) }
     waiting_for_register = Nil
 
@@ -116,6 +119,9 @@ class NioSocketReaderWriter private[nio] (
   }
   protected def stop_gracefully(): Boolean = {
 
+    synchronousely_pended_io_operations = null
+    asynchronousely_pended_io_operations = null
+
     waiting_for_register.map { safeClose(_) }
     waiting_for_register = Nil
 
@@ -127,7 +133,7 @@ class NioSocketReaderWriter private[nio] (
         attach match {
           case c: NioSocketReaderWriter#MyChannelWrapper => {
             c.close(false, ChannelClosedCause.SERVER_STOPPING)
-            safeOp { c.justOpWriteIfNeededOrNoOp() }
+            safeOp { c.just_op_write_if_needed_or_no_op() }
           }
           case _ =>
         }
@@ -192,8 +198,8 @@ class NioSocketReaderWriter private[nio] (
       this.iterate_registered_keys { key =>
         key.attachment() match {
           case c: NioSocketReaderWriter#MyChannelWrapper =>
-            c.checkIdle(now)
-            c.checkZombie(now)
+            c.check_idle(now)
+            c.check_zombie(now)
         }
       }
     }
@@ -245,7 +251,7 @@ class NioSocketReaderWriter private[nio] (
             //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
             //I tried much, but did not catch it!
             //business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
-            channelWrapper.clearOpRead()
+            channelWrapper.clear_op_read()
             channelWrapper.inputEnded()
           } else {
             channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_NORMALLY)
@@ -552,7 +558,7 @@ class NioSocketReaderWriter private[nio] (
           //clear op_write just here for optimization.
           if (null == remain._1 && writes == null) {
             try {
-              this.clearOpWrite()
+              this.clear_op_write()
             } catch {
               case _: Throwable => { safeClose(channel); status = CHANNEL_CLOSED; }
             }
@@ -615,7 +621,7 @@ class NioSocketReaderWriter private[nio] (
 
     }
 
-    private[nio] def checkIdle(current: Long) = {
+    private[nio] def check_idle(current: Long) = {
       val (should, status1) = this.synchronized {
         if (status == CHANNEL_NORMAL &&
           current - this.last_active_time > NioSocketReaderWriter.this.socket_max_idle_time_in_seconds_1 * 1000) {
@@ -632,7 +638,7 @@ class NioSocketReaderWriter private[nio] (
       }
       status
     }
-    private[nio] def checkZombie(current: Long) = this.synchronized {
+    private[nio] def check_zombie(current: Long) = this.synchronized {
       if (status == CHANNEL_NORMAL && !this.channel.isOpen()) {
         this.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
       }
@@ -687,7 +693,7 @@ class NioSocketReaderWriter private[nio] (
         } else if (status == CHANNEL_CLOSING_GRACEFULLY) {
           //close_if_failed { setOpWrite() }
           close_if_failed {
-            justOpWriteIfNeededOrNoOp()
+            just_op_write_if_needed_or_no_op()
             //TODO tell the peer not to send data??? is it harmful to the peer if the peer can not response correctly?
             channel.shutdownInput()
           }
@@ -696,7 +702,7 @@ class NioSocketReaderWriter private[nio] (
           false
         } else if (status == CHANNEL_NORMAL) {
           //TODO write immediately???
-          close_if_failed { setOpWrite() }
+          close_if_failed { set_op_write() }
         } else {
           false
         }
@@ -721,7 +727,7 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    private[nio] def justOpWriteIfNeededOrNoOp() = this.synchronized {
+    private[nio] def just_op_write_if_needed_or_no_op() = this.synchronized {
       if (key != null) {
         if ((status == CHANNEL_NORMAL || status == CHANNEL_CLOSING_GRACEFULLY) && null != writes) {
           //val key = channel.keyFor(selector)
@@ -733,7 +739,7 @@ class NioSocketReaderWriter private[nio] (
       }
 
     }
-    private[nio] def setOpWrite() {
+    private[nio] def set_op_write() {
       if (key != null) {
         //val key = channel.keyFor(selector)
         var alreadyOps = key.interestOps()
@@ -744,7 +750,7 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    private def clearOpWrite() {
+    private def clear_op_write() {
       if (key != null) {
         //val key = channel.keyFor(selector)
         var alreadyOps = key.interestOps()
@@ -755,7 +761,7 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    private[nio] def clearOpRead() {
+    private[nio] def clear_op_read() {
       if (key != null) {
         //val key = channel.keyFor(selector)
         var alreadyOps = key.interestOps()
