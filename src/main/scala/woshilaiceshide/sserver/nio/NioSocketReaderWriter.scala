@@ -84,9 +84,14 @@ class NioSocketReaderWriter private[nio] (
 
   //some i/o operations related to those channels are pending
   //note that those operations will be checked in the order they are pended as soon as possible.
-  private var pending_io_operations: ReapableQueue[MyChannelWrapper] = new ReapableQueue()
+  private var asynchronousely_pended_io_operations: ReapableQueue[MyChannelWrapper] = new ReapableQueue()
+  private var synchronousely_pended_io_operations: List[MyChannelWrapper] = Nil
   private def pend_for_io_operation(channelWrapper: MyChannelWrapper) = {
-    pending_io_operations.add(channelWrapper)
+    if (is_in_io_worker_thread()) {
+      synchronousely_pended_io_operations = channelWrapper :: synchronousely_pended_io_operations
+    } else {
+      asynchronousely_pended_io_operations.add(channelWrapper)
+    }
   }
 
   private var waiting_for_register = List[SocketChannel]()
@@ -196,11 +201,22 @@ class NioSocketReaderWriter private[nio] (
     //check for pending i/o, and just no deadlocks
     @tailrec @inline def check_for_pending_io() {
 
-      val reaped = pending_io_operations.reap(false)
-      if (null != reaped) {
-        ReapableQueueUtility.foreach(reaped, io_checker)
-        check_for_pending_io()
+      {
+        val reaped = synchronousely_pended_io_operations
+        synchronousely_pended_io_operations = Nil
+        if (null != reaped) {
+          reaped.foreach(io_checker)
+        }
       }
+
+      {
+        val reaped = asynchronousely_pended_io_operations.reap(false)
+        if (null != reaped) {
+          ReapableQueueUtility.foreach(reaped, io_checker)
+        }
+      }
+
+      check_for_pending_io()
 
     }
 
