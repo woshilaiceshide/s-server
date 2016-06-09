@@ -48,12 +48,12 @@ class NioSocketAcceptor private[nio] (
   }
 
   protected def stop_roughly(): Unit = {
-    safeClose(ssc)
+    safe_close(ssc)
     io_workers.map { _.stop(0) }
     io_workers.map { _.join(0) }
   }
   protected def stop_gracefully(): Boolean = {
-    safeClose(ssc)
+    safe_close(ssc)
     val deadline = this.get_stop_deadline()
     val timeout = (deadline - System.currentTimeMillis()).toInt
     io_workers.map { _.stop(timeout) }
@@ -80,7 +80,7 @@ class NioSocketAcceptor private[nio] (
       } catch {
         case ex: Throwable => {
           SelectorRunner.warn(ex, "when key is acceptable.")
-          safeClose(channel)
+          safe_close(channel)
         }
       }
 

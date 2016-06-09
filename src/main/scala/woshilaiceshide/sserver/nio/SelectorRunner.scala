@@ -30,8 +30,8 @@ object SelectorRunner {
   class NotRunningException(msg: String) extends RuntimeException(msg)
   class NotInIOThreadException(msg: String) extends RuntimeException(msg)
 
-  def safeClose(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
-  def safeOp[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
+  def safe_close(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
+  def safe_op[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
 
   final case class TimedTask(when_to_run: Long, runnable: Runnable)
 
@@ -121,14 +121,14 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
       selector = selector1
 
-      safeClose(selector0)
+      safe_close(selector0)
 
     } finally {
       lock.unlock()
     }
   }
   //lock_for_selector is not needed because this method is invoked in the i/o thread only.
-  private def close_selector() = { if (null != selector) safeClose(selector); selector = null; }
+  private def close_selector() = { if (null != selector) safe_close(selector); selector = null; }
 
   private val wokenup = new java.util.concurrent.atomic.AtomicBoolean(false)
   /**
@@ -180,7 +180,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         val iterator = selector.keys().iterator()
         while (iterator.hasNext()) {
           val key = iterator.next()
-          safeOp { worker.apply(key) }
+          safe_op { worker.apply(key) }
         }
       } else throw new NotRunningException("selector runner is stopping or stopped or not started.")
     }
@@ -252,7 +252,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         }
       }
       if (null != timed_tasks_to_do)
-        timed_tasks_to_do.foreach { x => safeOp { x.runnable.run() } }
+        timed_tasks_to_do.foreach { x => safe_op { x.runnable.run() } }
     }
   }
 
@@ -275,7 +275,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       when_terminated = null
       tmp
     }
-    termination_sinks.foreach { x => safeOp(x.run()) }
+    termination_sinks.foreach { x => safe_op(x.run()) }
     this.synchronized {
       this.notifyAll()
     }
@@ -388,8 +388,8 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
     } else this.synchronized {
       if (status.compareAndSet(STARTED, STOPPING)) {
         stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
-        safeOp { selector.wakeup() }
-        safeOp { worker_thread.interrupt() }
+        safe_op { selector.wakeup() }
+        safe_op { worker_thread.interrupt() }
       }
     }
   }

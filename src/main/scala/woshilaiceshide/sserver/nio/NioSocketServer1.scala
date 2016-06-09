@@ -46,12 +46,12 @@ class NioSocketServer1 private[nio] (
 
   }
   protected override def stop_roughly(): Unit = {
-    safeClose(ssc)
+    safe_close(ssc)
     super.stop_roughly()
 
   }
   protected override def stop_gracefully(): Boolean = {
-    safeClose(ssc)
+    safe_close(ssc)
     super.stop_gracefully()
   }
   protected override def has_remaining_work(): Boolean = {
@@ -72,7 +72,7 @@ class NioSocketServer1 private[nio] (
       } catch {
         case ex: Throwable => {
           SelectorRunner.warn(ex, "when a new channel is accepted.")
-          safeClose(channel)
+          safe_close(channel)
         }
       }
     } else {

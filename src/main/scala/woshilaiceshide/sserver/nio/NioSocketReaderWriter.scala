@@ -101,7 +101,7 @@ class NioSocketReaderWriter private[nio] (
     synchronousely_pended_io_operations = null
     asynchronousely_pended_io_operations = null
 
-    waiting_for_register.map { safeClose(_) }
+    waiting_for_register.map { safe_close(_) }
     waiting_for_register = Nil
 
     this.iterate_registered_keys { key =>
@@ -118,7 +118,7 @@ class NioSocketReaderWriter private[nio] (
     synchronousely_pended_io_operations = null
     asynchronousely_pended_io_operations = null
 
-    waiting_for_register.map { safeClose(_) }
+    waiting_for_register.map { safe_close(_) }
     waiting_for_register = Nil
 
     if (this.get_registered_size() == 0) {
@@ -129,7 +129,7 @@ class NioSocketReaderWriter private[nio] (
         attach match {
           case c: NioSocketReaderWriter#MyChannelWrapper => {
             c.close(false, ChannelClosedCause.SERVER_STOPPING)
-            safeOp { c.just_op_write_if_needed_or_no_op() }
+            safe_op { c.just_op_write_if_needed_or_no_op() }
           }
           case _ =>
         }
@@ -145,7 +145,7 @@ class NioSocketReaderWriter private[nio] (
 
     channel_hander_factory.getHandler(new MyChannelInformation(channel)) match {
       case None => {
-        safeClose(channel)
+        safe_close(channel)
       }
       case Some(handler) => {
         val channelWrapper = new MyChannelWrapper(channel, handler)
@@ -182,7 +182,7 @@ class NioSocketReaderWriter private[nio] (
       val tmp = waiting_for_register
       waiting_for_register = Nil
       tmp.map { channel =>
-        safeOp { add_a_new_socket_channel(channel) }
+        safe_op { add_a_new_socket_channel(channel) }
       }
     }
 
@@ -301,9 +301,9 @@ class NioSocketReaderWriter private[nio] (
         tmp != CHANNEL_CLOSED
       }
       if (should_close) {
-        safeClose(this.channel)
-        safeOp(key.cancel())
-        if (null != handler) safeOp {
+        safe_close(this.channel)
+        safe_op(key.cancel())
+        if (null != handler) safe_op {
           handler.channelClosed(this, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED, None)
           handler = null
         }
@@ -557,7 +557,7 @@ class NioSocketReaderWriter private[nio] (
             try {
               this.clear_op_write()
             } catch {
-              case _: Throwable => { safeClose(channel); status = CHANNEL_CLOSED; }
+              case _: Throwable => { safe_close(channel); status = CHANNEL_CLOSED; }
             }
           }
 
@@ -645,7 +645,7 @@ class NioSocketReaderWriter private[nio] (
       try {
         x; false;
       } catch {
-        case _: Throwable => { safeClose(channel); status = CHANNEL_CLOSED; true; }
+        case _: Throwable => { safe_close(channel); status = CHANNEL_CLOSED; true; }
       }
     }
 
@@ -665,7 +665,7 @@ class NioSocketReaderWriter private[nio] (
         already_pended = false
 
         if (status == CHANNEL_CLOSING_RIGHT_NOW) {
-          safeClose(channel)
+          safe_close(channel)
           @tailrec def return_writes(node: BytesNode): Unit = {
             if (node.helper > 0) {
               NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread.return_buffer(node.bytes, node.helper)
@@ -684,7 +684,7 @@ class NioSocketReaderWriter private[nio] (
         } else if (status == CHANNEL_CLOSED) {
           false
         } else if (status == CHANNEL_CLOSING_GRACEFULLY && null == writes) {
-          safeClose(channel)
+          safe_close(channel)
           status = CHANNEL_CLOSED
           true
         } else if (status == CHANNEL_CLOSING_GRACEFULLY) {
@@ -706,7 +706,7 @@ class NioSocketReaderWriter private[nio] (
       }
       //close outside, not in the "synchronization". keep locks clean.
       if (should_close) {
-        safeOp {
+        safe_op {
           if (null != handler) {
             handler.channelClosed(this, cause, attachment)
             handler = null

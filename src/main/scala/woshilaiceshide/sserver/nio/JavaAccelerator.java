@@ -35,19 +35,19 @@ public class JavaAccelerator {
 					wrapper.set_op_write();
 					should_close = false;
 				} catch (Throwable thread) {
-					SelectorRunner.safeClose(wrapper.channel());
+					SelectorRunner.safe_close(wrapper.channel());
 					wrapper.status_$eq(CHANNEL_CLOSED);
 					should_close = true;
 				}
 			} else if (status == CHANNEL_CLOSED) {
 				should_close = false;
 			} else if (status == CHANNEL_CLOSING_RIGHT_NOW) {
-				SelectorRunner.safeClose(wrapper.channel());
+				SelectorRunner.safe_close(wrapper.channel());
 				wrapper.writes_$eq(null);
 				wrapper.status_$eq(CHANNEL_CLOSED);
 				should_close = true;
 			} else if (status == CHANNEL_CLOSING_GRACEFULLY && null == wrapper.writes()) {
-				SelectorRunner.safeClose(wrapper.channel());
+				SelectorRunner.safe_close(wrapper.channel());
 				wrapper.status_$eq(CHANNEL_CLOSED);
 				should_close = true;
 			} else if (status == CHANNEL_CLOSING_GRACEFULLY) {
@@ -59,7 +59,7 @@ public class JavaAccelerator {
 					wrapper.channel().shutdownInput();
 					should_close = false;
 				} catch (Throwable thread) {
-					SelectorRunner.safeClose(wrapper.channel());
+					SelectorRunner.safe_close(wrapper.channel());
 					wrapper.status_$eq(CHANNEL_CLOSED);
 					should_close = true;
 				}
