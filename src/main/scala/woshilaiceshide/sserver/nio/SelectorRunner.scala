@@ -146,6 +146,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       lock.unlock()
     }
   }
+  //'is_in_io_worker_thread()' may be unneeded, but i write it here as intended for rigid security in some cost of performance. 
   def register(ch: SelectableChannel, ops: Int, att: Object): SelectionKey = {
     if (!is_in_io_worker_thread()) {
       throw new NotInIOThreadException(s"please run this method in i/o thread. the current thread is ${Thread.currentThread().getName}-${Thread.currentThread().getId}")

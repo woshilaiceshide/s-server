@@ -82,8 +82,8 @@ class NioSocketReaderWriter private[nio] (
   //note that those operations will be checked in the order they are pended as soon as possible.
   private var asynchronousely_pended_io_operations: ReapableQueue[MyChannelWrapper] = new ReapableQueue()
   private var synchronousely_pended_io_operations: List[MyChannelWrapper] = Nil
-  private def pend_for_io_operation(channelWrapper: MyChannelWrapper) = {
-    if (is_in_io_worker_thread()) {
+  private def pend_for_io_operation(channelWrapper: MyChannelWrapper, in_io_worker_thread: Boolean) = {
+    if (in_io_worker_thread) {
       synchronousely_pended_io_operations = channelWrapper :: synchronousely_pended_io_operations
     } else {
       asynchronousely_pended_io_operations.add(channelWrapper)
@@ -338,12 +338,13 @@ class NioSocketReaderWriter private[nio] (
         }
 
       }
+
+      val in_io_worker_thread = NioSocketReaderWriter.this.is_in_io_worker_thread()
       if (should_pend) {
         already_pended = true
-        pend_for_io_operation(this)
+        pend_for_io_operation(this, in_io_worker_thread)
         //if in workerThread, no need for wakeup
-        if (Thread.currentThread() != NioSocketReaderWriter.this.get_worker_thread())
-          NioSocketReaderWriter.this.wakeup_selector()
+        if (!in_io_worker_thread) NioSocketReaderWriter.this.wakeup_selector()
       }
 
     }
@@ -416,6 +417,8 @@ class NioSocketReaderWriter private[nio] (
      */
     def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult = {
 
+      val in_io_worker_thread = NioSocketReaderWriter.this.is_in_io_worker_thread()
+
       var please_wakeup = false
 
       val try_write = new JavaAccelerator.TryWrite()
@@ -484,12 +487,10 @@ class NioSocketReaderWriter private[nio] (
               }
             }
 
-            val is_in_io_worker_thread = NioSocketReaderWriter.this.is_in_io_worker_thread()
-
             def write1() = {
               //move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
               //or the selector's i/o thread may collide with the writing thread, which will twice the cost.
-              if (null == writes && is_in_io_worker_thread) {
+              if (null == writes && in_io_worker_thread) {
                 write_immediately(bytes, configurator.spin_count_when_write_immediately)
                 if (bytes.hasRemaining()) {
                   bytes_waiting_for_written = bytes_waiting_for_written + bytes.remaining()
@@ -504,7 +505,7 @@ class NioSocketReaderWriter private[nio] (
                 bytes_waiting_for_written = bytes_waiting_for_written + remaining
                 pend_reusable_bytes(bytes)
 
-              } else if (is_in_io_worker_thread) {
+              } else if (in_io_worker_thread) {
                 bytes_waiting_for_written = bytes_waiting_for_written + remaining
                 pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
 
@@ -524,7 +525,7 @@ class NioSocketReaderWriter private[nio] (
           if (try_write.pend) {
             already_pended = true
             //if in workerThread, no need for waking up, or processor will be wasted for one more "listen()"
-            please_wakeup = !is_in_io_worker_thread
+            please_wakeup = !in_io_worker_thread
 
           }
 
@@ -534,7 +535,7 @@ class NioSocketReaderWriter private[nio] (
       }
 
       //pending comes before waking up
-      if (try_write.pend) pend_for_io_operation(this)
+      if (try_write.pend) pend_for_io_operation(this, in_io_worker_thread)
       if (please_wakeup) NioSocketReaderWriter.this.wakeup_selector()
 
       try_write.result
