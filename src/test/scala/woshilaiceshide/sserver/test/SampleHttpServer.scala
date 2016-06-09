@@ -81,7 +81,7 @@ object SampleHttpServer extends App {
 
   }
 
-  val http_configurator = new HttpConfigurator(max_request_in_pipeline = 8, use_direct_byte_buffer_for_cached_bytes_rendering = false)
+  val http_configurator = new HttpConfigurator(max_request_in_pipeline = 1, use_direct_byte_buffer_for_cached_bytes_rendering = false)
 
   val factory = new HttpChannelHandlerFactory(handler, http_configurator)
 
@@ -103,7 +103,7 @@ object SampleHttpServer extends App {
   val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
   */
 
-  val configurator = XNioConfigurator(count_for_reader_writers = 2,
+  val configurator = XNioConfigurator(count_for_reader_writers = 1,
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator,
     buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1),

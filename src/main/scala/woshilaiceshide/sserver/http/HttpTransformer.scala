@@ -117,9 +117,10 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           request match {
             case x: HttpRequest => {
 
-              if (current_http_channel == null) {
+              if (current_http_channel == null || current_http_channel.isCompleted) {
 
                 if (current_sink != null) {
+                  current_sink.channelClosed()
                   current_sink = null
                 }
 
@@ -127,6 +128,13 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                 val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
                 action match {
                   case ResponseAction.ResponseNormally => {
+
+                    if (current_http_channel.isCompleted) {
+                      //null-ed it as early as possible
+                      current_http_channel = null
+                    }
+
+                    //pipeline may be OK, even if http pipeline is disabled. 
                     process(continue)
                   }
                   case ResponseAction.AcceptWebsocket(factory) => {
@@ -136,7 +144,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                     val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
 
                     //1. TODO no remaining data should be here because handshake does not complete. i does not check it here yet.
-                    //2. DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
+                    //2. DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion may be found.
                     //websocket.bytesReceived(r.remainingInput.drop(r.remainingOffset).asByteBuffer, channelWrapper)
                     websocket
                   }
@@ -187,6 +195,10 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                     process(continue)
                   }
                   case ResponseAction.ResponseNormally => {
+                    if (current_http_channel.isCompleted) {
+                      //null-ed it as early as possible
+                      current_http_channel = null
+                    }
                     process(continue)
                   }
                   case _ => {
@@ -301,10 +313,13 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
   def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler = {
 
-    if (null == current_http_channel || (current_http_channel != null && current_http_channel.isCompleted)) {
+    if (null == current_http_channel || current_http_channel.isCompleted) {
 
       current_http_channel = null
-      current_sink = null
+      if (null != current_sink) {
+        current_sink.channelClosed()
+        current_sink = null
+      }
 
       val next = de_queue()
       if (null != next) {
