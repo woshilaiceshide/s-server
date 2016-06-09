@@ -8,7 +8,7 @@ import spray.http.HttpHeaders._
 import scala.annotation._
 
 private[http] object RenderSupport {
-  //HTTP/1.0?
+  //TODO HTTP/1.0?
   val DefaultStatusLine = "HTTP/1.1 200 OK\r\n".getAsciiBytes
   val StatusLineStart = "HTTP/1.1 ".getAsciiBytes
   val Chunked = "chunked".getAsciiBytes

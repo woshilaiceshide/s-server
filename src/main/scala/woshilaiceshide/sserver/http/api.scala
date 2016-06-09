@@ -148,79 +148,76 @@ final case class HttpConfigurator(
     tmp
 
   }
-  //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
-  /**
-   * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
-   */
-  private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
+
+  private def borrow_bytes_rendering_from_thread_local(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
     if (size <= cached_bytes_rendering_length) {
       response_part match {
         case response: HttpResponse => {
           if (response.status eq StatusCodes.OK) {
-            def for_200() = {
-              Thread.currentThread() match {
-                case aux: AuxThread => {
-                  if (aux.cached_bytes_rendering_with_status_200 != null) {
-                    aux.cached_bytes_rendering_with_status_200
-                  } else {
-                    val tmp = get_rendering(cached_bytes_rendering_length)
-                    tmp ~~ RenderSupport.DefaultStatusLine
-                    tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
-                    aux.cached_bytes_rendering_with_status_200 = tmp
-                    tmp
-                  }
-                }
-                case _ => cached_bytes_rendering_with_status_200.get()
-              }
-            }
-            for_200()
+            cached_bytes_rendering_with_status_200.get()
           } else {
-            def for_not_200() = {
-              Thread.currentThread() match {
-                case aux: AuxThread => {
-                  if (aux.cached_bytes_rendering != null) {
-                    val tmp = aux.cached_bytes_rendering
-                    tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-                    tmp
-                  } else {
-                    val tmp = get_rendering(cached_bytes_rendering_length)
-                    tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-                    aux.cached_bytes_rendering = tmp
-                    tmp
-                  }
-                }
-                case _ => {
-                  var cached = cached_bytes_rendering.get()
-                  cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-                  cached
-                }
-              }
+            var cached = cached_bytes_rendering.get()
+            cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+            cached
+          }
+        }
+        case _ => cached_bytes_rendering.get()
+      }
 
+    } else {
+
+      borrow_fresh_bytes_rendering(size, response_part)
+    }
+  }
+
+  private def borrow_bytes_rendering_from_aux_thread(size: Int, response_part: HttpResponsePart, aux: AuxThread): RichBytesRendering = {
+    if (size <= cached_bytes_rendering_length) {
+      response_part match {
+        case response: HttpResponse => {
+          if (response.status eq StatusCodes.OK) {
+            if (aux.cached_bytes_rendering_with_status_200 != null) {
+              aux.cached_bytes_rendering_with_status_200
+            } else {
+              val tmp = get_rendering(cached_bytes_rendering_length)
+              tmp ~~ RenderSupport.DefaultStatusLine
+              tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
+              aux.cached_bytes_rendering_with_status_200 = tmp
+              tmp
             }
-            for_not_200()
+          } else {
+
+            if (aux.cached_bytes_rendering == null) {
+              aux.cached_bytes_rendering = get_rendering(cached_bytes_rendering_length)
+            }
+            aux.cached_bytes_rendering ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+            aux.cached_bytes_rendering
           }
         }
         case _ => {
-
-          Thread.currentThread() match {
-            case aux: AuxThread => {
-              if (aux.cached_bytes_rendering != null) {
-                aux.cached_bytes_rendering
-              } else {
-                val tmp = get_rendering(cached_bytes_rendering_length)
-                aux.cached_bytes_rendering = tmp
-                tmp
-              }
-            }
-            case _ => cached_bytes_rendering.get()
+          if (aux.cached_bytes_rendering != null) {
+            aux.cached_bytes_rendering
+          } else {
+            val tmp = get_rendering(cached_bytes_rendering_length)
+            aux.cached_bytes_rendering = tmp
+            tmp
           }
-
         }
       }
 
     } else {
 
       borrow_fresh_bytes_rendering(size, response_part)
+    }
+  }
+
+  //if (status eq StatusCodes.OK) r ~~ DefaultStatusLine else r ~~ StatusLineStart ~~ status ~~ CrLf
+  /**
+   * internal api. such interfaces in a framework should always be private because its usage requires more carefulness.
+   */
+  private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
+    Thread.currentThread() match {
+      case aux: AuxThread => borrow_bytes_rendering_from_aux_thread(size, response_part, aux)
+      case _ => borrow_bytes_rendering_from_thread_local(size, response_part)
     }
   }
 
