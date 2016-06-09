@@ -21,20 +21,31 @@ final class HttpChannel(
   def remoteAddress: java.net.SocketAddress = channel.remoteAddress
   def localAddress: java.net.SocketAddress = channel.localAddress
 
-  private var finished = false
+  private val finished = new java.util.concurrent.atomic.AtomicBoolean(false)
 
-  def isCompleted = this.synchronized { finished }
+  def isCompleted = finished.get()
 
   private def check_finished(response: HttpResponsePart) = {
 
-    if (finished) {
-      throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
-    }
-
     response match {
-      case _: HttpResponse => finished = true
-      case _: ChunkedMessageEnd => finished = true
-      case _ => {}
+      case _: HttpResponse => {
+        if (!finished.compareAndSet(false, true)) {
+          throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
+        }
+        true
+      }
+      case _: ChunkedMessageEnd => {
+        if (!finished.compareAndSet(false, true)) {
+          throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
+        }
+        true
+      }
+      case _ => {
+        if (finished.get()) {
+          throw new RuntimeException("request is already served. DO NOT DO IT AGAIN!")
+        }
+        false
+      }
     }
   }
 
@@ -49,9 +60,9 @@ final class HttpChannel(
    */
   def writeResponse(response: HttpResponsePart, sizeHint: Int = 1024, write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers) = {
 
-    val (_finished, wr, should_close) = synchronized {
+    val (wr, should_close) = synchronized {
 
-      check_finished(response)
+      val _finished = check_finished(response)
 
       //val r = new RevisedByteArrayRendering(sizeHint)
       val r = configurator.borrow_bytes_rendering(sizeHint, response)
@@ -61,15 +72,15 @@ final class HttpChannel(
       //TODO why it's error when finished is false
 
       //if finished, jump to the next request in the pipelining(if existed)
-      val generate_written_event = finished && configurator.max_request_in_pipeline > 1
+      val generate_written_event = _finished && configurator.max_request_in_pipeline > 1
       val write_result = channel.write(r.to_byte_buffer(), true, generate_written_event)
 
       configurator.return_bytes_rendering(r)
 
-      val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
+      val close_now = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
       if (closeMode == CloseMode.CloseAfterEnd) closeAfterEnd = true
 
-      (finished, write_result, closeNow)
+      (write_result, close_now)
     }
 
     if (should_close) channel.closeChannel(false)
