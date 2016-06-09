@@ -49,7 +49,7 @@ class NioSocketAcceptor private[nio] (
 
   protected def stop_roughly(): Unit = {
     safe_close(ssc)
-    io_workers.map { _.stop(0) }
+    io_workers.map { _.stop(-1) }
     io_workers.map { _.join(0) }
   }
   protected def stop_gracefully(): Boolean = {

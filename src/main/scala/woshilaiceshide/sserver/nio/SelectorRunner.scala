@@ -382,12 +382,20 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         if (status.compareAndSet(STARTED, STOPPING)) {
           select_timeout = Math.min(Math.max(0, timeout), select_timeout)
           //stop_deadline is necessary.
-          stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
+          if (-1 == timeout) {
+            stop_deadline = -1
+          } else {
+            stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
+          }
         }
       }
     } else this.synchronized {
       if (status.compareAndSet(STARTED, STOPPING)) {
-        stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
+        if (-1 == timeout) {
+          stop_deadline = -1
+        } else {
+          stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
+        }
         safe_op { selector.wakeup() }
         safe_op { worker_thread.interrupt() }
       }

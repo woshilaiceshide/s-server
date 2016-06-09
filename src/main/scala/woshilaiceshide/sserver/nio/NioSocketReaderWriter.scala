@@ -90,6 +90,12 @@ class NioSocketReaderWriter private[nio] (
     }
   }
 
+  this.register_on_termination {
+    synchronousely_pended_io_operations = null
+    asynchronousely_pended_io_operations.end()
+    asynchronousely_pended_io_operations = null
+  }
+
   private var waiting_for_register = List[SocketChannel]()
   def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread {
     waiting_for_register = target :: waiting_for_register
@@ -98,25 +104,19 @@ class NioSocketReaderWriter private[nio] (
   protected def do_start(): Unit = {}
   protected def stop_roughly(): Unit = {
 
-    synchronousely_pended_io_operations = null
-    asynchronousely_pended_io_operations = null
-
     waiting_for_register.map { safe_close(_) }
     waiting_for_register = Nil
 
     this.iterate_registered_keys { key =>
       val attach = key.attachment()
       attach match {
-        case c: NioSocketReaderWriter#MyChannelWrapper => c.closeDirectly()
+        case c: NioSocketReaderWriter#MyChannelWrapper => c.close_directly()
         case _ =>
       }
     }
 
   }
   protected def stop_gracefully(): Boolean = {
-
-    synchronousely_pended_io_operations = null
-    asynchronousely_pended_io_operations = null
 
     waiting_for_register.map { safe_close(_) }
     waiting_for_register = Nil
@@ -136,6 +136,7 @@ class NioSocketReaderWriter private[nio] (
       }
       false
     }
+
   }
   protected def has_remaining_work(): Boolean = {
     this.get_registered_size() == 0
@@ -294,7 +295,7 @@ class NioSocketReaderWriter private[nio] (
     def remoteAddress: java.net.SocketAddress = channel.getRemoteAddress
     def localAddress: java.net.SocketAddress = channel.getLocalAddress
 
-    private[nio] def closeDirectly() {
+    private[nio] def close_directly() {
       val should_close = this.synchronized {
         val tmp = status
         status = CHANNEL_CLOSED
