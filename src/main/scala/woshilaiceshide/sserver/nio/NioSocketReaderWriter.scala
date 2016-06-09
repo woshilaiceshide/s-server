@@ -50,10 +50,6 @@ private[nio] object NioSocketReaderWriter {
     }
   }
 
-  private final class TryWrite(var result: WriteResult.Value, var pend: Boolean) {
-    def this() = this(WriteResult.WR_UKNOWN, false)
-  }
-
 }
 
 class NioSocketReaderWriter private[nio] (
@@ -418,12 +414,12 @@ class NioSocketReaderWriter private[nio] (
      * if generate_written_event is true, then 'bytesWritten' will be fired.
      *
      */
-    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value = {
+    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult = {
 
       var please_wakeup = false
 
-      val try_write = new TryWrite()
-      def set_result(result: WriteResult.Value) = try_write.result = result
+      val try_write = new JavaAccelerator.TryWrite()
+      def set_result(result: WriteResult) = try_write.result = result
       def set_pend(pend: Boolean) = if (!try_write.pend && pend) { try_write.pend = true }
 
       this.synchronized {

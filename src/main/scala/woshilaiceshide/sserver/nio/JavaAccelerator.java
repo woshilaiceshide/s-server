@@ -2,6 +2,11 @@ package woshilaiceshide.sserver.nio;
 
 public class JavaAccelerator {
 
+	final static class TryWrite {
+		WriteResult result;
+		boolean pend;
+	}
+
 	public static final int CHANNEL_UNKNOWN = -1;
 	public static final int CHANNEL_NORMAL = 0;
 	public static final int CHANNEL_CLOSING_GRACEFULLY = 1;

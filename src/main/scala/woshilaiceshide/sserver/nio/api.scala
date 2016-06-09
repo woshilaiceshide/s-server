@@ -44,22 +44,6 @@ object ChannelClosedCause extends scala.Enumeration {
   val BECAUSE_IDLE = Value
 }
 
-object WriteResult extends scala.Enumeration {
-  val WR_UKNOWN = Value
-  val WR_OK = Value
-
-  //commented. this value makes no sense in practice.
-  //written succeeded, but the inner buffer pool is full(overflowed in fact), which will make the next writing failed definitely.
-  //wait for 'def channelWritable(...)' if this value encountered.
-  //val WR_OK_BUT_OVERFLOWED = Value
-
-  val WR_FAILED_BECAUSE_TOO_MANY_WRITES_EXISTED = Value
-  val WR_FAILED_BECAUSE_CHANNEL_CLOSED = Value
-
-  //commented. this value makes no sense in practice, but make things more complicated.
-  //val WR_FAILED_BECAUSE_EMPTY_CONTENT_TO_BE_WRITTEN = Value
-}
-
 /*
    * all operations are thread safe
    */
@@ -105,19 +89,19 @@ trait ChannelWrapper {
    *   multiple 'generate_written_event' may be folded into one.
    *
    */
-  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value = {
+  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult = {
     write(bytes, 0, bytes.length, write_even_if_too_busy, generate_written_event, bytes_is_reusable)
   }
 
-  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value = {
+  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult = {
     write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_written_event, bytes_is_reusable)
   }
 
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult.Value = {
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult = {
     write(buffer, write_even_if_too_busy, generate_written_event, false)
   }
 
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult.Value
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult
 }
 
 /**
