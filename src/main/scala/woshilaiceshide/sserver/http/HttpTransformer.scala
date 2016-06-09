@@ -107,6 +107,18 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     val result = parser.apply(akka.fake.FakeHelper.byte_string_from_byte_buffer_directly(byteBuffer))
 
     @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
+
+      val clear =
+        if (null == current_http_channel) {
+          true
+        } else if (current_http_channel.isCompleted) {
+          //null-ed it as early as possible
+          current_http_channel = null
+          true
+        } else {
+          false
+        }
+
       result match {
         //closeAfterResponseCompletion will be fine even if it's a 'MessageChunk'
         case r: Result.AbstractEmit /*if (r.part.isInstanceOf[HttpRequestPart])*/ /*it's HttpRequestPart definitely.*/ => {
@@ -117,8 +129,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           request match {
             case x: HttpRequest => {
 
-              if (current_http_channel == null || current_http_channel.isCompleted) {
-
+              if (clear) {
                 if (current_sink != null) {
                   current_sink.channelClosed()
                   current_sink = null
@@ -128,12 +139,6 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                 val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
                 action match {
                   case ResponseAction.ResponseNormally => {
-
-                    if (current_http_channel.isCompleted) {
-                      //null-ed it as early as possible
-                      current_http_channel = null
-                    }
-
                     //pipeline may be OK, even if http pipeline is disabled. 
                     process(continue)
                   }
@@ -154,7 +159,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                   }
                   case _ => {
                     channelWrapper.closeChannel(false)
-                    null
+                    this
                   }
                 }
 
@@ -168,11 +173,20 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
               if (head == null) {
                 if (current_sink != null) {
                   current_sink match {
-                    case c: ChunkedRequestHandler => c.chunkReceived(x)
-                    case _ => channelWrapper.closeChannel(true)
+                    case c: ChunkedRequestHandler => {
+                      c.chunkReceived(x)
+                      process(continue)
+                    }
+                    case _ => {
+                      channelWrapper.closeChannel(true)
+                      this
+                    }
                   }
+                  //do not make it null now!!!
+                  //current_sink = null
+                } else {
+                  process(continue)
                 }
-                process(continue)
               } else {
                 en_queue(x, closeAfterResponseCompletion, channelWrapper)
                 process(continue)
@@ -203,7 +217,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                   }
                   case _ => {
                     channelWrapper.closeChannel(false)
-                    null
+                    this
                   }
                 }
 
@@ -214,13 +228,21 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
               if (head == null) {
                 if (current_sink != null) {
                   current_sink match {
-                    case c: ChunkedRequestHandler => c.chunkEnded(x)
-                    case _ => channelWrapper.closeChannel(true)
+                    case c: ChunkedRequestHandler => {
+                      c.chunkEnded(x)
+                      process(continue)
+                    }
+                    case _ => {
+                      channelWrapper.closeChannel(true)
+                      this
+                    }
                   }
                   //do not make it null now!!!
                   //current_sink = null
+                } else {
+                  process(continue)
                 }
-                process(continue)
+
               } else {
                 en_queue(x, closeAfterResponseCompletion, channelWrapper)
                 process(continue)
@@ -275,7 +297,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           }
           case _ => {
             channelWrapper.closeChannel(false)
-            null
+            this
           }
         }
 
@@ -298,7 +320,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           }
           case _ => {
             channelWrapper.closeChannel(false)
-            null
+            this
           }
         }
 
