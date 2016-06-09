@@ -46,7 +46,6 @@ final class HttpChannel(
    * to make the best performance, do your best to use the instantiated objects in
    * 'spray.http.ContentTypes' and 'spray.http.MediaTypes' and 'spray.http.ContentTypes.HttpCharsets'.
    *
-   * netty's 'hello world' example does not render 'server' and 'date' headers.
    */
   def writeResponse(response: HttpResponsePart, sizeHint: Int = 1024, write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers) = {
 
