@@ -24,6 +24,14 @@ public class ReapableQueue<T> {
 	private static AtomicReferenceFieldUpdater<Node, Node> next_updater = AtomicReferenceFieldUpdater
 			.newUpdater(Node.class, Node.class, "next");
 
+	public static class ReapException extends Exception {
+		private static final long serialVersionUID = 1L;
+
+		public ReapException(String msg) {
+			super(msg);
+		}
+	}
+
 	public static class Node<T> {
 		public final T value;
 		volatile Node<T> next;
@@ -190,13 +198,14 @@ public class ReapableQueue<T> {
 	 * @param is_last_reap
 	 * @return
 	 */
-	public Reaped<T> reap(final boolean is_last_reap) {
+	public Reaped<T> reap(final boolean is_last_reap) throws ReapException {
 
 		// do not re-order for readability
 		if (is_last_reap) {
 			if (!ended.compareAndSet(1, 2)) {
 				// already ended and reaped.
-				return null;
+				// return null;
+				throw new ReapException("already ended and reaped");
 			}
 		}
 
