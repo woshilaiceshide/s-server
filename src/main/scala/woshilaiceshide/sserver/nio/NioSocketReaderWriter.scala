@@ -96,6 +96,7 @@ class NioSocketReaderWriter private[nio] (
     asynchronousely_pended_io_operations = null
   }
 
+  //TODO 1. reapable queue? 2. difference between in_io_worker_thread and not?
   private var waiting_for_register = List[SocketChannel]()
   def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread {
     waiting_for_register = target :: waiting_for_register
