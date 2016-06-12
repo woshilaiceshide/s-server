@@ -38,28 +38,26 @@ retrieveManaged := false
 
 enablePlugins(JavaAppPackaging)
 
-unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "java" )
-
 unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "scala" )
 
-libraryDependencies ++= {
-  val akkaV = "2.3.15"
-  val sprayV = "1.3.3"
-  Seq(
-  //"io.spray"            %%   "spray-routing" % sprayV,
-  //"io.spray"            %%   "spray-caching" % sprayV,
-    "io.spray"            %%   "spray-can"     % sprayV,
-  //"io.spray"            %%   "spray-client"  % sprayV,
-    "io.spray"            %%   "spray-http"    % sprayV,
-  //"io.spray"            %%   "spray-httpx"   % sprayV,
-    "io.spray"            %%   "spray-io"      % sprayV,
-  //"io.spray"            %%   "spray-testkit" % sprayV,
-    "io.spray"            %%   "spray-util"    % sprayV,
-  //"com.typesafe.akka"   %%  "akka-testkit"   % akkaV,
-    "com.typesafe.akka"   %%  "akka-actor"     % akkaV
-  //"com.typesafe.akka"   %%  "akka-slf4j"     % akkaV
-  )
-}
+unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "spray" / "scala" )
+
+//libraryDependencies ++= 
+//  Seq(
+//  //"io.spray"            %%   "spray-routing" % "1.3.3",
+//  //"io.spray"            %%   "spray-caching" % "1.3.3",
+//    "io.spray"            %%   "spray-can"     % "1.3.3",
+//  //"io.spray"            %%   "spray-client"  % "1.3.3",
+//    "io.spray"            %%   "spray-http"    % "1.3.3",
+//  //"io.spray"            %%   "spray-httpx"   % "1.3.3",
+//  //"io.spray"            %%   "spray-io"      % "1.3.3",
+//  //"io.spray"            %%   "spray-testkit" % "1.3.3",
+//  //"io.spray"            %%   "spray-util"    % "1.3.3"
+//  )
+
+libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.7"
+
+libraryDependencies += "org.parboiled" % "parboiled-scala_2.11" % "1.1.7"
 
 libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.21"
 
