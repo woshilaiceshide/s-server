@@ -85,7 +85,9 @@ object HttpParser extends Parser with ProtocolParameterRules with AdditionalRule
 
   def parse[A](rule: Rule1[A], input: String): Either[ErrorInfo, A] = {
     try {
-      val result = ReportingParseRunner(rule).run(input)
+      //for perf
+      //val result = ReportingParseRunner(rule).run(input)
+      val result = BasicParseRunner(rule).run(input)
       result.result match {
         case Some(value) ⇒ Right(value)
         case None ⇒ Left(ErrorInfo(detail = ErrorUtils.printParseErrors(result)))
