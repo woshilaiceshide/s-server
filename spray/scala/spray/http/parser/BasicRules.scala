@@ -46,6 +46,14 @@ private[parser] trait BasicRules extends Parser {
 
   def CRLF = rule { str("\r\n") }
 
+  // ******************************************************************************************
+  // http://tools.ietf.org/html/rfc7230#section-3.2.3
+  // ******************************************************************************************
+
+  def OWS = rule { zeroOrMore(optional(CRLF) ~ oneOrMore(anyOf(" \t"))) }
+
+  def RWS = rule { oneOrMore(optional(CRLF) ~ oneOrMore(anyOf(" \t"))) }
+
   def LWS = rule { optional(CRLF) ~ oneOrMore(anyOf(" \t")) }
 
   def SP = rule { str(" ") }

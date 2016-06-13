@@ -113,8 +113,7 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
         parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, h, e100, hh)
 
       case h: Expect ⇒
-        if (h.has100continue) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, teh, e100 = true, hh)
-        else fail(ExpectationFailed, s"Expectation '$h' is not supported by this server")
+        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, teh, e100 = true, hh)
 
       case h if headerCount < settings.maxHeaderCount ⇒
         parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, teh, e100, hh || h.isInstanceOf[Host])

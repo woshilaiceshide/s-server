@@ -65,7 +65,7 @@ object HttpParser extends Parser with ProtocolParameterRules with AdditionalRule
         parserRules.get(x.lowercaseName) match {
           case Some(rule) ⇒ parse(rule, value) match {
             case x: Right[_, _] ⇒ x.asInstanceOf[Either[ErrorInfo, HttpHeader]]
-            case Left(info)     ⇒ Left(info.withSummaryPrepended("Illegal HTTP header '" + name + '\''))
+            case Left(info) ⇒ Left(info.withSummaryPrepended("Illegal HTTP header '" + name + '\''))
           }
           case None ⇒ Right(x) // if we don't have a rule for the header we leave it unparsed
         }
@@ -74,11 +74,11 @@ object HttpParser extends Parser with ProtocolParameterRules with AdditionalRule
   }
 
   @tailrec def parseHeaders(headers: List[HttpHeader], errors: List[ErrorInfo] = Nil,
-                            result: List[HttpHeader] = Nil): (List[ErrorInfo], List[HttpHeader]) =
+    result: List[HttpHeader] = Nil): (List[ErrorInfo], List[HttpHeader]) =
     headers match {
       case Nil ⇒ errors -> result
       case head :: tail ⇒ parseHeader(head) match {
-        case Right(h)    ⇒ parseHeaders(tail, errors, h :: result)
+        case Right(h) ⇒ parseHeaders(tail, errors, h :: result)
         case Left(error) ⇒ parseHeaders(tail, error :: errors, head :: result)
       }
     }
@@ -88,7 +88,7 @@ object HttpParser extends Parser with ProtocolParameterRules with AdditionalRule
       val result = ReportingParseRunner(rule).run(input)
       result.result match {
         case Some(value) ⇒ Right(value)
-        case None        ⇒ Left(ErrorInfo(detail = ErrorUtils.printParseErrors(result)))
+        case None ⇒ Left(ErrorInfo(detail = ErrorUtils.printParseErrors(result)))
       }
     } catch {
       case e: ParserRuntimeException ⇒ e.getCause match {

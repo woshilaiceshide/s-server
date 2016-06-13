@@ -283,14 +283,12 @@ object HttpHeaders {
     protected def companion = ETag
   }
 
+  //http://tools.ietf.org/html/rfc7231#section-5.1.1
   object Expect extends ModeledCompanion {
-    def apply(first: String, more: String*): Expect = apply(first +: more)
-    implicit val expectationsRenderer = Renderer.defaultSeqRenderer[String] // cache
+    val `100-continue` = new Expect() {}
   }
-  case class Expect(expectations: Seq[String]) extends ModeledHeader {
-    import Expect.expectationsRenderer
-    def renderValue[R <: Rendering](r: R): r.type = r ~~ expectations
-    def has100continue = expectations.exists(_ equalsIgnoreCase "100-continue")
+  sealed abstract case class Expect() extends ModeledHeader {
+    def renderValue[R <: Rendering](r: R): r.type = r ~~ "100-continue"
     protected def companion = Expect
   }
 
@@ -338,7 +336,7 @@ object HttpHeaders {
   case class `If-Range`(entityTagOrDateTime: Either[EntityTag, DateTime]) extends ModeledHeader {
     def renderValue[R <: Rendering](r: R): r.type =
       entityTagOrDateTime match {
-        case Left(tag)       ⇒ r ~~ tag
+        case Left(tag) ⇒ r ~~ tag
         case Right(dateTime) ⇒ dateTime.renderRfc1123DateTimeString(r)
       }
     protected def companion = `If-Range`

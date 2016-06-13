@@ -47,9 +47,10 @@ private[parser] trait SimpleHeaders {
     HttpDate ~ EOI ~~> (Date(_))
   }
 
+  private val anyToExpect: Any => Expect = x => Expect.`100-continue`
+
   def `*Expect` = rule(
-    oneOrMore(Token ~ &(EOI) | Token ~ "=" ~ (Token | QuotedString) ~~> (_ + '=' + _), separator = ListSep) ~ EOI
-      ~~> (Expect(_)))
+    ignoreCase("100-continue") ~ OWS ~ EOI ~> anyToExpect)
 
   // We don't accept scoped IPv6 addresses as they should not appear in the Host header,
   // see also https://issues.apache.org/bugzilla/show_bug.cgi?id=35122 (WONTFIX in Apache 2 issue) and
