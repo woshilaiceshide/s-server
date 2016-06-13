@@ -3,6 +3,8 @@ package woshilaiceshide.sserver.http
 import akka.util.ByteString
 import spray.util.SingletonException
 import spray.http._
+import spray.can.parsing._
+import spray.can.rendering._
 
 //public 'api's here
 
@@ -102,8 +104,8 @@ final case class HttpConfigurator(
     }
   }
 
-  def get_request_parser(): HttpRequestPartParser = {
-    new HttpRequestPartParser(parser_settings, raw_request_uri_header)(get_header_parser())
+  def get_request_parser(): S2HttpRequestPartParser = {
+    new S2HttpRequestPartParser(parser_settings, raw_request_uri_header)(get_header_parser())
   }
 
   def get_websocket_parser(): WebSocket13.WSFrameParser = {

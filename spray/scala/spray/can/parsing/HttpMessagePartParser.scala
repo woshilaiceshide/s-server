@@ -26,7 +26,7 @@ import HttpProtocols._
 import CharUtils._
 
 private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettings,
-                                                      val headerParser: HttpHeaderParser) extends Parser {
+    val headerParser: HttpHeaderParser) extends Parser {
   protected var protocol: HttpProtocol = `HTTP/1.1`
 
   def apply(input: ByteString): Result = parseMessageSafe(input)
@@ -37,7 +37,7 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
       try parseMessage(input, offset)
       catch {
         case NotEnoughDataException ⇒ needMoreData
-        case e: ParsingException    ⇒ fail(e.status, e.info)
+        case e: ParsingException ⇒ fail(e.status, e.info)
       }
     else needMoreData
   }
@@ -50,7 +50,7 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
       protocol = c(7) match {
         case '0' ⇒ `HTTP/1.0`
         case '1' ⇒ `HTTP/1.1`
-        case _   ⇒ badProtocol
+        case _ ⇒ badProtocol
       }
       cursor + 8
     } else badProtocol
@@ -59,11 +59,11 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
   def badProtocol: Nothing
 
   @tailrec final def parseHeaderLines(input: ByteString, lineStart: Int,
-                                      headers: ListBuffer[HttpHeader] = ListBuffer[HttpHeader](),
-                                      headerCount: Int = 0, ch: Option[Connection] = None,
-                                      clh: Option[`Content-Length`] = None, cth: Option[`Content-Type`] = None,
-                                      teh: Option[`Transfer-Encoding`] = None, e100: Boolean = false,
-                                      hh: Boolean = false): Result = {
+    headers: ListBuffer[HttpHeader] = ListBuffer[HttpHeader](),
+    headerCount: Int = 0, ch: Option[Connection] = None,
+    clh: Option[`Content-Length`] = None, cth: Option[`Content-Type`] = None,
+    teh: Option[`Transfer-Encoding`] = None, e100: Boolean = false,
+    hh: Boolean = false): Result = {
     var lineEnd = 0
     val result: Result =
       try {
@@ -109,16 +109,16 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
 
   // work-around for compiler bug complaining about non-tail-recursion if we inline this method
   def parseHeaderLinesAux(input: ByteString, lineStart: Int, headers: ListBuffer[HttpHeader], headerCount: Int,
-                          ch: Option[Connection], clh: Option[`Content-Length`], cth: Option[`Content-Type`],
-                          teh: Option[`Transfer-Encoding`], e100: Boolean, hh: Boolean): Result =
+    ch: Option[Connection], clh: Option[`Content-Length`], cth: Option[`Content-Type`],
+    teh: Option[`Transfer-Encoding`], e100: Boolean, hh: Boolean): Result =
     parseHeaderLines(input, lineStart, headers, headerCount, ch, clh, cth, teh, e100, hh)
 
   def parseEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: Option[`Content-Length`],
-                  cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
-                  closeAfterResponseCompletion: Boolean): Result
+    cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
+    closeAfterResponseCompletion: Boolean): Result
 
   def parseFixedLengthBody(headers: List[HttpHeader], input: ByteString, bodyStart: Int, length: Long,
-                           cth: Option[`Content-Type`], closeAfterResponseCompletion: Boolean): Result =
+    cth: Option[`Content-Type`], closeAfterResponseCompletion: Boolean): Result =
     if (length >= settings.autoChunkingThreshold) {
       emit(chunkStartMessage(headers), closeAfterResponseCompletion) {
         parseBodyWithAutoChunking(input, bodyStart, length, closeAfterResponseCompletion)
@@ -136,7 +136,7 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
 
   def parseChunk(input: ByteString, offset: Int, closeAfterResponseCompletion: Boolean): Result = {
     @tailrec def parseTrailer(extension: String, lineStart: Int, headers: List[HttpHeader] = Nil,
-                              headerCount: Int = 0): Result = {
+      headerCount: Int = 0): Result = {
       val lineEnd = headerParser.parseHeaderLine(input, lineStart)()
       headerParser.resultHeader match {
         case HttpHeaderParser.EmptyHeader ⇒
@@ -186,12 +186,12 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
     try parseSize()
     catch {
       case NotEnoughDataException ⇒ needMoreData(input, offset)(parseChunk(_, _, closeAfterResponseCompletion))
-      case e: ParsingException    ⇒ fail(e.status, e.info)
+      case e: ParsingException ⇒ fail(e.status, e.info)
     }
   }
 
   def parseBodyWithAutoChunking(input: ByteString, offset: Int, remainingBytes: Long,
-                                closeAfterResponseCompletion: Boolean): Result = {
+    closeAfterResponseCompletion: Boolean): Result = {
     require(remainingBytes > 0)
     val chunkSize = math.min(remainingBytes, input.size - offset).toInt // safe conversion because input.size returns an Int
     if (chunkSize > 0) {
@@ -211,7 +211,7 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
   def entity(cth: Option[`Content-Type`], body: ByteString): HttpEntity = {
     val contentType = cth match {
       case Some(x) ⇒ x.contentType
-      case None    ⇒ ContentTypes.`application/octet-stream`
+      case None ⇒ ContentTypes.`application/octet-stream`
     }
     HttpEntity(contentType, HttpData(body.compact))
   }
@@ -221,7 +221,7 @@ private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettin
     else Result.NeedMoreData(more ⇒ next(input ++ more, offset))
 
   def emit(part: HttpMessagePart, closeAfterResponseCompletion: Boolean)(continue: ⇒ Result) =
-    Result.Emit(part, closeAfterResponseCompletion, () ⇒ continue)
+    Result.EmitLazily(part, closeAfterResponseCompletion, () ⇒ continue)
 
   def fail(summary: String): Result = fail(summary, "")
   def fail(summary: String, detail: String): Result = fail(StatusCodes.BadRequest, summary, detail)

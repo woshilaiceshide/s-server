@@ -1,5 +1,7 @@
 package woshilaiceshide.sserver.http
 
+import spray.can.parsing._
+
 class AuxThread(r: Runnable) extends Thread(r) {
 
   private[http] var cached_bytes_rendering: RichBytesRendering = _

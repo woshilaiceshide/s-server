@@ -21,17 +21,30 @@ import spray.util.SingletonException
 import spray.http._
 
 package object parsing {
-  private[can]type Parser = ByteString ⇒ Result
+  type Parser = ByteString ⇒ Result
 }
 
 package parsing {
 
-  private[can] sealed trait Result
-  private[can] object Result {
-    case class NeedMoreData(next: Parser) extends Result
-    case class Emit(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, continue: () ⇒ Result) extends Result
-    case class Expect100Continue(continue: () ⇒ Result) extends Result
-    case class ParsingError(status: StatusCode, info: ErrorInfo) extends Result
+  sealed trait Result
+  object Result {
+    final case class NeedMoreData(next: Parser) extends Result
+    sealed trait AbstractEmit extends Result {
+      val part: HttpMessagePart
+      val closeAfterResponseCompletion: Boolean
+      def continue: Result
+      //TODO add 'remaining' stubs
+      def remainingInput: ByteString = throw new scala.NotImplementedError()
+      def remainingOffset: Int = throw new scala.NotImplementedError()
+    }
+    final case class EmitLazily(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, lazy_continue: () ⇒ Result) extends AbstractEmit {
+      throw new scala.NotImplementedError()
+      def continue = lazy_continue()
+    }
+    //no lazy evaluation. this optimization is proved by facts.
+    final case class EmitDirectly(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, continue: Result) extends AbstractEmit
+    final case class Expect100Continue(continue: () ⇒ Result) extends Result
+    final case class ParsingError(status: StatusCode, info: ErrorInfo) extends Result
     case object IgnoreAllFurtherInput extends Result with Parser { def apply(data: ByteString) = this }
   }
 
@@ -42,6 +55,7 @@ package parsing {
       this(StatusCodes.BadRequest, ErrorInfo(summary))
   }
 
-  private object NotEnoughDataException extends SingletonException
+  object NotEnoughDataException extends SingletonException
+
 }
 

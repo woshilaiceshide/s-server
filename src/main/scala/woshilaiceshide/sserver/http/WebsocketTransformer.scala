@@ -24,7 +24,7 @@ object WebSocketChannel {
 class WebSocketChannel(channel: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     requestMethod: HttpMethod,
-    requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends ResponseRenderingComponent {
+    requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends S2ResponseRenderingComponent {
 
   import WebSocketChannel._
   import WebSocket13._
@@ -100,11 +100,11 @@ class WebSocketChannel(channel: ChannelWrapper,
   private def writeWebSocketResponse(response: HttpResponse, writeServerAndDateHeader: Boolean = false) = {
 
     val r = configurator.borrow_bytes_rendering(maxResponseSize, response)
-    val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
+    val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
     val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, writeServerAndDateHeader)
 
     val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
-    if (closeMode == ResponseRenderingComponent.CloseMode.CloseAfterEnd) closeAfterEnd = true
+    if (closeMode == S2ResponseRenderingComponent.CloseMode.CloseAfterEnd) closeAfterEnd = true
 
     channel.write(r.to_byte_buffer(), true, false)
 

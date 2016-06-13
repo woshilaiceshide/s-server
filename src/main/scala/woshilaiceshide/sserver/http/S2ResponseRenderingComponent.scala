@@ -1,82 +1,22 @@
 package woshilaiceshide.sserver.http
 
 import spray.util._
-
 import spray.http._
 import spray.http.HttpHeaders._
+import spray.can.rendering._
 
 import scala.annotation._
-
-private[http] object RenderSupport {
-  val DefaultStatusLine = "HTTP/1.1 200 OK\r\n".getAsciiBytes
-  val StatusLineStart = "HTTP/1.1 ".getAsciiBytes
-  val Chunked = "chunked".getAsciiBytes
-  val KeepAlive = "Keep-Alive".getAsciiBytes
-  val Close = "close".getAsciiBytes
-  val Upgrade = "Upgrade".getAsciiBytes
-
-  def getBytes(renderable: Renderable, sizeHint: Int = 512) = {
-    val r = new ByteArrayRendering(sizeHint)
-    r ~~ renderable
-    r.get
-  }
-
-  def getBytes(l: Long) = {
-    val r = new ByteArrayRendering(64)
-    r ~~ l
-    r.get
-  }
-  def getBytes(s: String) = {
-    s.getAsciiBytes
-  }
-
-  val CrLf = getBytes(Rendering.CrLf)
-  val TwoCrLf = getBytes(Rendering.CrLf) ++ getBytes(Rendering.CrLf)
-
-  val `Content-Type-Bytes` = "Content-Type: ".getAsciiBytes
-  //TODO for more common content types
-  val `Content-Type--text/plain(UTF-8)-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain(UTF-8)`))
-  val `Content-Type--text/plain(UTF-8)-CrLf-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain(UTF-8)`)) ++ CrLf
-  val `Content-Type--text/plain-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain`))
-  val `Content-Type--text/plain-CrLf-Bytes` = getBytes(`Content-Type`(ContentTypes.`text/plain`)) ++ CrLf
-  val `Content-Length-Bytes` = "Content-Length: ".getAsciiBytes
-
-  val `Connection: KeepAlive-CrLf` = getBytes(Connection) ++ ": ".getAsciiBytes ++ KeepAlive ++ CrLf
-  val `Connection: Close-CrLf` = getBytes(Connection) ++ ": ".getAsciiBytes ++ Close ++ CrLf
-
-  val `Transfer-Encoding: Chunked-TwoCrLf` = getBytes(`Transfer-Encoding`) ++ ": ".getAsciiBytes ++ Chunked ++ TwoCrLf
-
-  implicit object MessageChunkRenderer extends Renderer[MessageChunk] {
-    def render[R <: Rendering](r: R, chunk: MessageChunk): r.type = {
-      import chunk._
-      r ~~% data.length
-      if (!extension.isEmpty) r ~~ ';' ~~ extension
-      r ~~ CrLf ~~ data ~~ CrLf
-    }
-  }
-
-  implicit object ChunkedMessageEndRenderer extends Renderer[ChunkedMessageEnd] {
-    implicit val trailerRenderer = Renderer.genericSeqRenderer[Renderable, HttpHeader](Rendering.CrLf, Rendering.Empty)
-    def render[R <: Rendering](r: R, part: ChunkedMessageEnd): r.type = {
-      r ~~ '0'
-      if (!part.extension.isEmpty) r ~~ ';' ~~ part.extension
-      r ~~ CrLf
-      if (!part.trailer.isEmpty) r ~~ part.trailer ~~ CrLf
-      r ~~ CrLf
-    }
-  }
-}
 
 import RenderSupport._
 import HttpProtocols._
 
-case class ResponsePartRenderingContext(
+case class S2ResponsePartRenderingContext(
   responsePart: HttpResponsePart,
   requestMethod: HttpMethod = HttpMethods.GET,
   requestProtocol: HttpProtocol = HttpProtocols.`HTTP/1.1`,
   closeAfterResponseCompletion: Boolean = false)
 
-object ResponseRenderingComponent {
+object S2ResponseRenderingComponent {
 
   sealed trait CloseMode {
     def shouldCloseNow(part: HttpResponsePart, closeAfterEnd: Boolean): Boolean
@@ -99,9 +39,9 @@ object ResponseRenderingComponent {
 
 }
 
-trait ResponseRenderingComponent {
+trait S2ResponseRenderingComponent {
 
-  import ResponseRenderingComponent._
+  import S2ResponseRenderingComponent._
 
   def configurator: HttpConfigurator
 
@@ -122,7 +62,7 @@ trait ResponseRenderingComponent {
   // returns a boolean indicating whether the connection is to be closed after this response was sent
   def renderResponsePartRenderingContext(
     r: RichBytesRendering,
-    ctx: ResponsePartRenderingContext,
+    ctx: S2ResponsePartRenderingContext,
     log: akka.event.LoggingAdapter,
     write_server_and_date_headers: Boolean): CloseMode = {
 

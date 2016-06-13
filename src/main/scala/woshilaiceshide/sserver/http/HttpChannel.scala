@@ -14,9 +14,9 @@ final class HttpChannel(
     private[http] val channel: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     requestMethod: HttpMethod,
-    requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends ResponseRenderingComponent {
+    requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends S2ResponseRenderingComponent {
 
-  import ResponseRenderingComponent._
+  import S2ResponseRenderingComponent._
 
   def remoteAddress: java.net.SocketAddress = channel.remoteAddress
   def localAddress: java.net.SocketAddress = channel.localAddress
@@ -64,9 +64,8 @@ final class HttpChannel(
 
       val _finished = check_finished(response)
 
-      //val r = new RevisedByteArrayRendering(sizeHint)
       val r = configurator.borrow_bytes_rendering(sizeHint, response)
-      val ctx = new ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
+      val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
       //TODO why it's error when finished is false

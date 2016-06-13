@@ -34,8 +34,8 @@ import CharUtils._
  * For the life-time of one HTTP connection an instance of this class is owned by the connection, i.e. not shared
  * with other connections. After the connection is closed it may be used by subsequent connections.
  */
-private[parsing] final class HttpHeaderParser private (val settings: ParserSettings,
-                                                       warnOnIllegalHeader: ErrorInfo ⇒ Unit,
+final class HttpHeaderParser(val settings: ParserSettings,
+    warnOnIllegalHeader: ErrorInfo ⇒ Unit,
     // format: OFF
 
     // The core of this parser/cache is a mutable space-efficient ternary trie (prefix tree) structure, whose data are
@@ -121,15 +121,18 @@ private[parsing] final class HttpHeaderParser private (val settings: ParserSetti
       resultHeader = header
       endIx
     }
+    def leafNode(node: Char) = {
+      val valueIx = (node >>> 8) - 1
+      values(valueIx) match {
+        case branch: ValueBranch ⇒ parseHeaderValue(input, cursor, branch)()
+        case valueParser: HeaderValueParser ⇒ startValueBranch(valueIx, valueParser) // no header yet of this type
+        case EmptyHeader ⇒ resultHeader = EmptyHeader; cursor
+      }
+    }
     val node = nodes(nodeIx)
     node & 0xFF match {
       case 0 ⇒ // leaf node
-        val valueIx = (node >>> 8) - 1
-        values(valueIx) match {
-          case branch: ValueBranch            ⇒ parseHeaderValue(input, cursor, branch)()
-          case valueParser: HeaderValueParser ⇒ startValueBranch(valueIx, valueParser) // no header yet of this type
-          case EmptyHeader                    ⇒ resultHeader = EmptyHeader; cursor
-        }
+        leafNode(node)
       case nodeChar ⇒
         val char = toLowerCase(byteChar(input, cursor))
         if (char == node) // fast match, advance and descend
@@ -304,7 +307,7 @@ private[parsing] final class HttpHeaderParser private (val settings: ParserSetti
         prefixedLines -> mainIx
       }
       def branchLines(dataIx: Int, p1: String, p2: String, p3: String) = branchData(dataIx) match {
-        case 0         ⇒ Seq.empty
+        case 0 ⇒ Seq.empty
         case subNodeIx ⇒ recurseAndPrefixLines(subNodeIx, p1, p2, p3)._1
       }
       val node = nodes(nodeIx)
@@ -317,8 +320,8 @@ private[parsing] final class HttpHeaderParser private (val settings: ParserSetti
               val pad = " " * (valueParser.headerName.length + 3)
               recurseAndPrefixLines(branchRootNodeIx, pad, "(" + valueParser.headerName + ")-", pad)
             case vp: HeaderValueParser ⇒ Seq(" (" :: vp.headerName :: ")" :: Nil) -> 0
-            case value: RawHeader      ⇒ Seq(" *" :: value.toString :: Nil) -> 0
-            case value                 ⇒ Seq(" " :: value.toString :: Nil) -> 0
+            case value: RawHeader ⇒ Seq(" *" :: value.toString :: Nil) -> 0
+            case value ⇒ Seq(" " :: value.toString :: Nil) -> 0
           }
           case nodeChar ⇒
             val rix = rowIx(msb)
@@ -352,7 +355,7 @@ private[parsing] final class HttpHeaderParser private (val settings: ParserSetti
         case 0 ⇒ build(nodeIx + 1)
         case msb if (node & 0xFF) == 0 ⇒ values(msb - 1) match {
           case ValueBranch(_, parser, _, count) ⇒ Map(parser.headerName -> count)
-          case _                                ⇒ Map.empty
+          case _ ⇒ Map.empty
         }
         case msb ⇒
           def branch(ix: Int): Map[String, Int] = if (ix > 0) build(ix) else Map.empty
@@ -379,7 +382,7 @@ private[parsing] final class HttpHeaderParser private (val settings: ParserSetti
   def formatSizes: String = s"$nodeCount nodes, ${branchDataCount / 3} nodeData rows, $valueCount values"
 }
 
-private object HttpHeaderParser {
+object HttpHeaderParser {
   import SpecializedHeaderValueParsers._
 
   object EmptyHeader extends HttpHeader {
@@ -404,7 +407,7 @@ private object HttpHeaderParser {
   private val defaultIllegalHeaderWarning: ErrorInfo ⇒ Unit = info ⇒ sys.error(info.formatPretty)
 
   def apply(settings: ParserSettings, warnOnIllegalHeader: ErrorInfo ⇒ Unit = defaultIllegalHeaderWarning,
-            unprimed: Boolean = false): HttpHeaderParser = {
+    unprimed: Boolean = false): HttpHeaderParser = {
     val parser = new HttpHeaderParser(settings, warnOnIllegalHeader)
     if (!unprimed) {
       val valueParsers: Seq[HeaderValueParser] =
@@ -440,7 +443,7 @@ private object HttpHeaderParser {
   }
 
   def modelledHeaderValueParser(headerName: String, parserRule: Rule1[HttpHeader], maxHeaderValueLength: Int,
-                                maxValueCount: Int) =
+    maxValueCount: Int) =
     new HeaderValueParser(headerName, maxValueCount) {
       def apply(input: ByteString, valueStart: Int, warnOnIllegalHeader: ErrorInfo ⇒ Unit): (HttpHeader, Int) = {
         val (headerValue, endIx) = scanHeaderValue(input, valueStart, valueStart + maxHeaderValueLength)()
@@ -464,12 +467,12 @@ private object HttpHeaderParser {
     }
 
   @tailrec private def scanHeaderNameAndReturnIndexOfColon(input: ByteString, start: Int,
-                                                           maxHeaderNameEndIx: Int)(ix: Int = start): Int =
+    maxHeaderNameEndIx: Int)(ix: Int = start): Int =
     if (ix < maxHeaderNameEndIx)
       byteChar(input, ix) match {
-        case ':'                 ⇒ ix
+        case ':' ⇒ ix
         case c if isTokenChar(c) ⇒ scanHeaderNameAndReturnIndexOfColon(input, start, maxHeaderNameEndIx)(ix + 1)
-        case c                   ⇒ fail(s"Illegal character '${escape(c)}' in header name")
+        case c ⇒ fail(s"Illegal character '${escape(c)}' in header name")
       }
     else fail(s"HTTP header name exceeds the configured limit of ${maxHeaderNameEndIx - start} characters")
 
@@ -482,7 +485,7 @@ private object HttpHeaderParser {
           if (isWhitespace(byteChar(input, ix + 2))) scanHeaderValue(input, start, maxHeaderValueEndIx)(spaceAppended, ix + 3)
           else (if (sb != null) sb.toString else asciiString(input, start, ix), ix + 2)
         case c if c >= ' ' ⇒ scanHeaderValue(input, start, maxHeaderValueEndIx)(if (sb != null) sb.append(c) else sb, ix + 1)
-        case c             ⇒ fail(s"Illegal character '${escape(c)}' in header value")
+        case c ⇒ fail(s"Illegal character '${escape(c)}' in header value")
       }
     else fail(s"HTTP header value exceeds the configured limit of ${maxHeaderValueEndIx - start} characters")
   }

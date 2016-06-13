@@ -22,7 +22,7 @@ import scala.annotation.tailrec
 import java.lang.{ StringBuilder ⇒ JStringBuilder }
 
 // TODO: replace with spray.http.parser.CharMask
-private object CharUtils {
+object CharUtils {
   // compile time constants
   private final val LOWER_ALPHA = 0x01
   private final val UPPER_ALPHA = 0x02
@@ -62,15 +62,21 @@ private object CharUtils {
   def toLowerCase(c: Char): Char = if (is(c, UPPER_ALPHA)) (c + 0x20).toChar else c
   def abs(i: Int): Int = { val j = i >> 31; (i ^ j) - j }
   def escape(c: Char): String = c match {
-    case '\t'                           ⇒ "\\t"
-    case '\r'                           ⇒ "\\r"
-    case '\n'                           ⇒ "\\n"
+    case '\t' ⇒ "\\t"
+    case '\r' ⇒ "\\r"
+    case '\n' ⇒ "\\n"
     case x if Character.isISOControl(x) ⇒ "\\u%04x" format c.toInt
-    case x                              ⇒ x.toString
+    case x ⇒ x.toString
   }
 
   def byteChar(input: ByteString, ix: Int): Char =
     if (ix < input.length) input(ix).toChar else throw NotEnoughDataException
+
+  def validateNextTwoChars(input: ByteString, ix: Int, c0: Char, c1: Char): Boolean = {
+    if (ix < input.length + 1)
+      input(ix).toChar == c0 && input(ix + 1).toChar == c1
+    else throw NotEnoughDataException
+  }
 
   def asciiString(input: ByteString, start: Int, end: Int): String = {
     @tailrec def build(ix: Int = start, sb: JStringBuilder = new JStringBuilder(end - start)): String =

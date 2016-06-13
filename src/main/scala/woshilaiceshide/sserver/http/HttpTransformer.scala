@@ -4,14 +4,8 @@ import akka.util._
 
 import woshilaiceshide.sserver.http._
 
-import _root_.spray.http._
-import _root_.spray.http.HttpRequest
-import _root_.spray.http.HttpResponse
-import _root_.spray.http.StatusCodes
-import _root_.spray.http.HttpHeader
-import _root_.spray.http.ByteArrayRendering
-import _root_.spray.http.HttpResponsePart
-import _root_.spray.http.HttpRequestPart
+import spray.can.parsing._
+import spray.http._
 
 import woshilaiceshide.sserver.nio._
 
@@ -50,7 +44,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
   import HttpTransformer._
 
-  private var original_parser: HttpRequestPartParser = null
+  private var original_parser: S2HttpRequestPartParser = null
   private var parser: Parser = null
 
   private[this] var current_sink: ResponseSink = null
@@ -104,7 +98,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
     //a reasonable request flow is produced
     //val result = parser.apply(ByteString.apply(byteBuffer))
-    val result = parser.apply(akka.fake.FakeHelper.byte_string_from_byte_buffer_directly(byteBuffer))
+    val result = parser.apply(akka.spray.createByteStringUnsafe(byteBuffer))
 
     @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
 

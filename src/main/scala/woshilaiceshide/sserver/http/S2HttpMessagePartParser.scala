@@ -3,13 +3,14 @@ package woshilaiceshide.sserver.http
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 import akka.util.ByteString
+import spray.can.parsing._
 import spray.http._
 import StatusCodes._
 import HttpHeaders._
 import HttpProtocols._
 import CharUtils._
 
-abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSettings,
+abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSettings,
     val headerParser: HttpHeaderParser) extends Parser {
   protected var protocol: HttpProtocol = `HTTP/1.1`
 
@@ -264,7 +265,7 @@ abstract class HttpMessagePartParser(val settings: spray.can.parsing.ParserSetti
     if (!copied) {
       copied = true
       val bytes = input.toArray
-      akka.fake.FakeHelper.byte_string_from_byte_array_directly(bytes, 0, bytes.length)
+      akka.spray.createByteStringUnsafe(bytes, 0, bytes.length)
     } else {
       input
     }

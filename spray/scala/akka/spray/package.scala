@@ -16,12 +16,19 @@
 
 package akka
 
+import java.nio._
 import akka.util.ByteString
 
 package object spray {
+
   def createByteStringUnsafe(bytes: Array[Byte]): ByteString =
     ByteString.ByteString1C(bytes)
 
   def createByteStringUnsafe(bytes: Array[Byte], start: Int, len: Int): ByteString =
     ByteString.ByteString1(bytes, start, len)
+
+  def createByteStringUnsafe(buffer: ByteBuffer) = {
+    akka.util.ByteString.ByteString1(buffer.array(), buffer.position(), buffer.limit())
+  }
+
 }
