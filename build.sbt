@@ -57,6 +57,8 @@ unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "spray" / "scala" )
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.7"
 
+libraryDependencies += "com.typesafe.akka" %% "akka-http-core" % "2.4.7"
+
 libraryDependencies += "org.parboiled" % "parboiled-scala_2.11" % "1.1.7"
 
 libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.21"
