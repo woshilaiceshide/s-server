@@ -88,9 +88,9 @@ final case class HttpConfigurator(
   import woshilaiceshide.sserver.utility._
 
   //a huge optimization. header parser has a trie, which consumes lots of cpu.
-  private val cached_header_parser = new java.lang.ThreadLocal[HttpHeaderParser]() {
-    override def initialValue(): HttpHeaderParser = {
-      HttpHeaderParser(akka_parser_settings)()
+  private val cached_header_parser = new java.lang.ThreadLocal[akka.http.impl.engine.sserver.HttpHeaderParser]() {
+    override def initialValue(): akka.http.impl.engine.sserver.HttpHeaderParser = {
+      akka.http.impl.engine.sserver.HttpHeaderParser(akka_parser_settings)()
     }
   }
 
@@ -101,7 +101,7 @@ final case class HttpConfigurator(
         if (aux.cached_header_parser != null) {
           aux.cached_header_parser
         } else {
-          val tmp = HttpHeaderParser(akka_parser_settings)()
+          val tmp = akka.http.impl.engine.sserver.HttpHeaderParser(akka_parser_settings)()
           aux.cached_header_parser = tmp
           tmp
         }

@@ -7,7 +7,7 @@ class AuxThread(r: Runnable) extends Thread(r) {
   private[http] var cached_bytes_rendering: RichBytesRendering = _
   private[http] var cached_bytes_rendering_with_status_200: RichBytesRendering = _
 
-  private[http] var cached_header_parser: HttpHeaderParser = _
+  private[http] var cached_header_parser: akka.http.impl.engine.sserver.HttpHeaderParser = _
 
   override def run() = try {
     r.run()

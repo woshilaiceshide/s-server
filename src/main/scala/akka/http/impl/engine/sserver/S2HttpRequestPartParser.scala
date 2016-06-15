@@ -13,7 +13,7 @@ import woshilaiceshide.sserver.http.model._
 import HttpMethods._
 import StatusCodes._
 
-class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser)
+class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: akka.http.impl.engine.sserver.HttpHeaderParser)
     extends S2HttpMessagePartParser(settings, _headerParser) {
 
   private[this] var method: HttpMethod = _ //GET

@@ -14,7 +14,7 @@ import HttpProtocols._
 import woshilaiceshide.sserver.http.model._
 
 abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSettings,
-    val headerParser: HttpHeaderParser) extends Parser {
+    val headerParser: akka.http.impl.engine.sserver.HttpHeaderParser) extends Parser {
   protected var protocol: HttpProtocol = `HTTP/1.1`
 
   def apply(input: ByteString): Result = parseMessageSafe(input)
@@ -83,22 +83,33 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     teh: `Transfer-Encoding` = null,
     e100: Boolean = false,
     hh: Boolean = false): Result = {
-    var lineEnd = 0
-    val result: Result =
-      try {
-        lineEnd = headerParser.parseHeaderLine(input, lineStart)()
-        null
-      } catch {
-        case NotEnoughDataException ⇒
-          needMoreData(input, lineStart)(parseHeaderLinesAux(_, _, headers, headerCount, ch, clh, cth, teh, e100, hh))
-        case e: ParsingException ⇒ fail(e.status, e.info)
-      }
+
+    def f() = {
+      var lineEnd = 0
+      val result: Result =
+        try {
+          lineEnd = headerParser.parseHeaderLine(input, lineStart)()
+          null
+        } catch {
+          case NotEnoughDataException ⇒
+            needMoreData(input, lineStart)(parseHeaderLinesAux(_, _, headers, headerCount, ch, clh, cth, teh, e100, hh))
+          case e: ParsingException ⇒ fail(e.status, e.info)
+        }
+      (lineEnd, result)
+    }
+
+    val (lineEnd1, result) = f()
+    var lineEnd = lineEnd1
+
     if (result != null) result
     else headerParser.resultHeader match {
       case EmptyHeader ⇒
-        val close = connectionCloseExpected(protocol, ch)
-        val next = parseEntity(headers.toList, input, lineEnd, clh, cth, teh, hh, close)
-        if (e100) Result.Expect100Continue(() ⇒ next) else next
+        def f() = {
+          val close = connectionCloseExpected(protocol, ch)
+          val next = parseEntity(headers.toList, input, lineEnd, clh, cth, teh, hh, close)
+          if (e100) Result.Expect100Continue(() ⇒ next) else next
+        }
+        f()
 
       case h: Connection ⇒
         parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, h, clh, cth, teh, e100, hh)
