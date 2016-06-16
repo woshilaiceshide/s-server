@@ -83,7 +83,7 @@ object HttpParser extends Parser with ProtocolParameterRules with AdditionalRule
       }
     }
 
-  def parse[A](rule: Rule1[A], input: String): Either[ErrorInfo, A] = {
+  def parse[A](rule: Rule1[A], input: org.parboiled.scala.Input): Either[ErrorInfo, A] = {
     try {
       //for perf
       //val result = ReportingParseRunner(rule).run(input)
