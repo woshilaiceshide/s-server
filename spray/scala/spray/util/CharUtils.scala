@@ -1,20 +1,4 @@
-/*
- * Copyright © 2011-2015 the spray project <http://spray.io>
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-package spray.can.parsing
+package spray.util
 
 import scala.collection.immutable.NumericRange
 import akka.util.ByteString
@@ -69,18 +53,18 @@ object CharUtils {
     case x ⇒ x.toString
   }
 
-  def byteChar(input: ByteString, ix: Int): Char =
-    if (ix < input.length) input(ix).toChar else throw NotEnoughDataException
-
-  def validateNextTwoChars(input: ByteString, ix: Int, c0: Char, c1: Char): Boolean = {
-    if (ix < input.length + 1)
-      input(ix).toChar == c0 && input(ix + 1).toChar == c1
-    else throw NotEnoughDataException
-  }
-
   def asciiString(input: ByteString, start: Int, end: Int): String = {
     @tailrec def build(ix: Int = start, sb: JStringBuilder = new JStringBuilder(end - start)): String =
       if (ix == end) sb.toString else build(ix + 1, sb.append(input(ix).toChar))
     if (start == end) "" else build()
   }
+
+  def lowerHexDigit(long: Long): Char = lowerHexDigit_internal((long & 0x0FL).toInt)
+  def lowerHexDigit(int: Int): Char = lowerHexDigit_internal(int & 0x0F)
+  private def lowerHexDigit_internal(i: Int) = (48 + i + (39 & ((9 - i) >> 31))).toChar
+
+  def upperHexDigit(long: Long): Char = upperHexDigit_internal((long & 0x0FL).toInt)
+  def upperHexDigit(int: Int): Char = upperHexDigit_internal(int & 0x0F)
+  private def upperHexDigit_internal(i: Int) = (48 + i + (7 & ((9 - i) >> 31))).toChar
+
 }

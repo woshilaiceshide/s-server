@@ -19,7 +19,8 @@ package spray.http
 import scala.annotation.tailrec
 import scala.collection.LinearSeq
 import akka.util.{ ByteString, ByteStringBuilder }
-import spray.http.parser.{ CharUtils, CharPredicate }
+import spray.http.parser.CharPredicate
+import spray.util.CharUtils
 import spray.util._
 
 trait Renderable {
@@ -101,10 +102,10 @@ object Renderer {
           } else r
 
         value match {
-          case Nil              ⇒ r ~~ empty
+          case Nil ⇒ r ~~ empty
           case x: IndexedSeq[T] ⇒ recI(x)
-          case x: LinearSeq[T]  ⇒ recL(x)
-          case x                ⇒ sys.error("Unsupported Seq type: " + x)
+          case x: LinearSeq[T] ⇒ recL(x)
+          case x ⇒ sys.error("Unsupported Seq type: " + x)
         }
       }
     }
@@ -285,7 +286,7 @@ class HttpDataRendering(rawBytesSizeHint: Int) extends Rendering {
 
   def ~~(data: HttpData): this.type = {
     data match {
-      case HttpData.Empty        ⇒
+      case HttpData.Empty ⇒
       case HttpData.Bytes(bytes) ⇒ bsb ++= bytes
       case x ⇒
         closeBsb()

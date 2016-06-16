@@ -20,7 +20,7 @@ import scala.annotation.tailrec
 import akka.util.ByteString
 import spray.http._
 import HttpHeaders._
-import CharUtils._
+import spray.util.CharUtils._
 import ProtectedHeaderCreation.enable
 
 object SpecializedHeaderValueParsers {

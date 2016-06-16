@@ -23,7 +23,7 @@ import spray.http._
 import HttpMethods._
 import StatusCodes._
 import HttpHeaders._
-import CharUtils._
+import spray.util.CharUtils._
 
 private[can] class HttpRequestPartParser(_settings: ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser = HttpHeaderParser(_settings))
     extends HttpMessagePartParser(_settings, _headerParser) {
@@ -51,7 +51,7 @@ private[can] class HttpRequestPartParser(_settings: ParserSettings, rawRequestUr
           case ' ' ⇒
             HttpMethods.getForKey(sb.toString) match {
               case Some(m) ⇒ { method = m; cursor + ix + 1 }
-              case None    ⇒ parseCustomMethod(Int.MaxValue, sb)
+              case None ⇒ parseCustomMethod(Int.MaxValue, sb)
             }
           case c ⇒ parseCustomMethod(ix + 1, sb.append(c))
         }
@@ -72,14 +72,14 @@ private[can] class HttpRequestPartParser(_settings: ParserSettings, rawRequestUr
         case 'O' ⇒ parseMethod(POST, 2)
         case 'U' ⇒ parseMethod(PUT, 2)
         case 'A' ⇒ parseMethod(PATCH, 2)
-        case _   ⇒ parseCustomMethod()
+        case _ ⇒ parseCustomMethod()
       }
       case 'D' ⇒ parseMethod(DELETE)
       case 'H' ⇒ parseMethod(HEAD)
       case 'O' ⇒ parseMethod(OPTIONS)
       case 'T' ⇒ parseMethod(TRACE)
       case 'C' ⇒ parseMethod(CONNECT)
-      case _   ⇒ parseCustomMethod()
+      case _ ⇒ parseCustomMethod()
     }
   }
 
@@ -89,7 +89,7 @@ private[can] class HttpRequestPartParser(_settings: ParserSettings, rawRequestUr
 
     @tailrec def findUriEnd(ix: Int = cursor): Int =
       if (ix == input.length) throw NotEnoughDataException
-      else if (CharUtils.isWhitespaceOrNewline(input(ix).toChar)) ix
+      else if (isWhitespaceOrNewline(input(ix).toChar)) ix
       else if (ix < uriEndLimit) findUriEnd(ix + 1)
       else throw new ParsingException(RequestUriTooLong,
         s"URI length exceeds the configured limit of ${settings.maxUriLength} characters")
@@ -108,8 +108,8 @@ private[can] class HttpRequestPartParser(_settings: ParserSettings, rawRequestUr
 
   // http://tools.ietf.org/html/draft-ietf-httpbis-p1-messaging-22#section-3.3
   def parseEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: Option[`Content-Length`],
-                  cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
-                  closeAfterResponseCompletion: Boolean): Result =
+    cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
+    closeAfterResponseCompletion: Boolean): Result =
     if (hostHeaderPresent || protocol == HttpProtocols.`HTTP/1.0`) {
       teh match {
         case Some(`Transfer-Encoding`(Seq("chunked"))) ⇒
@@ -122,7 +122,7 @@ private[can] class HttpRequestPartParser(_settings: ParserSettings, rawRequestUr
         case None | Some(`Transfer-Encoding`(Seq("identity"))) ⇒
           val contentLength = clh match {
             case Some(`Content-Length`(len)) ⇒ len
-            case None                        ⇒ 0
+            case None ⇒ 0
           }
           if (contentLength == 0)
             emit(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {

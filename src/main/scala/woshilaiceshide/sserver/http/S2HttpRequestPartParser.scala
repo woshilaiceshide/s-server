@@ -9,7 +9,7 @@ import spray.http.parser.ParserInput
 import HttpMethods._
 import StatusCodes._
 import HttpHeaders._
-import CharUtils._
+import spray.util.CharUtils
 
 class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser)
     extends S2HttpMessagePartParser(settings, _headerParser) {

@@ -32,8 +32,15 @@ private[parser] trait SimpleHeaders {
   def `*Allow` = rule(
     zeroOrMore(HttpParser.HttpMethodDef, separator = ListSep) ~ EOI ~~> (Allow(_: _*)))
 
+  def ConnectionToken = rule {
+    (ignoreCase("close") ~ push(HttpHeaders.Connection.Close)) |
+      (ignoreCase("keep-alive") ~ push(HttpHeaders.Connection.KeepAlive)) |
+      (ignoreCase("upgrade") ~ push(HttpHeaders.Connection.Upgrade)) |
+      (Token ~~> { (s: String) => HttpHeaders.Connection.RawConnectionToken(s) })
+  }
+
   def `*Connection` = rule(
-    oneOrMore(Token, separator = ListSep) ~ EOI ~~> (HttpHeaders.Connection(_)))
+    oneOrMore(ConnectionToken, separator = ListSep) ~ EOI ~~> (HttpHeaders.Connection(_)))
 
   def `*Content-Length` = rule {
     oneOrMore(Digit) ~> (s ⇒ `Content-Length`(s.toLong)) ~ EOI

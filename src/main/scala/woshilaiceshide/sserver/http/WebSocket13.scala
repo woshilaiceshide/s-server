@@ -31,7 +31,7 @@ object WebSocket13 {
   val WS_HEADER_CONNECTION = "Connection"
   val WS_HEADER_CONNECTION_VALUE = "Upgrade"
 
-  private val WS_CONNECTION_HEADER = spray.http.HttpHeaders.Connection(WS_HEADER_CONNECTION_VALUE)
+  private val WS_CONNECTION_HEADER = spray.http.HttpHeaders.Connection(spray.http.HttpHeaders.Connection.Upgrade)
 
   val WS_HEADER_WEBSOCKET_VERSION = "Sec-WebSocket-Version"
   //NOW I support websocket 13 only.

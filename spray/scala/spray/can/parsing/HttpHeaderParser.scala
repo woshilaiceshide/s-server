@@ -25,7 +25,7 @@ import spray.http.parser.HttpParser
 import spray.util.SingletonException
 import spray.http._
 import HttpHeaders._
-import CharUtils._
+import spray.util.CharUtils._
 
 /**
  * Provides for time- and space-efficient parsing of an HTTP header line in an HTTP message.

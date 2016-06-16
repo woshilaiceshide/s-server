@@ -23,7 +23,7 @@ import spray.http._
 import StatusCodes._
 import HttpHeaders._
 import HttpProtocols._
-import CharUtils._
+import spray.util.CharUtils._
 
 private[parsing] abstract class HttpMessagePartParser(val settings: ParserSettings,
     val headerParser: HttpHeaderParser) extends Parser {

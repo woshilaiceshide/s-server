@@ -20,7 +20,7 @@ import scala.annotation.tailrec
 import akka.util.ByteString
 import spray.http._
 import HttpHeaders._
-import CharUtils._
+import spray.util.CharUtils._
 
 private[can] class HttpResponsePartParser(_settings: ParserSettings)(_headerParser: HttpHeaderParser = HttpHeaderParser(_settings))
     extends HttpMessagePartParser(_settings, _headerParser) {
@@ -58,7 +58,7 @@ private[can] class HttpResponsePartParser(_settings: ParserSettings)(_headerPars
       statusCode =
         if (code != 200) StatusCodes.getForKey(code) match {
           case Some(x) ⇒ x
-          case None    ⇒ badStatusCode
+          case None ⇒ badStatusCode
         }
         else StatusCodes.OK
       cursor + 4
@@ -74,8 +74,8 @@ private[can] class HttpResponsePartParser(_settings: ParserSettings)(_headerPars
 
   // http://tools.ietf.org/html/draft-ietf-httpbis-p1-messaging-22#section-3.3
   def parseEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: Option[`Content-Length`],
-                  cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
-                  closeAfterResponseCompletion: Boolean): Result =
+    cth: Option[`Content-Type`], teh: Option[`Transfer-Encoding`], hostHeaderPresent: Boolean,
+    closeAfterResponseCompletion: Boolean): Result =
     if (statusCode.allowsEntity && (requestMethodForCurrentResponse ne HttpMethods.HEAD)) {
       teh match {
         case Some(`Transfer-Encoding`(Seq("chunked"))) ⇒
@@ -106,7 +106,7 @@ private[can] class HttpResponsePartParser(_settings: ParserSettings)(_headerPars
     }
 
   def parseToCloseBody(headers: List[HttpHeader], input: ByteString, bodyStart: Int,
-                       cth: Option[`Content-Type`]): Result = {
+    cth: Option[`Content-Type`]): Result = {
     val currentBodySize = input.length - bodyStart
     if (currentBodySize <= settings.maxContentLength)
       if (currentBodySize < settings.autoChunkingThreshold)

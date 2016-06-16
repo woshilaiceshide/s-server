@@ -73,7 +73,7 @@ trait S2ResponseRenderingComponent {
 
       def shouldClose(contentLengthDefined: Boolean, connectionHeader: Connection) =
         ctx.closeAfterResponseCompletion || // request wants to close
-          (connectionHeader != null && OptimizedUtility.hasClose(connectionHeader)) || // application wants to close
+          (connectionHeader != null && connectionHeader.hasClose) || // application wants to close
           (chunkless && !contentLengthDefined) // missing content-length, close needed as data boundary
 
       def renderContentType(x: `Content-Type`, userContentType: Boolean): Boolean = {
@@ -96,7 +96,7 @@ trait S2ResponseRenderingComponent {
 
       def renderConnection(old_header: Connection, current_header: `Connection`) = {
         val new_header = if (old_header eq null) current_header else Connection(current_header.tokens ++ old_header.tokens)
-        if (OptimizedUtility.hasUpgrade(current_header)) render(current_header)
+        if (current_header.hasUpgrade) render(current_header)
         new_header
       }
 

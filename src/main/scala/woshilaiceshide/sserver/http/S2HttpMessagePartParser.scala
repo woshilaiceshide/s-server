@@ -8,7 +8,7 @@ import spray.http._
 import StatusCodes._
 import HttpHeaders._
 import HttpProtocols._
-import CharUtils._
+import spray.util.CharUtils
 
 abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSettings,
     val headerParser: HttpHeaderParser) extends Parser {
@@ -61,9 +61,9 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     */
 
     if (protocol eq HttpProtocols.`HTTP/1.1`) {
-      connectionHeader != null && OptimizedUtility.hasClose(connectionHeader)
+      connectionHeader != null && connectionHeader.hasClose
     } else if (protocol eq HttpProtocols.`HTTP/1.0`) {
-      connectionHeader == null || OptimizedUtility.hasNoKeepAlive(connectionHeader)
+      connectionHeader == null || !connectionHeader.hasKeepAlive
     } else {
       throw new Error("supposed to be not here.")
     }
@@ -203,7 +203,7 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
 
     @tailrec def parseChunkExtensions(chunkSize: Int, cursor: Int)(startIx: Int = cursor): Result =
       if (cursor - startIx <= settings.maxChunkExtLength) {
-        def extension = asciiString(input, startIx, cursor)
+        def extension = CharUtils.asciiString(input, startIx, cursor)
         byteChar(input, cursor) match {
           case '\r' if byteChar(input, cursor + 1) == '\n' ⇒ parseChunkBody(chunkSize, extension, cursor + 2)
           case '\n' ⇒ parseChunkBody(chunkSize, extension, cursor + 1)
@@ -214,10 +214,10 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     @tailrec def parseSize(cursor: Int = offset, size: Long = 0): Result =
       if (size <= settings.maxChunkSize) {
         byteChar(input, cursor) match {
-          case c if isHexDigit(c) ⇒ parseSize(cursor + 1, size * 16 + hexValue(c))
+          case c if CharUtils.isHexDigit(c) ⇒ parseSize(cursor + 1, size * 16 + CharUtils.hexValue(c))
           case ';' if cursor > offset ⇒ parseChunkExtensions(size.toInt, cursor + 1)()
           case '\r' if cursor > offset && byteChar(input, cursor + 1) == '\n' ⇒ parseChunkBody(size.toInt, "", cursor + 2)
-          case c ⇒ fail(s"Illegal character '${escape(c)}' in chunk start")
+          case c ⇒ fail(s"Illegal character '${CharUtils.escape(c)}' in chunk start")
         }
       } else fail(s"HTTP chunk size exceeds the configured limit of ${settings.maxChunkSize} bytes")
 

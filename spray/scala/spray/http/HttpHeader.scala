@@ -201,20 +201,41 @@ object HttpHeaders {
   }
 
   object Connection extends ModeledCompanion {
-    def apply(first: String, more: String*): Connection = apply(first +: more)
-    implicit val tokensRenderer = Renderer.defaultSeqRenderer[String] // cache
+
+    abstract class ConnectionToken extends Renderable
+    object Close extends ConnectionToken {
+      private val bytes = "close".getAsciiBytes
+      def render[R <: Rendering](r: R): r.type = r ~~ bytes
+    }
+    object KeepAlive extends ConnectionToken {
+      private val bytes = "keep-alive".getAsciiBytes
+      def render[R <: Rendering](r: R): r.type = r ~~ bytes
+    }
+    object Upgrade extends ConnectionToken {
+      private val bytes = "upgrade".getAsciiBytes
+      def render[R <: Rendering](r: R): r.type = r ~~ bytes
+    }
+    object RawConnectionToken {
+      def apply(token: String) = {
+        if (token.equalsIgnoreCase("close")) Close
+        else if (token.equalsIgnoreCase("keep-alive")) Close
+        else if (token.equalsIgnoreCase("upgrade")) Close
+        else new RawConnectionToken(token)
+      }
+    }
+    final class RawConnectionToken(token: String) extends ConnectionToken {
+      def render[R <: Rendering](r: R): r.type = r ~~ token.getBytes
+    }
+
+    def apply(first: ConnectionToken, more: ConnectionToken*): Connection = apply(first +: more)
+    implicit val tokensRenderer = Renderer.defaultSeqRenderer[ConnectionToken] // cache
   }
-  case class Connection(tokens: Seq[String]) extends ModeledHeader {
+  case class Connection(tokens: Seq[Connection.ConnectionToken]) extends ModeledHeader {
     import Connection.tokensRenderer
     def renderValue[R <: Rendering](r: R): r.type = r ~~ tokens
-    def hasClose = has("close")
-    def hasKeepAlive = has("keep-alive")
-    def hasUpgrade = has("upgrade")
-    @tailrec private def has(item: String, ix: Int = 0): Boolean =
-      if (ix < tokens.length)
-        if (tokens(ix) equalsIgnoreCase item) true
-        else has(item, ix + 1)
-      else false
+    def hasClose = tokens.exists(_ eq Connection.Close)
+    def hasKeepAlive = tokens.exists(_ eq Connection.KeepAlive)
+    def hasUpgrade = tokens.exists(_ eq Connection.Upgrade)
     protected def companion = Connection
   }
 

@@ -22,6 +22,16 @@ import spray.http._
 
 package object parsing {
   type Parser = ByteString ⇒ Result
+
+  def byteChar(input: ByteString, ix: Int): Char =
+    if (ix < input.length) input(ix).toChar else throw NotEnoughDataException
+
+  def validateNextTwoChars(input: ByteString, ix: Int, c0: Char, c1: Char): Boolean = {
+    if (ix < input.length + 1)
+      input(ix).toChar == c0 && input(ix + 1).toChar == c1
+    else throw NotEnoughDataException
+  }
+
 }
 
 package parsing {
