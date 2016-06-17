@@ -72,7 +72,7 @@ final class SimpleStringBuilder(var array: Array[Char]) {
     this
   }
 
-  def trim1() = {
+  def trim() = {
     trimFront()
     trimTail()
   }
