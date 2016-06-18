@@ -46,7 +46,7 @@ object HttpRequestPart {
   def unapply(wrapper: HttpMessagePartWrapper): Option[(HttpRequestPart, Option[Any])] =
     wrapper.messagePart match {
       case x: HttpRequestPart ⇒ Some((x, wrapper.ack))
-      case _                  ⇒ None
+      case _ ⇒ None
     }
 }
 
@@ -56,7 +56,7 @@ object HttpResponsePart {
   def unapply(wrapper: HttpMessagePartWrapper): Option[(HttpResponsePart, Option[Any])] =
     wrapper.messagePart match {
       case x: HttpResponsePart ⇒ Some((x, wrapper.ack))
-      case _                   ⇒ None
+      case _ ⇒ None
     }
 }
 
@@ -109,7 +109,7 @@ sealed abstract class HttpMessage extends HttpMessageStart with HttpMessageEnd {
    */
   def encoding = header[`Content-Encoding`] match {
     case Some(x) ⇒ x.encoding
-    case None    ⇒ HttpEncodings.identity
+    case None ⇒ HttpEncodings.identity
   }
 
   def header[T <: HttpHeader: ClassTag]: Option[T] = {
@@ -137,7 +137,7 @@ object HttpMessage {
   private[spray] def connectionCloseExpected(protocol: HttpProtocol, connectionHeader: Option[Connection]): Boolean =
     protocol match {
       case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && connectionHeader.get.hasClose
-      case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || !connectionHeader.get.hasKeepAlive
+      case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || connectionHeader.get.hasNoKeepAlive
     }
 }
 
@@ -145,10 +145,10 @@ object HttpMessage {
  * Immutable HTTP request model.
  */
 case class HttpRequest(method: HttpMethod = HttpMethods.GET,
-                       uri: Uri = Uri./,
-                       headers: List[HttpHeader] = Nil,
-                       entity: HttpEntity = HttpEntity.Empty,
-                       protocol: HttpProtocol = HttpProtocols.`HTTP/1.1`) extends HttpMessage with HttpRequestPart {
+    uri: Uri = Uri./,
+    headers: List[HttpHeader] = Nil,
+    entity: HttpEntity = HttpEntity.Empty,
+    protocol: HttpProtocol = HttpProtocols.`HTTP/1.1`) extends HttpMessage with HttpRequestPart {
   require(!uri.isEmpty, "An HttpRequest must not have an empty Uri")
 
   type Self = HttpRequest
@@ -162,9 +162,9 @@ case class HttpRequest(method: HttpMethod = HttpMethods.GET,
       def fail(detail: String) =
         sys.error("Cannot establish effective request URI of " + this + ", request has a relative URI and " + detail)
       val Host(host, port) = hostHeader match {
-        case None                 ⇒ if (defaultHostHeader.isEmpty) fail("is missing a `Host` header") else defaultHostHeader
+        case None ⇒ if (defaultHostHeader.isEmpty) fail("is missing a `Host` header") else defaultHostHeader
         case Some(x) if x.isEmpty ⇒ if (defaultHostHeader.isEmpty) fail("an empty `Host` header") else defaultHostHeader
-        case Some(x)              ⇒ x
+        case Some(x) ⇒ x
       }
       copy(uri = uri.toEffectiveHttpRequestUri(Uri.Host(host), port, securedConnection))
     } else // http://tools.ietf.org/html/draft-ietf-httpbis-p1-messaging-22#section-5.4
@@ -207,7 +207,7 @@ case class HttpRequest(method: HttpMethod = HttpMethods.GET,
       case Nil ⇒ 1.0f // http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.1
       case x ⇒
         @tailrec def rec(r: List[MediaRange] = x): Float = r match {
-          case Nil          ⇒ 0f
+          case Nil ⇒ 0f
           case head :: tail ⇒ if (head.matches(mediaType)) head.qValue else rec(tail)
         }
         rec()
@@ -227,7 +227,7 @@ case class HttpRequest(method: HttpMethod = HttpMethods.GET,
       case Nil ⇒ 1.0f // http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.2
       case x ⇒
         @tailrec def rec(r: List[HttpCharsetRange] = x): Float = r match {
-          case Nil          ⇒ if (charset == `ISO-8859-1`) 1f else 0f
+          case Nil ⇒ if (charset == `ISO-8859-1`) 1f else 0f
           case head :: tail ⇒ if (head.matches(charset)) head.qValue else rec(tail)
         }
         rec()
@@ -247,7 +247,7 @@ case class HttpRequest(method: HttpMethod = HttpMethods.GET,
       case Nil ⇒ 1.0f // http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.3
       case x ⇒
         @tailrec def rec(r: List[HttpEncodingRange] = x): Float = r match {
-          case Nil          ⇒ 0f
+          case Nil ⇒ 0f
           case head :: tail ⇒ if (head.matches(encoding)) head.qValue else rec(tail)
         }
         rec()
@@ -301,9 +301,9 @@ case class HttpRequest(method: HttpMethod = HttpMethods.GET,
  * Immutable HTTP response model.
  */
 case class HttpResponse(status: StatusCode = StatusCodes.OK,
-                        entity: HttpEntity = HttpEntity.Empty,
-                        headers: List[HttpHeader] = Nil,
-                        protocol: HttpProtocol = HttpProtocols.`HTTP/1.1`) extends HttpMessage with HttpResponsePart {
+    entity: HttpEntity = HttpEntity.Empty,
+    headers: List[HttpHeader] = Nil,
+    protocol: HttpProtocol = HttpProtocols.`HTTP/1.1`) extends HttpMessage with HttpResponsePart {
   type Self = HttpResponse
 
   def message = this
@@ -340,7 +340,7 @@ object MessageChunk {
   def apply(data: HttpData, extension: String): MessageChunk =
     data match {
       case x: HttpData.NonEmpty ⇒ new MessageChunk(x, extension)
-      case _                    ⇒ throw new IllegalArgumentException("Cannot create MessageChunk with empty data")
+      case _ ⇒ throw new IllegalArgumentException("Cannot create MessageChunk with empty data")
     }
 }
 
@@ -360,7 +360,7 @@ case class ChunkedResponseStart(response: HttpResponse) extends HttpMessageStart
 
 object ChunkedMessageEnd extends ChunkedMessageEnd("", Nil)
 case class ChunkedMessageEnd(extension: String = "",
-                             trailer: List[HttpHeader] = Nil) extends HttpRequestPart with HttpResponsePart with HttpMessageEnd {
+    trailer: List[HttpHeader] = Nil) extends HttpRequestPart with HttpResponsePart with HttpMessageEnd {
   if (!trailer.isEmpty) {
     require(trailer.forall(_.isNot("content-length")), "Content-Length header is not allowed in trailer")
     require(trailer.forall(_.isNot("transfer-encoding")), "Transfer-Encoding header is not allowed in trailer")

@@ -36,7 +36,7 @@ private[parser] trait SimpleHeaders {
     (ignoreCase("close") ~ push(HttpHeaders.Connection.Close)) |
       (ignoreCase("keep-alive") ~ push(HttpHeaders.Connection.KeepAlive)) |
       (ignoreCase("upgrade") ~ push(HttpHeaders.Connection.Upgrade)) |
-      (Token ~~> { (s: String) => HttpHeaders.Connection.RawConnectionToken(s) })
+      (Token ~~> { (s: String) => HttpHeaders.Connection.ConnectionToken(s) })
   }
 
   def `*Connection` = rule(

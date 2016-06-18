@@ -51,19 +51,10 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
 
   def connectionCloseExpected(protocol: HttpProtocol, connectionHeader: Connection): Boolean = {
 
-    /*
-    protocol match {
-      //case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && connectionHeader.get.hasClose
-      //case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || !connectionHeader.get.hasKeepAlive
-      case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader != null && OptimizedUtility.hasClose(connectionHeader)
-      case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader == null || OptimizedUtility.hasNoKeepAlive(connectionHeader)
-    }
-    */
-
     if (protocol eq HttpProtocols.`HTTP/1.1`) {
       connectionHeader != null && connectionHeader.hasClose
     } else if (protocol eq HttpProtocols.`HTTP/1.0`) {
-      connectionHeader == null || !connectionHeader.hasKeepAlive
+      connectionHeader == null || connectionHeader.hasNoKeepAlive
     } else {
       throw new Error("supposed to be not here.")
     }

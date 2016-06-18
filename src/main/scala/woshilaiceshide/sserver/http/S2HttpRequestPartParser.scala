@@ -11,8 +11,8 @@ import StatusCodes._
 import HttpHeaders._
 import spray.util.CharUtils
 
-class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(_headerParser: HttpHeaderParser)
-    extends S2HttpMessagePartParser(settings, _headerParser) {
+class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawRequestUriHeader: Boolean = false)(headerParser: HttpHeaderParser)
+    extends S2HttpMessagePartParser(settings, headerParser) {
 
   private[this] var method: HttpMethod = _ //GET
   private[this] var uri: Uri = _ //Uri.Empty

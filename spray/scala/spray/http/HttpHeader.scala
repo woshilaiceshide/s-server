@@ -202,29 +202,66 @@ object HttpHeaders {
 
   object Connection extends ModeledCompanion {
 
-    abstract class ConnectionToken extends Renderable
-    object Close extends ConnectionToken {
-      private val bytes = "close".getAsciiBytes
-      def render[R <: Rendering](r: R): r.type = r ~~ bytes
-    }
-    object KeepAlive extends ConnectionToken {
-      private val bytes = "keep-alive".getAsciiBytes
-      def render[R <: Rendering](r: R): r.type = r ~~ bytes
-    }
-    object Upgrade extends ConnectionToken {
-      private val bytes = "upgrade".getAsciiBytes
-      def render[R <: Rendering](r: R): r.type = r ~~ bytes
-    }
-    object RawConnectionToken {
-      def apply(token: String) = {
-        if (token.equalsIgnoreCase("close")) Close
-        else if (token.equalsIgnoreCase("keep-alive")) Close
-        else if (token.equalsIgnoreCase("upgrade")) Close
-        else new RawConnectionToken(token)
+    final class ConnectionToken private[http] (token: String, bytes: Array[Byte]) extends Renderable {
+      def render[R <: Rendering](r: R): r.type = {
+        if (null != bytes) r ~~ bytes
+        else r ~~ token
       }
+      override def toString() = token
     }
-    final class RawConnectionToken(token: String) extends ConnectionToken {
-      def render[R <: Rendering](r: R): r.type = r ~~ token.getBytes
+
+    val Close = new ConnectionToken("close", "close".getAsciiBytes)
+    val KeepAlive = new ConnectionToken("keep-alive", "keep-alive".getAsciiBytes)
+    val Upgrade = new ConnectionToken("upgrade", "upgrade".getAsciiBytes)
+
+    def isUpgrade(s: String): Boolean = {
+      val len = 7 //"upgrade".length
+      s.length() == len &&
+        ('U' == s.charAt(0) || 'u' == s.charAt(0)) &&
+        ('p' == s.charAt(1) || 'P' == s.charAt(1)) &&
+        ('g' == s.charAt(2) || 'G' == s.charAt(2)) &&
+        ('r' == s.charAt(3) || 'R' == s.charAt(3)) &&
+        ('a' == s.charAt(4) || 'A' == s.charAt(4)) &&
+        ('d' == s.charAt(5) || 'D' == s.charAt(5)) &&
+        ('e' == s.charAt(6) || 'E' == s.charAt(6))
+    }
+
+    def isClose(s: String): Boolean = {
+      val len = 5 //"close".length
+      s.length() == len &&
+        ('C' == s.charAt(0) || 'c' == s.charAt(0)) &&
+        ('l' == s.charAt(1) || 'L' == s.charAt(1)) &&
+        ('o' == s.charAt(2) || 'O' == s.charAt(2)) &&
+        ('s' == s.charAt(3) || 'S' == s.charAt(3)) &&
+        ('e' == s.charAt(4) || 'E' == s.charAt(4))
+    }
+
+    def isNotKeepAlive(s: String): Boolean = {
+      val len = 10 //"keep-alive".length
+      s.length() != len ||
+        ('K' != s.charAt(0) && 'k' != s.charAt(0)) ||
+        ('e' != s.charAt(1) && 'E' != s.charAt(1)) ||
+        ('e' != s.charAt(2) && 'E' != s.charAt(2)) ||
+        ('p' != s.charAt(3) && 'P' != s.charAt(3)) ||
+        ('-' != s.charAt(4)) ||
+        ('A' != s.charAt(5) && 'a' != s.charAt(5)) ||
+        ('l' != s.charAt(6) && 'L' != s.charAt(6)) ||
+        ('i' != s.charAt(7) && 'I' != s.charAt(7)) ||
+        ('v' != s.charAt(8) && 'V' != s.charAt(8)) ||
+        ('e' != s.charAt(9) && 'E' != s.charAt(9))
+    }
+
+    def isKeepAlive(s: String): Boolean = {
+      !isNotKeepAlive(s)
+    }
+
+    object ConnectionToken {
+      def apply(token: String) = {
+        if (isClose(token)) Close
+        else if (isKeepAlive(token)) KeepAlive
+        else if (isUpgrade(token)) Upgrade
+        else new ConnectionToken(token, null)
+      }
     }
 
     def apply(first: ConnectionToken, more: ConnectionToken*): Connection = apply(first +: more)
@@ -233,9 +270,36 @@ object HttpHeaders {
   case class Connection(tokens: Seq[Connection.ConnectionToken]) extends ModeledHeader {
     import Connection.tokensRenderer
     def renderValue[R <: Rendering](r: R): r.type = r ~~ tokens
-    def hasClose = tokens.exists(_ eq Connection.Close)
-    def hasKeepAlive = tokens.exists(_ eq Connection.KeepAlive)
-    def hasUpgrade = tokens.exists(_ eq Connection.Upgrade)
+
+    def hasClose: Boolean = {
+      var these = tokens
+      while (!these.isEmpty) {
+        if (these.head eq Connection.Close) return true
+        these = these.tail
+      }
+      return false
+    }
+
+    def hasKeepAlive: Boolean = {
+      var these = tokens
+      while (!these.isEmpty) {
+        if (these.head eq Connection.KeepAlive) return true
+        these = these.tail
+      }
+      return false
+    }
+
+    def hasNoKeepAlive: Boolean = !hasKeepAlive
+
+    def hasUpgrade: Boolean = {
+      var these = tokens
+      while (!these.isEmpty) {
+        if (these.head eq Connection.Upgrade) return true
+        these = these.tail
+      }
+      return false
+    }
+
     protected def companion = Connection
   }
 
