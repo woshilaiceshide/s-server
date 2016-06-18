@@ -92,7 +92,7 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
           (headerParser.parseHeaderLine(input, lineStart)(), null)
         } catch {
           case NotEnoughDataException ⇒
-            (-1, needMoreData(input, lineStart)(parseHeaderLinesAux(_, _, headers, headerCount, ch, clh, cth, teh, e100, hh)))
+            (-1, needMoreData(input, lineStart)(parseHeaderLines(_, _, headers, headerCount, ch, clh, cth, teh, e100, hh)))
           case e: ParsingException ⇒
             (-1, fail(e.status, e.info))
         }
@@ -181,20 +181,6 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     }
     result
   }
-
-  // work-around for compiler bug complaining about non-tail-recursion if we inline this method
-  def parseHeaderLinesAux(
-    input: ByteString,
-    lineStart: Int,
-    headers: ListBuffer[HttpHeader],
-    headerCount: Int,
-    ch: Connection,
-    clh: `Content-Length`,
-    cth: `Content-Type`,
-    teh: `Transfer-Encoding`,
-    e100: Boolean,
-    hh: Boolean): Result =
-    parseHeaderLines(input, lineStart, headers, headerCount, ch, clh, cth, teh, e100, hh)
 
   def parseEntity(
     headers: List[HttpHeader],
