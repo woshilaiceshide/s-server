@@ -10,6 +10,10 @@ import HttpHeaders._
 import HttpProtocols._
 import spray.util.CharUtils
 
+object S2HttpMessagePartParser {
+  private[S2HttpMessagePartParser] final class OneParse(val lineEnd: Int, val result: Result, val header: HttpHeader)
+}
+
 abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSettings,
     val headerParser: HttpHeaderParser) extends Parser {
   protected var protocol: HttpProtocol = `HTTP/1.1`
@@ -60,10 +64,11 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     }
   }
 
+  //just 325! cloud it be 324?
   final def parseHeaderLines(
     input: ByteString,
     lineStart1: Int,
-    headers1: ListBuffer[HttpHeader] = ListBuffer[HttpHeader](),
+    headers: ListBuffer[HttpHeader] = ListBuffer[HttpHeader](),
     headerCount1: Int = 0,
     ch1: Connection = null,
     clh1: `Content-Length` = null,
@@ -73,50 +78,47 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     hh1: Boolean = false): Result = {
 
     var lineStart: Int = lineStart1
-    var headers: ListBuffer[HttpHeader] = headers1
-    var headerCount: Int = headerCount1
+    //var headers: ListBuffer[HttpHeader] = headers1
+    var headerCount: Int = headerCount1 + 1 //increment by 1 in the future
     var ch: Connection = ch1
     var clh: `Content-Length` = clh1
     var cth: `Content-Type` = cth1
     var teh: `Transfer-Encoding` = teh1
     var e100: Boolean = e1001
     var hh: Boolean = hh1
-    var header: HttpHeader = null
+
+    def maxHeaderCount = settings.maxHeaderCount
 
     var result: Result = null
-
     while (result == null) {
 
       def parse(input: ByteString, lineStart: Int, headers: ListBuffer[HttpHeader], headerCount: Int, ch: Connection, clh: `Content-Length`, cth: `Content-Type`, teh: `Transfer-Encoding`, e100: Boolean, hh: Boolean) = {
         try {
-          (headerParser.parseHeaderLine(input, lineStart)(), null)
+          val lineEnd = headerParser.parseHeaderLine(input, lineStart)()
+          val header = headerParser.resultHeader
+          headers += header
+          new S2HttpMessagePartParser.OneParse(lineEnd, null, header)
         } catch {
           case NotEnoughDataException ⇒
-            (-1, needMoreData(input, lineStart)(parseHeaderLines(_, _, headers, headerCount, ch, clh, cth, teh, e100, hh)))
+            new S2HttpMessagePartParser.OneParse(-1, needMoreData(input, lineStart)(parseHeaderLines(_, _, headers, headerCount - 1, ch, clh, cth, teh, e100, hh)), null)
           case e: ParsingException ⇒
-            (-1, fail(e.status, e.info))
+            new S2HttpMessagePartParser.OneParse(-1, fail(e.status, e.info), null)
         }
       }
 
-      val parsed = parse(input, lineStart, headers1, headerCount1, ch1, clh1, cth1, teh1, e1001, hh1)
-      result = parsed._2
-      lineStart = parsed._1
+      val parsed = parse(input, lineStart, headers, headerCount, ch, clh, cth, teh, e100, hh)
+      result = parsed.result
+      lineStart = parsed.lineEnd
       if (result == null) {
-
-        header = headerParser.resultHeader
-        headers = headers += header
-        headerCount = headerCount + 1
-
         //'val i: Int' is here to kick 'getstatic 323	scala/runtime/BoxedUnit:UNIT	Lscala/runtime/BoxedUnit;' off.
-        val i: Int = header match {
-          case HttpHeaderParser.EmptyHeader ⇒ {
-
-            def headers_completed(input: ByteString, lineStart: Int, headers: ListBuffer[HttpHeader], headerCount: Int, ch: Connection, clh: `Content-Length`, cth: `Content-Type`, teh: `Transfer-Encoding`, e100: Boolean, hh: Boolean) = {
+        val i: Int = parsed.header match {
+          case h if h eq HttpHeaderParser.EmptyHeader ⇒ {
+            def headers_completed(input: ByteString, lineStart: Int, headers: ListBuffer[HttpHeader], ch: Connection, clh: `Content-Length`, cth: `Content-Type`, teh: `Transfer-Encoding`, e100: Boolean, hh: Boolean) = {
               val close = connectionCloseExpected(protocol, ch)
               val next = parseEntity(headers.toList, input, lineStart, clh, cth, teh, hh, close)
               if (e100) Result.Expect100Continue(() ⇒ next) else next
             }
-            result = headers_completed(input, lineStart, headers, headerCount, ch, clh, cth, teh, e100, hh)
+            result = headers_completed(input, lineStart, headers, ch, clh, cth, teh, e100, hh)
             1
           }
           case h: Connection ⇒
@@ -125,19 +127,18 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
             1
 
           case h: `Content-Length` ⇒
-            val i = if (clh == null) {
+            if (clh == null) {
               clh = h
               //parseHeaderLines(input, lineStart, headers1, headerCount1, ch, h, cth, teh, e100, hh)
               1
             } else {
               def too_many() = fail("HTTP message must not contain more than one Content-Length header")
-              too_many()
+              result = too_many()
               1
             }
-            1
 
           case h: `Content-Type` ⇒
-            val i = if (cth == null) {
+            if (cth == null) {
               cth = h
               //parseHeaderLines(input, lineStart, headers1, headerCount1, ch, clh, h, teh, e100, hh)
               1
@@ -146,10 +147,9 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
               1
             } else {
               def too_many() = fail("HTTP message must not contain more than one Content-Type header")
-              too_many()
+              result = too_many()
               1
             }
-            1
 
           case h: `Transfer-Encoding` ⇒ {
             teh = h
@@ -163,17 +163,15 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
             1
           }
 
-          case h if headerCount < settings.maxHeaderCount ⇒ {
+          case h if headerCount < maxHeaderCount ⇒ {
             hh = hh || h.isInstanceOf[Host]
             //parseHeaderLines(input, lineStart, headers1, headerCount1, ch, clh, cth, teh, e100, hh || h.isInstanceOf[Host])
             1
           }
 
           case _ ⇒ {
-            def too_many_headers() = {
-              fail(s"HTTP message contains more than the configured limit of ${settings.maxHeaderCount} headers")
-            }
-            too_many_headers()
+            def too_many_headers() = fail(s"HTTP message contains more than the configured limit of ${maxHeaderCount} headers")
+            result = too_many_headers()
             1
           }
         }
