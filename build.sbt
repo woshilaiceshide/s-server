@@ -61,6 +61,14 @@ libraryDependencies += "org.parboiled" % "parboiled-scala_2.11" % "1.1.7"
 
 libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.21"
 
+javaOptions in Universal += "-J-Xmx32m"
+javaOptions in Universal += "-J-Xms32m"
+//javaOptions in Universal += "-J-XX:+UnlockDiagnosticVMOptions"
+//javaOptions in Universal += "-J-XX:+PrintInlining"
+javaOptions in Universal += "-Dproperty1=value1"
+javaOptions in Universal += "-property2=value2"
+javaOptions in Universal += s"-version=${version.value}"
+
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'
 val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
