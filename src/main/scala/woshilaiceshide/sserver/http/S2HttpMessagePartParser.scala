@@ -10,8 +10,20 @@ import HttpHeaders._
 import HttpProtocols._
 import spray.util.CharUtils
 
+private[http] final class ParamsForHeaderParsing(
+  val input: ByteString,
+  var lineStart: Int,
+  var headers: ListBuffer[HttpHeader] = ListBuffer[HttpHeader](),
+  var headerCount: Int = 0,
+  var ch: Connection = null,
+  var clh: `Content-Length` = null,
+  var cth: `Content-Type` = null,
+  var teh: `Transfer-Encoding` = null,
+  var e100: Boolean = false,
+  var hh: Boolean = false)
+
 abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSettings,
-    val headerParser: HttpHeaderParser) extends Parser {
+    private val headerParser: HttpHeaderParser) extends Parser {
   protected var protocol: HttpProtocol = `HTTP/1.1`
 
   def apply(input: ByteString): Result = parseMessageSafe(input)
@@ -60,56 +72,69 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     }
   }
 
-  @tailrec final def parseHeaderLines(
-    input: ByteString,
-    lineStart: Int,
-    headers: ListBuffer[HttpHeader] = ListBuffer[HttpHeader](),
-    headerCount: Int = 0,
-    ch: Connection = null,
-    clh: `Content-Length` = null,
-    cth: `Content-Type` = null,
-    teh: `Transfer-Encoding` = null,
-    e100: Boolean = false,
-    hh: Boolean = false): Result = {
-    var lineEnd = 0
-    val result: Result =
+  @tailrec final def parseHeaderLines(params: ParamsForHeaderParsing): Result = {
+    def parse() = {
       try {
-        lineEnd = headerParser.parseHeaderLine(input, lineStart)()
+        params.lineStart = headerParser.parseHeaderLine(params.input, params.lineStart)()
+        params.headers += headerParser.resultHeader
+        params.headerCount = params.headerCount + 1
         null
       } catch {
         case NotEnoughDataException ⇒
-          needMoreData(input, lineStart)(parseHeaderLinesAux(_, _, headers, headerCount, ch, clh, cth, teh, e100, hh))
+          needMoreData(params.input, params.lineStart)(parseHeaderLinesAux(_, _, params.headers, params.headerCount, params.ch, params.clh, params.cth, params.teh, params.e100, params.hh))
         case e: ParsingException ⇒ fail(e.status, e.info)
       }
+    }
+    val result: Result = parse()
     if (result != null) result
-    else headerParser.resultHeader match {
-      case HttpHeaderParser.EmptyHeader ⇒
-        val close = connectionCloseExpected(protocol, ch)
-        val next = parseEntity(headers.toList, input, lineEnd, clh, cth, teh, hh, close)
-        if (e100) Result.Expect100Continue(() ⇒ next) else next
+    else {
+      headerParser.resultHeader match {
+        case HttpHeaderParser.EmptyHeader ⇒ {
+          def headers_completed() = {
+            val close = connectionCloseExpected(protocol, params.ch)
+            val next = parseEntity(params.headers.toList, params.input, params.lineStart, params.clh, params.cth, params.teh, params.hh, close)
+            if (params.e100) Result.Expect100Continue(() ⇒ next) else next
+          }
+          headers_completed()
+        }
+        case h: Connection ⇒
+          params.ch = h
+          parseHeaderLines(params)
 
-      case h: Connection ⇒
-        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, h, clh, cth, teh, e100, hh)
+        case h: `Content-Length` ⇒
+          if (params.clh == null) { params.clh = h; parseHeaderLines(params) }
+          else {
+            def too_many() = fail("HTTP message must not contain more than one Content-Length header")
+            too_many()
+          }
 
-      case h: `Content-Length` ⇒
-        if (clh == null) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, h, cth, teh, e100, hh)
-        else fail("HTTP message must not contain more than one Content-Length header")
+        case h: `Content-Type` ⇒
+          if (params.cth == null) { params.cth = h; parseHeaderLines(params) }
+          else if (params.cth == h) parseHeaderLines(params)
+          else {
+            def too_many() = fail("HTTP message must not contain more than one Content-Type header")
+            too_many()
+          }
 
-      case h: `Content-Type` ⇒
-        if (cth == null) parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, h, teh, e100, hh)
-        else if (cth == h) parseHeaderLines(input, lineEnd, headers, headerCount, ch, clh, cth, teh, e100, hh)
-        else fail("HTTP message must not contain more than one Content-Type header")
+        case h: `Transfer-Encoding` ⇒
+          params.teh = h
+          parseHeaderLines(params)
 
-      case h: `Transfer-Encoding` ⇒
-        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, h, e100, hh)
+        case h if h.isInstanceOf[Expect] ⇒
+          params.e100 = true
+          parseHeaderLines(params)
 
-      case h: Expect ⇒
-        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, teh, e100 = true, hh)
+        case h if params.headerCount < settings.maxHeaderCount ⇒
+          params.hh = params.hh || h.isInstanceOf[Host]
+          parseHeaderLines(params)
 
-      case h if headerCount < settings.maxHeaderCount ⇒
-        parseHeaderLines(input, lineEnd, headers += h, headerCount + 1, ch, clh, cth, teh, e100, hh || h.isInstanceOf[Host])
-
-      case _ ⇒ fail(s"HTTP message contains more than the configured limit of ${settings.maxHeaderCount} headers")
+        case _ ⇒ {
+          def too_many_headers() = {
+            fail(s"HTTP message contains more than the configured limit of ${settings.maxHeaderCount} headers")
+          }
+          too_many_headers()
+        }
+      }
     }
   }
 
@@ -125,7 +150,7 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     teh: `Transfer-Encoding`,
     e100: Boolean,
     hh: Boolean): Result =
-    parseHeaderLines(input, lineStart, headers, headerCount, ch, clh, cth, teh, e100, hh)
+    parseHeaderLines(new ParamsForHeaderParsing(input, lineStart, headers, headerCount, ch, clh, cth, teh, e100, hh))
 
   def parseEntity(
     headers: List[HttpHeader],

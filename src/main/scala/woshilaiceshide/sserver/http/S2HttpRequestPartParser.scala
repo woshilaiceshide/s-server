@@ -28,7 +28,7 @@ class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawReq
     //if (byteChar(input, cursor) == '\r' && byteChar(input, cursor + 1) == '\n')
     //optimization
     if (validateNextTwoChars(input, cursor, '\r', '\n'))
-      parseHeaderLines(input, cursor + 2)
+      parseHeaderLines(new ParamsForHeaderParsing(input, cursor + 2))
     else badProtocol
   }
 
