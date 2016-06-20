@@ -25,7 +25,7 @@ private[nio] object NioSocketReaderWriter {
   //Byte or Int for helper given padding/alignment, object sizes are the same.
   final class BytesNode(val bytes: ByteBuffer, var next: BytesNode = null, val helper: Int)
   final class BytesList(val head: BytesNode, var last: BytesNode = null) {
-    def append(x: ByteBuffer, helper: Byte) = {
+    def append(x: ByteBuffer, helper: Int) = {
       val newed = new BytesNode(x, null, helper)
       if (null == last) {
         head.next = newed
@@ -425,7 +425,7 @@ class NioSocketReaderWriter private[nio] (
 
       val try_write = new JavaAccelerator.TryWrite()
       def set_result(result: WriteResult) = try_write.result = result
-      def set_pend(pend: Boolean) = if (!try_write.pend && pend) { try_write.pend = true }
+      def set_pend(pend: Boolean) = if ((!try_write.pend) && pend) { try_write.pend = true }
 
       this.synchronized {
         if (CHANNEL_NORMAL == status) {
@@ -470,9 +470,9 @@ class NioSocketReaderWriter private[nio] (
                 val helper = if (used_by_io_thread) -borrowed.helper else borrowed.helper
 
                 if (writes == null) {
-                  writes = new BytesList(new BytesNode(borrowed.buffer, null, borrowed.helper), null)
+                  writes = new BytesList(new BytesNode(borrowed.buffer, null, helper), null)
                 } else {
-                  writes.append(borrowed.buffer, borrowed.helper)
+                  writes.append(borrowed.buffer, helper)
                 }
                 if (buffer.hasRemaining()) {
                   pend_bytes(buffer, pool, used_by_io_thread)
@@ -481,11 +481,10 @@ class NioSocketReaderWriter private[nio] (
             }
 
             def pend_reusable_bytes(buffer: ByteBuffer): Unit = {
-              val helper = 0.toByte
               if (writes == null) {
-                writes = new BytesList(new BytesNode(buffer, null, helper), null)
+                writes = new BytesList(new BytesNode(buffer, null, 0), null)
               } else {
-                writes.append(buffer, helper)
+                writes.append(buffer, 0)
               }
             }
 

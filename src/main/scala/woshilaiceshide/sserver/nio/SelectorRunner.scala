@@ -17,6 +17,8 @@ import woshilaiceshide.sserver.utility._
 
 object SelectorRunner {
 
+  protected val log = org.slf4j.LoggerFactory.getLogger(classOf[SelectorRunner]);
+
   private[nio] def warn(ex: Throwable, msg: String = "empty message") = {
     Console.err.print(msg)
     Console.err.print(" ")
@@ -29,6 +31,11 @@ object SelectorRunner {
 
   class NotRunningException(msg: String) extends RuntimeException(msg)
   class NotInIOThreadException(msg: String) extends RuntimeException(msg)
+  object NotInIOThreadException {
+    def apply() = {
+      new NotInIOThreadException(s"please run this method in i/o thread. the current thread is ${Thread.currentThread().getName}-${Thread.currentThread().getId}")
+    }
+  }
 
   def safe_close(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
   def safe_op[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
@@ -81,7 +88,8 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         }
 
       } catch {
-        case _: Throwable => {
+        case ex: Throwable => {
+          log.warn("failed to optimize selector key set", ex)
           selected_keys = null
           if (null != selector) {
             selector.close()
@@ -127,8 +135,18 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       lock.unlock()
     }
   }
-  //lock_for_selector is not needed because this method is invoked in the i/o thread only.
-  private def close_selector() = { if (null != selector) safe_close(selector); selector = null; }
+  //this method is invoked in the i/o thread only, but it changes 'selector'. 
+  //so 'lock_for_selector' is needed.
+  private def close_selector() = {
+    val lock = lock_for_selector.writeLock()
+    lock.lock()
+    try {
+      if (null != selector) safe_close(selector); selector = null;
+    } finally {
+      lock.unlock()
+    }
+
+  }
 
   private val wokenup = new java.util.concurrent.atomic.AtomicBoolean(false)
   /**
@@ -137,53 +155,66 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   def wakeup_selector() = {
     val lock = lock_for_selector.readLock()
     lock.lock()
-    if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
-      wokenup.compareAndSet(false, true)
-    }
     try {
-      if (null != selector) selector.wakeup()
+      if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
+        if (wokenup.compareAndSet(false, true)) {
+          if (null != selector) selector.wakeup()
+        }
+
+      } else {
+        if (null != selector) selector.wakeup()
+      }
     } finally {
       lock.unlock()
     }
   }
-  //'is_in_io_worker_thread()' may be unneeded, but i write it here as intended for rigid security in some cost of performance. 
-  def register(ch: SelectableChannel, ops: Int, att: Object): SelectionKey = {
+
+  /**
+   * make sure this method is invoked in the corresponding io thread.
+   */
+  protected def register(ch: SelectableChannel, ops: Int, att: Object): SelectionKey = {
+    //for performance
+    /*
     if (!is_in_io_worker_thread()) {
-      throw new NotInIOThreadException(s"please run this method in i/o thread. the current thread is ${Thread.currentThread().getName}-${Thread.currentThread().getId}")
-    } else {
-      if (null != selector) ch.register(selector, ops, att)
-      else throw new NotRunningException("selector runner is stopping or stopped or not started.")
+      throw NotInIOThreadException()
     }
+    */
+    if (null != selector) ch.register(selector, ops, att)
+    else throw new NotRunningException("selector runner is stopping or stopped or not started.")
   }
 
-  def get_registered_size(): Int = {
+  /**
+   * make sure this method is invoked in the corresponding io thread.
+   */
+  protected def get_registered_size(): Int = {
+    //for performance
+    /*
     if (!is_in_io_worker_thread()) {
-      val lock = lock_for_selector.readLock()
-      lock.lock()
-      try {
-        if (null != selector) selector.keys().size
-        else throw new NotRunningException("selector runner is stopping or stopped or not started.")
-      } finally {
-        lock.unlock()
+      throw NotInIOThreadException()
+    }
+    */
+    if (null != selector) selector.keys().size
+    else throw new NotRunningException("selector runner is stopping or stopped or not started.")
+  }
+
+  /**
+   * make sure this method is invoked in the corresponding io thread.
+   */
+  protected def iterate_registered_keys(worker: SelectionKey => Unit): Unit = {
+    //for performance
+    /*
+    if (!is_in_io_worker_thread()) {
+      throw NotInIOThreadException()
+    }
+    */
+    if (null != selector) {
+      val iterator = selector.keys().iterator()
+      while (iterator.hasNext()) {
+        val key = iterator.next()
+        safe_op { worker.apply(key) }
       }
-    } else {
-      if (null != selector) selector.keys().size
-      else throw new NotRunningException("selector runner is stopping or stopped or not started.")
-    }
-  }
+    } else throw new NotRunningException("selector runner is stopping or stopped or not started.")
 
-  def iterate_registered_keys(worker: SelectionKey => Unit): Unit = {
-    if (!is_in_io_worker_thread()) {
-      throw new NotInIOThreadException(s"please run this method in i/o thread. the current thread is ${Thread.currentThread().getName}-${Thread.currentThread().getId}")
-    } else {
-      if (null != selector) {
-        val iterator = selector.keys().iterator()
-        while (iterator.hasNext()) {
-          val key = iterator.next()
-          safe_op { worker.apply(key) }
-        }
-      } else throw new NotRunningException("selector runner is stopping or stopped or not started.")
-    }
   }
 
   private var worker_thread: Thread = null
@@ -203,7 +234,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
    */
   def post_to_io_thread(task: Runnable): Boolean = {
     if (tasks.add(task)) {
-      selector.wakeup()
+      wakeup_selector()
       true
     } else {
       return false
@@ -396,7 +427,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         } else {
           stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
         }
-        safe_op { selector.wakeup() }
+        safe_op { wakeup_selector() }
         safe_op { worker_thread.interrupt() }
       }
     }
@@ -436,7 +467,6 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       } else {
         val start = System.currentTimeMillis()
         val tmp = selector.select(select_timeout)
-        wokenup.compareAndSet(true, false)
         //the interrupted status is cleared as intended.
         val interrupted = Thread.interrupted()
         if (0 == tmp && !interrupted && System.currentTimeMillis() - start == 0) {
