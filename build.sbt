@@ -57,9 +57,11 @@ unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "spray" / "scala" )
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.7"
 
-libraryDependencies += "org.parboiled" % "parboiled-scala_2.11" % "1.1.7"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.7"
 
 libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.21"
+
+libraryDependencies += "ch.qos.logback" % "logback-core" % "1.1.7"
 
 javaOptions in Universal += "-J-Xmx32m"
 javaOptions in Universal += "-J-Xms32m"
