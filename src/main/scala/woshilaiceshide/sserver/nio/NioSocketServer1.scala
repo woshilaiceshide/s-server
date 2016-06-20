@@ -71,7 +71,7 @@ class NioSocketServer1 private[nio] (
         add_a_new_socket_channel(channel)
       } catch {
         case ex: Throwable => {
-          SelectorRunner.warn(ex, "when a new channel is accepted.")
+          SelectorRunner.log.warn("when a new channel is accepted", ex)
           safe_close(channel)
         }
       }

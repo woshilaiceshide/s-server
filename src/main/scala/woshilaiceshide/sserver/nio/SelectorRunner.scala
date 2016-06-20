@@ -17,13 +17,7 @@ import woshilaiceshide.sserver.utility._
 
 object SelectorRunner {
 
-  protected val log = org.slf4j.LoggerFactory.getLogger(classOf[SelectorRunner]);
-
-  private[nio] def warn(ex: Throwable, msg: String = "empty message") = {
-    Console.err.print(msg)
-    Console.err.print(" ")
-    ex.printStackTrace(Console.err)
-  }
+  val log = org.slf4j.LoggerFactory.getLogger(classOf[SelectorRunner]);
 
   trait HasKey {
     def set_key(new_key: SelectionKey): Unit
@@ -335,10 +329,21 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
    * some work to do right before this runner starts
    */
   protected def do_start(): Unit
+
+  private final def stop_roughly0(): Unit = {
+    log.warn("stoppped roughly")
+    stop_roughly()
+  }
+
   /**
    * this runner is bad, and it should be shutdown forcibly.
    */
   protected def stop_roughly(): Unit
+
+  private final def stop_gracefully0(): Boolean = {
+    log.warn("stoppped gracefully")
+    stop_gracefully()
+  }
   /**
    * if true returned(it means "no more work left"), I'll stop immediately.
    */
@@ -363,13 +368,15 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       true
     } catch {
       case ex: Throwable => {
-        warn(ex)
+        log.error("failed to start", ex)
         //also run stop_roughly()
-        stop_roughly()
+        stop_roughly0()
         status.set(BAD)
         close_selector()
         false
       }
+    } finally {
+      log.info(s"started(#${this.hashCode()})")
     }
   }
 
@@ -377,6 +384,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   def is_async = async
 
   def start(asynchronously: Boolean = true) = {
+    log.info(s"start(#${this.hashCode()}) ${if (asynchronously) "asynchronously" else "synchronously"}")
     var continued = status.compareAndSet(INITIALIZED, STARTED)
     if (continued) {
       if (asynchronously) {
@@ -403,8 +411,8 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       loop()
     } catch {
       case ex: Throwable => {
-        warn(ex)
-        stop_roughly()
+        log.error("stopped unexpectedly", ex)
+        stop_roughly0()
         status.set(STOPPED_ROUGHLY)
       }
     } finally {
@@ -413,6 +421,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       reap_tasks(true)
       reap_timed_tasks()
       reap_terminated()
+      log.info(s"stopped(#${this.hashCode()})")
     }
   }
 
@@ -524,13 +533,13 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       //stopping
       already_in_stopping = true
       //closed
-      stop_roughly()
+      stop_roughly0()
       status.set(STOPPED_ROUGHLY)
       false
     } else if (!already_in_stopping && current_status == STOPPING) {
       //stopping
       already_in_stopping = true
-      val immediately = stop_gracefully()
+      val immediately = stop_gracefully0()
       if (immediately) {
         status.set(STOPPED_GRACEFULLY)
         false

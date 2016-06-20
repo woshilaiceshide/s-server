@@ -121,7 +121,6 @@ object SampleHttpServer extends App {
     factory,
     configurator)
 
-  println(s"starting on: ${port}...")
   server.start(false)
 
 }

@@ -37,6 +37,7 @@ class NioSocketAcceptor private[nio] (
 
     val wrapper = new ServerSocketChannelWrapper(ssc)
     listening_channel_configurator(wrapper)
+    SelectorRunner.log.info(s"binding to ${interface}:${port}, backlog is ${wrapper.backlog}")
     if (-1 == wrapper.backlog) {
       ssc.socket().bind(new InetSocketAddress(interface, port))
     } else {
@@ -81,7 +82,7 @@ class NioSocketAcceptor private[nio] (
         }
       } catch {
         case ex: Throwable => {
-          SelectorRunner.warn(ex, "when key is acceptable.")
+          SelectorRunner.log.warn("when key is acceptable", ex)
           safe_close(channel)
         }
       }
