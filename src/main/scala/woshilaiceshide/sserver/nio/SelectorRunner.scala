@@ -222,7 +222,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
   private val status = new java.util.concurrent.atomic.AtomicInteger(INITIALIZED)
 
-  private val tasks: ReapableQueue[Runnable] = new ReapableQueue()
+  private val tasks: ReapableQueue[AnyRef] = new ReapableQueue()
   /**
    * only can be posted when the runner is in 'STARTED' status.
    */
@@ -232,7 +232,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   /**
    * only can be posted when the runner is in 'STARTED' status.
    */
-  def post_to_io_thread(task: Runnable): Boolean = {
+  def post_to_io_thread(task: AnyRef): Boolean = {
     if (tasks.add(task)) {
       wakeup_selector()
       true
@@ -243,10 +243,29 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   private def end_tasks() = {
     tasks.end()
   }
+
+  protected def add_a_new_socket_channel(channel: SocketChannel): Unit
+
+  private val task_runner = (obj: AnyRef) => {
+    try {
+      obj match {
+        case sc: SocketChannel => {
+          if (is_stopping())
+            safe_close(sc)
+          else
+            add_a_new_socket_channel(sc)
+        }
+        case runnable: Runnable => runnable.run()
+        case _ =>
+      }
+    } catch {
+      case ex: Throwable => { ex.printStackTrace() }
+    }
+  }
   private def reap_tasks(is_last_reap: Boolean) = {
     val tasks_to_do = tasks.reap(is_last_reap)
     if (null != tasks_to_do) {
-      ReapableQueueUtility.foreach(tasks_to_do, safe_runner)
+      ReapableQueueUtility.foreach(tasks_to_do, task_runner)
     }
   }
 
@@ -440,17 +459,6 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
   def get_status() = status.get()
 
-  //avoid instantiations in hot codes.
-  private val safe_runner = new (Runnable => Unit) {
-    def apply(r: Runnable): Unit = {
-      try {
-        r.run()
-      } catch {
-        case ex: Throwable => { ex.printStackTrace() }
-      }
-    }
-  }
-
   //a just normal field, not labeled as volatile
   private var already_in_stopping = false
   protected def is_stopping() = already_in_stopping
@@ -513,6 +521,8 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
     val current_status = status.get()
     val continued = if (current_status == STOPPING && this.get_stop_deadline() /*synchronization is needed here*/ < System.currentTimeMillis()) {
+      //stopping
+      already_in_stopping = true
       //closed
       stop_roughly()
       status.set(STOPPED_ROUGHLY)

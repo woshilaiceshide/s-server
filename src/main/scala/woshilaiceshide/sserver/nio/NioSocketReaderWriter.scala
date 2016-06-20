@@ -96,17 +96,10 @@ class NioSocketReaderWriter private[nio] (
     asynchronousely_pended_io_operations = null
   }
 
-  //TODO 1. reapable queue? 2. difference between in_io_worker_thread and not?
-  private var waiting_for_register = List[SocketChannel]()
-  def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread {
-    waiting_for_register = target :: waiting_for_register
-  }
+  def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread { target }
 
   protected def do_start(): Unit = {}
   protected def stop_roughly(): Unit = {
-
-    waiting_for_register.map { safe_close(_) }
-    waiting_for_register = Nil
 
     this.iterate_registered_keys { key =>
       val attach = key.attachment()
@@ -118,9 +111,6 @@ class NioSocketReaderWriter private[nio] (
 
   }
   protected def stop_gracefully(): Boolean = {
-
-    waiting_for_register.map { safe_close(_) }
-    waiting_for_register = Nil
 
     if (this.get_registered_size() == 0) {
       true
@@ -179,14 +169,6 @@ class NioSocketReaderWriter private[nio] (
 
   private var last_check_for_idle_zombie: Long = System.currentTimeMillis()
   protected def before_next_loop(): Unit = {
-
-    if (!is_stopping() && !waiting_for_register.isEmpty) {
-      val tmp = waiting_for_register
-      waiting_for_register = Nil
-      tmp.map { channel =>
-        safe_op { add_a_new_socket_channel(channel) }
-      }
-    }
 
     //check for idle channels and zombie channels
     //(sometimes a channel will be closed unexpectedly and the corresponding selector will not report it.)

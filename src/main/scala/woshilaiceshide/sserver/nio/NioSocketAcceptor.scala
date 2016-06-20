@@ -47,6 +47,8 @@ class NioSocketAcceptor private[nio] (
     this.register(ssc, SelectionKey.OP_ACCEPT, null)
   }
 
+  protected def add_a_new_socket_channel(channel: SocketChannel): Unit = {}
+
   protected def stop_roughly(): Unit = {
     safe_close(ssc)
     io_workers.map { _.stop(-1) }
