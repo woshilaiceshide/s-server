@@ -331,7 +331,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   protected def do_start(): Unit
 
   private final def stop_roughly0(): Unit = {
-    log.warn("stoppped roughly")
+    log.warn("stopping roughly")
     stop_roughly()
   }
 
@@ -341,7 +341,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   protected def stop_roughly(): Unit
 
   private final def stop_gracefully0(): Boolean = {
-    log.warn("stoppped gracefully")
+    log.warn("stopping gracefully")
     stop_gracefully()
   }
   /**
