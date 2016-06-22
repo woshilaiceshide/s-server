@@ -33,6 +33,12 @@ class NioSocketAcceptor private[nio] (
 
   protected def do_start(): Unit = {
 
+    io_workers.map {
+      _.register_on_termination {
+        this.stop(0)
+      }
+    }
+
     io_workers.map { _.start(true) }
 
     val wrapper = new ServerSocketChannelWrapper(ssc)
