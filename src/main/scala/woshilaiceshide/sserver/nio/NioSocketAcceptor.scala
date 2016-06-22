@@ -35,7 +35,7 @@ class NioSocketAcceptor private[nio] (
 
     io_workers.map {
       _.register_on_termination {
-        this.stop(0)
+        this.stop(-1)
       }
     }
 
@@ -59,7 +59,6 @@ class NioSocketAcceptor private[nio] (
   protected def stop_roughly(): Unit = {
     safe_close(ssc)
     io_workers.map { _.stop(-1) }
-    io_workers.map { _.join(0) }
   }
   protected def stop_gracefully(): Boolean = {
     safe_close(ssc)
@@ -73,6 +72,10 @@ class NioSocketAcceptor private[nio] (
   }
   protected def before_next_loop(): Unit = {
     //nothing else
+  }
+  override def join(timeout: Long) = {
+    super.join(timeout)
+    io_workers.map { _.join(timeout) }
   }
   protected def process_selected_key(key: SelectionKey, ready_ops: Int): Unit = {
     if ((ready_ops & OP_ACCEPT) > 0) {
