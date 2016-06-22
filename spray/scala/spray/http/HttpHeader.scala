@@ -202,17 +202,27 @@ object HttpHeaders {
 
   object Connection extends ModeledCompanion {
 
-    final class ConnectionToken private[http] (token: String, bytes: Array[Byte]) extends Renderable {
+    private val BYTES_Close = "close".getAsciiBytes
+    private val BYTES_KeepAlive = "keep-alive".getAsciiBytes
+    private val BYTES_Upgrade = "upgrade".getAsciiBytes
+
+    private val HELPER_Close = 1
+    private val HELPER_KeepAlive = 2
+    private val HELPER_Upgrade = 3
+
+    final class ConnectionToken private[http] (token: String, private[http] val helper: Int) extends Renderable {
       def render[R <: Rendering](r: R): r.type = {
-        if (null != bytes) r ~~ bytes
+        if (helper == 1) r ~~ BYTES_Close
+        else if (helper == 2) r ~~ BYTES_KeepAlive
+        else if (helper == 3) r ~~ BYTES_Upgrade
         else r ~~ token
       }
       override def toString() = token
     }
 
-    val Close = new ConnectionToken("close", "close".getAsciiBytes)
-    val KeepAlive = new ConnectionToken("keep-alive", "keep-alive".getAsciiBytes)
-    val Upgrade = new ConnectionToken("upgrade", "upgrade".getAsciiBytes)
+    val Close = new ConnectionToken("close", HELPER_Close)
+    val KeepAlive = new ConnectionToken("keep-alive", HELPER_KeepAlive)
+    val Upgrade = new ConnectionToken("upgrade", HELPER_Upgrade)
 
     def isUpgrade(s: String): Boolean = {
       val len = 7 //"upgrade".length
@@ -260,7 +270,7 @@ object HttpHeaders {
         if (isClose(token)) Close
         else if (isKeepAlive(token)) KeepAlive
         else if (isUpgrade(token)) Upgrade
-        else new ConnectionToken(token, null)
+        else new ConnectionToken(token, 0)
       }
     }
 
@@ -274,7 +284,7 @@ object HttpHeaders {
     def hasClose: Boolean = {
       var these = tokens
       while (!these.isEmpty) {
-        if (these.head eq Connection.Close) return true
+        if (these.head.helper == 1) return true
         these = these.tail
       }
       return false
@@ -283,7 +293,7 @@ object HttpHeaders {
     def hasKeepAlive: Boolean = {
       var these = tokens
       while (!these.isEmpty) {
-        if (these.head eq Connection.KeepAlive) return true
+        if (these.head.helper == 2) return true
         these = these.tail
       }
       return false
@@ -294,7 +304,7 @@ object HttpHeaders {
     def hasUpgrade: Boolean = {
       var these = tokens
       while (!these.isEmpty) {
-        if (these.head eq Connection.Upgrade) return true
+        if (these.head.helper == 3) return true
         these = these.tail
       }
       return false
