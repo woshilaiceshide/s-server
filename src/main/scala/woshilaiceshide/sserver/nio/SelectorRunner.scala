@@ -147,19 +147,20 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
    * this method is thread safe.
    */
   def wakeup_selector() = {
-    val lock = lock_for_selector.readLock()
-    lock.lock()
-    try {
-      if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
+    if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
+      val lock = lock_for_selector.readLock()
+      lock.lock()
+      try {
         if (wokenup.compareAndSet(false, true)) {
           if (null != selector) selector.wakeup()
         }
-
-      } else {
-        if (null != selector) selector.wakeup()
+      } finally {
+        lock.unlock()
       }
-    } finally {
-      lock.unlock()
+    } else {
+      val tmp = selector
+      //wakeup() on a dead selector is fine. tested for hotspot jdk.
+      if (null != tmp) selector.wakeup()
     }
   }
 
