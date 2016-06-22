@@ -365,6 +365,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   private def start0() = {
     try {
       do_start()
+      log.info(s"started(#${this.hashCode()})")
       true
     } catch {
       case ex: Throwable => {
@@ -373,10 +374,12 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         stop_roughly0()
         status.set(BAD)
         close_selector()
+        reap_tasks(true)
+        reap_timed_tasks()
+        reap_terminated()
         false
       }
     } finally {
-      log.info(s"started(#${this.hashCode()})")
     }
   }
 
@@ -411,13 +414,13 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       loop()
     } catch {
       case ex: Throwable => {
-        log.error("stopped unexpectedly", ex)
+        log.error("stopping unexpectedly", ex)
         stop_roughly0()
         status.set(STOPPED_ROUGHLY)
       }
     } finally {
-      close_selector()
       end_tasks()
+      close_selector()
       reap_tasks(true)
       reap_timed_tasks()
       reap_terminated()
