@@ -375,6 +375,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         stop_roughly0()
         status.set(BAD)
         close_selector()
+        end_tasks()
         reap_tasks(true)
         reap_timed_tasks()
         reap_terminated()
