@@ -16,7 +16,7 @@ final class SimpleStringBuilder(var array: Array[Char]) {
     this(new Array[Char](capacity))
   }
 
-  private def growBy(i: Int) = {
+  private def growBy0(i: Int) = {
     if (array.length - end < i) {
       val tmp = new Array[Char](array.length - start + (i - array.length + end))
       System.arraycopy(array, start, tmp, 0, end - start)
@@ -25,6 +25,10 @@ final class SimpleStringBuilder(var array: Array[Char]) {
       end = end - start
       start = 0
     }
+  }
+
+  private def growBy(i: Int) = {
+    growBy0(if (i < 16) 16 else i)
   }
 
   def append(c: Char) = {
