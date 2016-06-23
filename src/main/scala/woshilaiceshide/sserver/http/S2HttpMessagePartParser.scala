@@ -96,7 +96,9 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
         try {
           val lineEnd = headerParser.parseHeaderLine(input, lineStart)()
           val header = headerParser.resultHeader
-          headers += header
+          if (header ne HttpHeaderParser.EmptyHeader) {
+            headers += header
+          }
           new S2HttpMessagePartParser.OneParse(lineEnd, null, header)
         } catch {
           case NotEnoughDataException ⇒
