@@ -1,5 +1,12 @@
 package spray.util
 
+object SimpleStringBuilder {
+  def apply(input: akka.util.ByteString, start: Int, end: Int) = {
+    val capacity = end - start + 16
+    new SimpleStringBuilder(capacity).appendAsciistringUnsafe(input, start, end)
+  }
+}
+
 final class SimpleStringBuilder(var array: Array[Char]) {
 
   var start = 0
@@ -27,6 +34,12 @@ final class SimpleStringBuilder(var array: Array[Char]) {
     this
   }
 
+  private def appendUnsafe(c: Char) = {
+    array(end) = c
+    end = end + 1
+    this
+  }
+
   def append(cs: CharSequence) = {
     growBy(cs.length())
     for (i <- 1 until cs.length()) {
@@ -43,6 +56,19 @@ final class SimpleStringBuilder(var array: Array[Char]) {
         this
       } else {
         append(input(ix).toChar)
+        build(ix + 1)
+      }
+
+    build()
+  }
+
+  private def appendAsciistringUnsafe(input: akka.util.ByteString, start: Int, end: Int) = {
+    @scala.annotation.tailrec
+    def build(ix: Int = start): this.type =
+      if (ix == end) {
+        this
+      } else {
+        appendUnsafe(input(ix).toChar)
         build(ix + 1)
       }
 

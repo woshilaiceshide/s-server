@@ -157,7 +157,7 @@ final class HttpHeaderParser(val settings: ParserSettings,
     val colonIx = scanHeaderNameAndReturnIndexOfColon(input, lineStart, lineStart + maxHeaderNameLength)(cursor)
     val headerName = asciiString(input, lineStart, colonIx)
     try {
-      val valueParser = rawHeaderValueParser(headerName, maxHeaderValueLength, settings.headerValueCacheLimit(headerName), sb.reset())
+      val valueParser = rawHeaderValueParser(headerName, maxHeaderValueLength, settings.headerValueCacheLimit(headerName))
       insert(input, valueParser)(cursor, colonIx + 1, nodeIx, colonIx)
       parseHeaderLine(input, lineStart)(cursor, nodeIx)
     } catch {
@@ -382,7 +382,6 @@ final class HttpHeaderParser(val settings: ParserSettings,
    */
   def formatSizes: String = s"$nodeCount nodes, ${branchDataCount / 3} nodeData rows, $valueCount values"
 
-  private[parsing] var sb = new spray.util.SimpleStringBuilder(settings.maxHeaderValueLength)
 }
 
 object HttpHeaderParser {
@@ -417,7 +416,7 @@ object HttpHeaderParser {
       val valueParsers: Seq[HeaderValueParser] =
         HttpParser.headerNames.map { name ⇒
           modelledHeaderValueParser(name, HttpParser.parserRules(name.toLowerCase), parser.settings.maxHeaderValueLength,
-            parser.settings.headerValueCacheLimit(name), parser.sb)
+            parser.settings.headerValueCacheLimit(name))
         }(collection.breakOut)
       def insertInGoodOrder(items: Seq[Any])(startIx: Int = 0, endIx: Int = items.size): Unit =
         if (endIx - startIx > 0) {
@@ -450,11 +449,11 @@ object HttpHeaderParser {
     def apply(array: Array[Char]) = new RangedInputBuffer(array, end)
   }
 
-  def modelledHeaderValueParser(headerName: String, parserRule: Rule1[HttpHeader], maxHeaderValueLength: Int, maxValueCount: Int, sb: SimpleStringBuilder) =
+  def modelledHeaderValueParser(headerName: String, parserRule: Rule1[HttpHeader], maxHeaderValueLength: Int, maxValueCount: Int) =
     new HeaderValueParser(headerName, maxValueCount) {
       def apply(input: ByteString, valueStart: Int, warnOnIllegalHeader: ErrorInfo ⇒ Unit): (HttpHeader, Int) = {
 
-        val (headerValue, endIx) = scanHeaderValue(input, valueStart, valueStart + maxHeaderValueLength)(sb.reset())
+        val (headerValue, endIx) = scanHeaderValue(input, valueStart, valueStart + maxHeaderValueLength)()
 
         val buffer = new org.parboiled.scala.Input(headerValue.array, new RangedBufferCreator(headerValue.end))
         val header = HttpParser.parse(parserRule, buffer) match {
@@ -467,10 +466,11 @@ object HttpHeaderParser {
       }
     }
 
-  def rawHeaderValueParser(headerName: String, maxHeaderValueLength: Int, maxValueCount: Int, sb: SimpleStringBuilder) =
+  def rawHeaderValueParser(headerName: String, maxHeaderValueLength: Int, maxValueCount: Int) =
     new HeaderValueParser(headerName, maxValueCount) {
       def apply(input: ByteString, valueStart: Int, warnOnIllegalHeader: ErrorInfo ⇒ Unit): (HttpHeader, Int) = {
-        val (headerValue, endIx) = scanHeaderValue(input, valueStart, valueStart + maxHeaderValueLength)(sb.reset())
+        val (headerValue, endIx) = scanHeaderValue(input, valueStart, valueStart + maxHeaderValueLength)()
+        println(s"""${maxValueCount} + ${headerValue}""")
         RawHeader(headerName, headerValue.toString) -> endIx
       }
     }
@@ -485,20 +485,31 @@ object HttpHeaderParser {
       }
     else fail(s"HTTP header name exceeds the configured limit of ${maxHeaderNameEndIx - start} characters")
 
-  @tailrec private def scanHeaderValue(input: ByteString, start: Int, maxHeaderValueEndIx: Int, first: Boolean = true)(sb: SimpleStringBuilder = new SimpleStringBuilder(maxHeaderValueEndIx - start), ix: Int = start): (SimpleStringBuilder, Int) = {
+  @tailrec private def scanHeaderValue(input: ByteString, start: Int, maxHeaderValueEndIx: Int, first: Boolean = true)(sb: SimpleStringBuilder = null, ix: Int = start): (SimpleStringBuilder, Int) = {
     //no space in the front
-    def spaceAppended = if (first) sb else sb.append(' ')
+    def spaceAppended = if (first) sb else {
+      if (null == sb) SimpleStringBuilder(input, start, ix).append(' ')
+      else sb.append(' ')
+    }
+    def append(c: Char) = (if (sb == null) SimpleStringBuilder(input, start, ix) else sb).append(c)
+
     if (ix < maxHeaderValueEndIx)
       byteChar(input, ix) match {
-        case '\t' ⇒ scanHeaderValue(input, start, maxHeaderValueEndIx, first)(spaceAppended, ix + 1)
+        case '\t' ⇒ scanHeaderValue(input, if (first) start + 1 else start, maxHeaderValueEndIx, first)(spaceAppended, ix + 1)
         case '\r' if byteChar(input, ix + 1) == '\n' ⇒
-          if (isWhitespace(byteChar(input, ix + 2))) scanHeaderValue(input, start, maxHeaderValueEndIx, first)(spaceAppended, ix + 3)
+          if (isWhitespace(byteChar(input, ix + 2))) scanHeaderValue(input, if (first) start + 3 else start, maxHeaderValueEndIx, first)(spaceAppended, ix + 3)
           else (sb.trimTail(), ix + 2)
-        case ' ' ⇒ scanHeaderValue(input, start, maxHeaderValueEndIx, first)(spaceAppended, ix + 1)
-        case c if c >= ' ' ⇒ scanHeaderValue(input, start, maxHeaderValueEndIx, first && c == ' ')(sb.append(c), ix + 1)
-        case c ⇒ fail(s"Illegal character '${escape(c)}' in header value")
+        case ' ' ⇒ scanHeaderValue(input, if (first) start + 1 else start, maxHeaderValueEndIx, first)(spaceAppended, ix + 1)
+        case c if c > ' ' ⇒ scanHeaderValue(input, start, maxHeaderValueEndIx, false)(append(c), ix + 1)
+        case c ⇒ {
+          def f() = fail(s"Illegal character '${escape(c)}' in header value")
+          f()
+        }
       }
-    else fail(s"HTTP header value exceeds the configured limit of ${maxHeaderValueEndIx - start} characters")
+    else {
+      def f() = fail(s"HTTP header value exceeds the configured limit of ${maxHeaderValueEndIx - start} characters")
+      f()
+    }
   }
 
   def fail(summary: String) = throw new ParsingException(StatusCodes.BadRequest, ErrorInfo(summary))
