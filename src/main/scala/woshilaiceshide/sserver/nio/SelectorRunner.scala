@@ -375,8 +375,9 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         stop_roughly0()
         status.set(BAD)
         close_selector()
-        reap_tasks(true)
         reap_timed_tasks()
+        end_tasks()
+        reap_tasks(true)
         reap_terminated()
         false
       }
@@ -420,10 +421,10 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         status.set(STOPPED_ROUGHLY)
       }
     } finally {
-      end_tasks()
       close_selector()
-      reap_tasks(true)
       reap_timed_tasks()
+      end_tasks()
+      reap_tasks(true)
       reap_terminated()
       log.info(s"stopped(#${this.hashCode()})")
     }
