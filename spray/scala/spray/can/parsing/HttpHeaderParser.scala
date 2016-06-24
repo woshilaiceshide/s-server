@@ -470,7 +470,6 @@ object HttpHeaderParser {
     new HeaderValueParser(headerName, maxValueCount) {
       def apply(input: ByteString, valueStart: Int, warnOnIllegalHeader: ErrorInfo ⇒ Unit): (HttpHeader, Int) = {
         val (headerValue, endIx) = scanHeaderValue(input, valueStart, valueStart + maxHeaderValueLength)()
-        println(s"""${maxValueCount} + ${headerValue}""")
         RawHeader(headerName, headerValue.toString) -> endIx
       }
     }
@@ -485,23 +484,40 @@ object HttpHeaderParser {
       }
     else fail(s"HTTP header name exceeds the configured limit of ${maxHeaderNameEndIx - start} characters")
 
-  @tailrec private def scanHeaderValue(input: ByteString, start: Int, maxHeaderValueEndIx: Int, first: Boolean = true)(sb: SimpleStringBuilder = null, ix: Int = start): (SimpleStringBuilder, Int) = {
-    //no space in the front
-    def spaceAppended = if (first) sb else {
-      if (null == sb) SimpleStringBuilder(input, start, ix).append(' ')
-      else sb.append(' ')
-    }
-    def append(c: Char) = (if (sb == null) SimpleStringBuilder(input, start, ix) else sb).append(c)
-
+  //no space in the front
+  @tailrec private def scanHeaderValue(input: ByteString, start: Int, maxHeaderValueEndIx: Int)(ix: Int = start): (SimpleStringBuilder, Int) = {
     if (ix < maxHeaderValueEndIx)
       byteChar(input, ix) match {
-        case '\t' ⇒ scanHeaderValue(input, if (first) start + 1 else start, maxHeaderValueEndIx, first)(spaceAppended, ix + 1)
-        case '\r' if byteChar(input, ix + 1) == '\n' ⇒
-          if (isWhitespace(byteChar(input, ix + 2))) scanHeaderValue(input, if (first) start + 3 else start, maxHeaderValueEndIx, first)(spaceAppended, ix + 3)
+        case '\t' => scanHeaderValue(input, start + 1, maxHeaderValueEndIx)(ix + 1)
+        case '\r' if byteChar(input, ix + 1) == '\n' =>
+          if (isWhitespace(byteChar(input, ix + 2))) scanHeaderValue(input, start + 3, maxHeaderValueEndIx)(ix + 3)
+          else {
+            def f() = fail(s"Empty header value")
+            f()
+          }
+        case ' ' => scanHeaderValue(input, start + 1, maxHeaderValueEndIx)(ix + 1)
+        case c if c > ' ' => scanHeaderValue1(input, start, maxHeaderValueEndIx)(SimpleStringBuilder(input, start, ix).append(c), ix + 1)
+        case c => {
+          def f() = fail(s"Illegal character '${escape(c)}' in header value")
+          f()
+        }
+      }
+    else {
+      def f() = fail(s"HTTP header value exceeds the configured limit of ${maxHeaderValueEndIx - start} characters")
+      f()
+    }
+  }
+
+  //no space in the front
+  @tailrec private def scanHeaderValue1(input: ByteString, start: Int, maxHeaderValueEndIx: Int)(sb: SimpleStringBuilder, ix: Int = start): (SimpleStringBuilder, Int) = {
+    if (ix < maxHeaderValueEndIx)
+      byteChar(input, ix) match {
+        case '\t' => scanHeaderValue1(input, start, maxHeaderValueEndIx)(sb.append(' '), ix + 1)
+        case '\r' if byteChar(input, ix + 1) == '\n' =>
+          if (isWhitespace(byteChar(input, ix + 2))) scanHeaderValue1(input, start, maxHeaderValueEndIx)(sb.append(' '), ix + 3)
           else (sb.trimTail(), ix + 2)
-        case ' ' ⇒ scanHeaderValue(input, if (first) start + 1 else start, maxHeaderValueEndIx, first)(spaceAppended, ix + 1)
-        case c if c > ' ' ⇒ scanHeaderValue(input, start, maxHeaderValueEndIx, false)(append(c), ix + 1)
-        case c ⇒ {
+        case c if c >= ' ' => scanHeaderValue1(input, start, maxHeaderValueEndIx)(sb.append(c), ix + 1)
+        case c => {
           def f() = fail(s"Illegal character '${escape(c)}' in header value")
           f()
         }
