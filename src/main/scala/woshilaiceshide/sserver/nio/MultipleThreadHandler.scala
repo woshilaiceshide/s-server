@@ -5,6 +5,8 @@ import java.util.concurrent.ThreadFactory
 
 object MultipleThreadHandlerFactory {
 
+  val log = org.slf4j.LoggerFactory.getLogger(classOf[SelectorRunner]);
+
   private val STOP = new Runnable() { def run() = {} }
 
   class Worker(capacity: Int = Integer.MAX_VALUE) extends Runnable {
@@ -66,14 +68,13 @@ class MultipleThreadHandlerFactory(nThreads: Int, threadFactory: ThreadFactory, 
     }
   }
 
-  //TODO
-  private def safeClose(x: ChannelHandlerFactory) = try { x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
-  private def safeOp[T](x: => T) = try { x; } catch { case ex: Throwable => { ex.printStackTrace() } }
+  private def safe_close(x: ChannelHandlerFactory) = try { x.close(); } catch { case ex: Throwable => log.warn("failed", ex) }
+  private def safe_op[T](x: => T) = try { x; } catch { case ex: Throwable => log.warn("failed", ex) }
 
   override def close() = {
-    safeClose(factory)
-    workers.map { worker => safeOp { worker.end() } }
-    threads.map { thread => safeOp { thread.interrupt() } }
+    safe_close(factory)
+    workers.map { worker => safe_op { worker.end() } }
+    threads.map { thread => safe_op { thread.interrupt() } }
   }
 
 }

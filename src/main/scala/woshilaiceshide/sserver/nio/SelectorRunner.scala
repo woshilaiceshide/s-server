@@ -31,8 +31,8 @@ object SelectorRunner {
     }
   }
 
-  def safe_close(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => { ex.printStackTrace() } }
-  def safe_op[T](x: => T) = try { x } catch { case ex: Throwable => { ex.printStackTrace() } }
+  def safe_close(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => log.warn("failed", ex) }
+  def safe_op[T](x: => T) = try { x } catch { case ex: Throwable => log.warn("failed", ex) }
 
   final case class TimedTask(when_to_run: Long, runnable: Runnable)
 
@@ -254,7 +254,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         case _ =>
       }
     } catch {
-      case ex: Throwable => { ex.printStackTrace() }
+      case ex: Throwable => log.warn("failed", ex)
     }
   }
   private def reap_tasks(is_last_reap: Boolean) = {

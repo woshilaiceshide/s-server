@@ -11,20 +11,6 @@ import woshilaiceshide.sserver.nio._
 
 object HttpTransformer {
 
-  //TODO print exception's all fields
-  private def safeOp[T](x: => T) =
-    try {
-      x
-    } catch {
-      case ex: Throwable => {
-
-        Console.err.print(ex.getMessage)
-        Console.err.print(" ")
-        ex.printStackTrace(Console.err)
-
-      }
-    }
-
   private[HttpTransformer] final case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper, var next: Node)
 
   final class MyChannelInformation(channel: HttpChannel) extends ChannelInformation {
