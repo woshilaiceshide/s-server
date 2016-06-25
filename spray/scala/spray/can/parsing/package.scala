@@ -27,7 +27,7 @@ package object parsing {
     if (ix < input.length) input(ix).toChar else throw NotEnoughDataException
 
   def validateNextTwoChars(input: ByteString, ix: Int, c0: Char, c1: Char): Boolean = {
-    if (ix < input.length + 1)
+    if (ix + 1 < input.length)
       input(ix).toChar == c0 && input(ix + 1).toChar == c1
     else throw NotEnoughDataException
   }

@@ -11,6 +11,8 @@ import woshilaiceshide.sserver.nio._
 
 object HttpTransformer {
 
+  val log = org.slf4j.LoggerFactory.getLogger(classOf[HttpTransformer]);
+
   private[HttpTransformer] final case class Node(value: HttpRequestPart, closeAfterResponseCompletion: Boolean, channelWrapper: ChannelWrapper, var next: Node)
 
   final class MyChannelInformation(channel: HttpChannel) extends ChannelInformation {
@@ -237,7 +239,12 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           parser = parser1
           this
         }
-        case x => {
+        case Result.ParsingError(status, info) => {
+          log.debug(s"""parsing error(${status}), ${info.formatPretty}""")
+          channelWrapper.closeChannel(true)
+          this
+        }
+        case Result.IgnoreAllFurtherInput => {
           channelWrapper.closeChannel(true)
           this
         }

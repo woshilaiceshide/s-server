@@ -45,16 +45,27 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
    * how many bytes are left for parsing in the future?
    */
   protected[http] def remainingCount: Int = if (null == remain) 0 else remain.length
+  //TODO if poped?
   protected final def copy(input: ByteString, offset: Int = 0): Unit = {
+
     if (offset < input.length) {
       remain = input.drop(offset)
+
+      if (!remain.isInstanceOf[ByteString.ByteStrings] && input.isInstanceOf[ByteString.ByteStrings]) {
+        copied = false
+      }
 
     } else if (offset == input.length) {
       remain = ByteString.empty
 
+      if (!remain.isInstanceOf[ByteString.ByteStrings] && input.isInstanceOf[ByteString.ByteStrings]) {
+        copied = false
+      }
+
     } else {
       throw new Error("supposed to be not here.")
     }
+
   }
 
   protected def reset() = { remain = null; copied = false; Result.NeedMoreData(this) }
@@ -69,7 +80,7 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
       catch {
         case NotEnoughDataException ⇒ {
           copy(input, offset)
-          Result.NeedMoreData(more ⇒ parseMessage(remain ++ more, 0))
+          Result.NeedMoreData(more ⇒ parseMessageSafe(remain ++ more, 0))
         }
         case e: ParsingException ⇒ fail(e.status, e.info)
       }
@@ -356,8 +367,11 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
   }
 
   protected def needMoreData(input: ByteString, offset: Int)(next: (ByteString, Int) ⇒ Result): Result =
-    if (offset == input.length) Result.NeedMoreData(next(_, 0))
-    else {
+    if (offset == input.length) {
+      remain = null
+      copied = false
+      Result.NeedMoreData(next(_, 0))
+    } else {
       copy(input, offset)
       Result.NeedMoreData(more ⇒ next(remain ++ more, 0))
     }
