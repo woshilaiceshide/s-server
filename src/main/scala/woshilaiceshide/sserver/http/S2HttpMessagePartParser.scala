@@ -16,22 +16,64 @@ object S2HttpMessagePartParser {
 
 abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSettings,
     val headerParser: HttpHeaderParser) extends Parser {
+
+  protected[http] def shadow() = {
+
+    if (null == remain) {
+
+    } else {
+      if (!copied) {
+        copied = true
+        val bytes = remain.toArray
+        remain = akka.spray.createByteStringUnsafe(bytes, 0, bytes.length)
+      } else {
+        remain match {
+          case bss: ByteString.ByteStrings => {
+            remain = akka.spray.shadowTailOfByteStrings(bss)
+          }
+          case _ => {
+            //nothing to do
+          }
+        }
+      }
+    }
+  }
+
+  private var copied = false
+  protected var remain: ByteString = ByteString.empty
+  /**
+   * how many bytes are left for parsing in the future?
+   */
+  protected[http] def remainingCount: Int = if (null == remain) 0 else remain.length
+  protected final def copy(input: ByteString, offset: Int = 0): Unit = {
+    if (offset < input.length) {
+      remain = input.drop(offset)
+
+    } else if (offset == input.length) {
+      remain = ByteString.empty
+
+    } else {
+      throw new Error("supposed to be not here.")
+    }
+  }
+
+  protected def reset() = { remain = null; copied = false; Result.NeedMoreData(this) }
+
   protected var protocol: HttpProtocol = `HTTP/1.1`
 
   def apply(input: ByteString): Result = parseMessageSafe(input)
 
   def parseMessageSafe(input: ByteString, offset: Int = 0): Result = {
-    def needMoreData = this.needMoreData(input, offset)(parseMessageSafe)
     if (input.length > offset)
       try parseMessage(input, offset)
       catch {
-        case NotEnoughDataException ⇒ needMoreData
+        case NotEnoughDataException ⇒ {
+          copy(input, offset)
+          Result.NeedMoreData(more ⇒ parseMessage(remain ++ more, 0))
+        }
         case e: ParsingException ⇒ fail(e.status, e.info)
       }
-    else {
-      //needMoreData
-      Result.NeedMoreData(this)
-    }
+    else { /*needMoreData*/ reset() }
   }
 
   def parseMessage(input: ByteString, offset: Int): Result
@@ -200,30 +242,35 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     cth: `Content-Type`,
     closeAfterResponseCompletion: Boolean): Result =
     if (length >= settings.autoChunkingThreshold) {
-      val tmp = copy(input)
-      emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
-        parseBodyWithAutoChunking(tmp, bodyStart, length, closeAfterResponseCompletion)
-      }
+      copy(input, bodyStart)
+      emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) { parseBodyWithAutoChunking(remain, 0, length, closeAfterResponseCompletion) }
     } else if (length > Int.MaxValue) {
       fail("Content-Length > Int.MaxSize not supported for non-(auto)-chunked requests")
-    } else if (bodyStart.toLong + length <= input.length) {
-      val offset = bodyStart + length.toInt
-      val msg = message(headers, entity(cth, input.slice(bodyStart, offset)))
-      val tmp = copy(input)
-      emitLazily(msg, closeAfterResponseCompletion) {
-        if (tmp.isCompact) parseMessageSafe(tmp, offset)
-        else parseMessageSafe(tmp.drop(offset))
-      }
-    } else needMoreData(input, bodyStart)(parseFixedLengthBody(headers, _, _, length, cth, closeAfterResponseCompletion))
+    } else {
+      val offset = length.toInt + bodyStart
+      if (offset < input.length) {
+        val msg = message(headers, entity(cth, input.slice(bodyStart, offset)))
+        copy(input, offset)
+        emitLazily(msg, closeAfterResponseCompletion) { parseMessageSafe(remain) }
+      } else if (offset == input.length) {
+        val msg = message(headers, entity(cth, input.slice(bodyStart, offset)))
+        emitDirectly(msg, closeAfterResponseCompletion)(reset())
+      } else needMoreData(input, bodyStart)(parseFixedLengthBody(headers, _, _, length, cth, closeAfterResponseCompletion))
+    }
 
   def parseChunk(input: ByteString, offset: Int, closeAfterResponseCompletion: Boolean): Result = {
-    @tailrec def parseTrailer(extension: String, lineStart: Int, headers: List[HttpHeader] = Nil,
-      headerCount: Int = 0): Result = {
+
+    @tailrec def parseTrailer(extension: String, lineStart: Int, headers: List[HttpHeader] = Nil, headerCount: Int = 0): Result = {
       val lineEnd = headerParser.parseHeaderLine(input, lineStart)()
       headerParser.resultHeader match {
         case HttpHeaderParser.EmptyHeader ⇒
-          val tmp = copy(input)
-          emitLazily(ChunkedMessageEnd(extension, headers), closeAfterResponseCompletion) { parseMessageSafe(tmp, lineEnd) }
+          if (input.length == lineEnd) {
+            emitDirectly(ChunkedMessageEnd(extension, headers), closeAfterResponseCompletion) { reset() }
+          } else {
+            copy(input, lineEnd)
+            emitLazily(ChunkedMessageEnd(extension, headers), closeAfterResponseCompletion) { parseMessageSafe(remain) }
+          }
+
         case header if headerCount < settings.maxHeaderCount ⇒
           parseTrailer(extension, lineEnd, header :: headers, headerCount + 1)
         case _ ⇒ fail(s"Chunk trailer contains more than the configured limit of ${settings.maxHeaderCount} headers")
@@ -234,10 +281,13 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
       if (chunkSize > 0) {
         val chunkBodyEnd = cursor + chunkSize
         def result(terminatorLen: Int) = {
-          val chunk = MessageChunk(HttpData(input.slice(cursor, chunkBodyEnd)), extension)
-          val tmp = copy(input)
-          emitLazily(chunk, closeAfterResponseCompletion) {
-            parseChunk(tmp, chunkBodyEnd + terminatorLen, closeAfterResponseCompletion)
+          //if chunkSize is not enough
+          if (input.length >= chunkBodyEnd) {
+            val chunk = MessageChunk(HttpData(input.slice(cursor, chunkBodyEnd)), extension)
+            copy(input, chunkBodyEnd + terminatorLen)
+            emitLazily(chunk, closeAfterResponseCompletion) { parseChunk(remain, 0, closeAfterResponseCompletion) }
+          } else {
+            throw NotEnoughDataException
           }
         }
         byteChar(input, chunkBodyEnd) match {
@@ -269,8 +319,8 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
 
     try parseSize()
     catch {
-      case NotEnoughDataException ⇒ needMoreData(input, offset)(parseChunk(_, _, closeAfterResponseCompletion))
-      case e: ParsingException ⇒ fail(e.status, e.info)
+      case NotEnoughDataException => needMoreData(input, offset)(parseChunk(_, _, closeAfterResponseCompletion))
+      case e: ParsingException => fail(e.status, e.info)
     }
   }
 
@@ -281,17 +331,17 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     if (chunkSize > 0) {
       val chunkEnd = offset + chunkSize
       val chunk = MessageChunk(HttpData(input.slice(offset, chunkEnd).compact))
-      emitLazily(chunk, closeAfterResponseCompletion) {
-        if (chunkSize == remainingBytes) { // last chunk
-          val tmp = copy(input)
-          emitLazily(ChunkedMessageEnd, closeAfterResponseCompletion) {
-            if (tmp.isCompact) parseMessageSafe(tmp, chunkEnd)
-            else parseMessageSafe(tmp.drop(chunkEnd))
-          }
+
+      if (chunkSize == remainingBytes) { // last chunk
+        if (input.length == chunkEnd) {
+          emitLazily(chunk, closeAfterResponseCompletion) { emitDirectly(ChunkedMessageEnd, closeAfterResponseCompletion) { reset() } }
         } else {
-          val tmp = copy(input)
-          parseBodyWithAutoChunking(tmp, chunkEnd, remainingBytes - chunkSize, closeAfterResponseCompletion)
+          copy(input, chunkEnd)
+          emitLazily(chunk, closeAfterResponseCompletion) { emitLazily(ChunkedMessageEnd, closeAfterResponseCompletion) { parseMessageSafe(remain) } }
         }
+      } else {
+        copy(input, chunkEnd)
+        parseBodyWithAutoChunking(remain, 0, remainingBytes - chunkSize, closeAfterResponseCompletion)
       }
     } else needMoreData(input, offset)(parseBodyWithAutoChunking(_, _, remainingBytes, closeAfterResponseCompletion))
   }
@@ -305,22 +355,11 @@ abstract class S2HttpMessagePartParser(val settings: spray.can.parsing.ParserSet
     HttpEntity(contentType, HttpData(body.compact))
   }
 
-  private var copied = false
-  protected final def copy(input: ByteString) = {
-    if (!copied) {
-      copied = true
-      val bytes = input.toArray
-      akka.spray.createByteStringUnsafe(bytes, 0, bytes.length)
-    } else {
-      input
-    }
-  }
-
-  def needMoreData(input: ByteString, offset: Int)(next: (ByteString, Int) ⇒ Result): Result =
+  protected def needMoreData(input: ByteString, offset: Int)(next: (ByteString, Int) ⇒ Result): Result =
     if (offset == input.length) Result.NeedMoreData(next(_, 0))
     else {
-      val tmp = copy(input)
-      Result.NeedMoreData(more ⇒ next(tmp ++ more, offset))
+      copy(input, offset)
+      Result.NeedMoreData(more ⇒ next(remain ++ more, 0))
     }
 
   def emitLazily(part: HttpMessagePart, closeAfterResponseCompletion: Boolean)(continue: ⇒ Result) =

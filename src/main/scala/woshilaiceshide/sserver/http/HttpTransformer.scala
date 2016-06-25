@@ -128,9 +128,12 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                     val websocket_channel_handler = factory(websocket_channel)
                     val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
 
-                    //1. TODO no remaining data should be here because handshake does not complete. i does not check it here yet.
+                    //1. no remaining data should be here because handshake does not complete. i does not check it here yet.
                     //2. DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion may be found.
                     //websocket.bytesReceived(r.remainingInput.drop(r.remainingOffset).asByteBuffer, channelWrapper)
+                    if (original_parser.remainingCount > 0) {
+                      throw new RuntimeException("no data should be here because handshake does not complete.")
+                    }
                     websocket
                   }
                   case ResponseAction.ResponseWithASink(sink) => {
@@ -241,7 +244,9 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
       }
     }
 
-    process(result)
+    val tmp = process(result)
+    original_parser.shadow()
+    tmp
   }
 
   final private def process_request_in_pipeline(next: Node, channelWrapper: ChannelWrapper) = {

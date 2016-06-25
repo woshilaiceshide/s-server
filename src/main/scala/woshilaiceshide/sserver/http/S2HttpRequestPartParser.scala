@@ -96,9 +96,9 @@ class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawReq
 
   private def parseChunkedEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: `Content-Length`, cth: `Content-Type`, closeAfterResponseCompletion: Boolean) = {
     if (clh == null) {
-      val tmp = copy(input)
+      copy(input, bodyStart)
       emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
-        parseChunk(tmp, bodyStart, closeAfterResponseCompletion)
+        parseChunk(remain, 0, closeAfterResponseCompletion)
       }
     } else fail("A chunked request must not contain a Content-Length header.")
   }
@@ -111,20 +111,17 @@ class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawReq
     }
     if (contentLength == 0) {
       if (input.length > bodyStart) {
-        val tmp = copy(input)
-        emitLazily(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
-          parseMessageSafe(tmp, bodyStart)
-        }
+        copy(input, bodyStart)
+        emitLazily(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) { parseMessageSafe(remain) }
       } else {
-        emitDirectly(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) {
-          Result.NeedMoreData(this)
-        }
+        emitDirectly(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) { reset() }
       }
     } else if (contentLength <= settings.maxContentLength) {
       parseFixedLengthBody(headers, input, bodyStart, contentLength, cth, closeAfterResponseCompletion)
 
-    } else fail(RequestEntityTooLarge, s"Request Content-Length $contentLength exceeds the configured limit of " +
-      settings.maxContentLength)
+    } else {
+      fail(RequestEntityTooLarge, s"Request Content-Length $contentLength exceeds the configured limit of ${settings.maxContentLength}")
+    }
   }
 
   // http://tools.ietf.org/html/draft-ietf-httpbis-p1-messaging-22#section-3.3

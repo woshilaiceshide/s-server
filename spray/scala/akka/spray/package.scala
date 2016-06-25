@@ -21,14 +21,33 @@ import akka.util.ByteString
 
 package object spray {
 
-  def createByteStringUnsafe(bytes: Array[Byte]): ByteString =
+  def createByteStringUnsafe(bytes: Array[Byte]): ByteString.ByteString1C =
     ByteString.ByteString1C(bytes)
 
-  def createByteStringUnsafe(bytes: Array[Byte], start: Int, len: Int): ByteString =
+  def createByteStringUnsafe(bytes: Array[Byte], start: Int, len: Int): ByteString.ByteString1 =
     ByteString.ByteString1(bytes, start, len)
 
   def createByteStringUnsafe(buffer: ByteBuffer) = {
     akka.util.ByteString.ByteString1(buffer.array(), buffer.position(), buffer.limit())
+  }
+
+  def shadowTailOfByteStrings(bs: ByteString.ByteStrings): ByteString = {
+
+    val v = bs.bytestrings
+    val last = v.last
+
+    if (last.length == bs.length) {
+      val bytes = last.toArray
+      createByteStringUnsafe(bytes, 0, bytes.length)
+    } else {
+      val bytes = last.toArray
+      val tmp = createByteStringUnsafe(bytes, 0, bytes.length)
+      val v1 = v.updated(v.length - 1, tmp)
+      ByteString.ByteStrings(v1, bs.length)
+    }
+  }
+
+  def compactIf(bs: ByteString.ByteString1, threshold: Int) = {
   }
 
 }
