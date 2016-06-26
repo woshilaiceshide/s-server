@@ -47,7 +47,23 @@ package object spray {
     }
   }
 
-  def compactIf(bs: ByteString.ByteString1, threshold: Int) = {
+  final case class DropAction(result: ByteString, transformed: Boolean)
+
+  def dropIntelligently(bs: ByteString, n: Int): DropAction = {
+    bs match {
+      case x: ByteString.ByteStrings => {
+        val last = x.bytestrings.last
+        if (last.length == x.length - n) {
+          DropAction(last, true)
+        } else if (last.length > x.length - n) {
+          DropAction(last.drop(n - (x.length - last.length)), true)
+        } else {
+          DropAction(x.drop(n), false)
+        }
+      }
+      case x: ByteString.ByteString1 => DropAction(x.drop(n), false)
+      case x: ByteString.ByteString1C => DropAction(x.drop(n), false)
+    }
   }
 
 }

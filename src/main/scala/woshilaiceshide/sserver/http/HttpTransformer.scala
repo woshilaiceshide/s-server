@@ -248,6 +248,11 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
           channelWrapper.closeChannel(true)
           this
         }
+        case Result.Expect100Continue(_) => {
+          log.debug(s"""Expect  = "100-continue" is not supported.""")
+          channelWrapper.closeChannel(true)
+          this
+        }
       }
     }
 

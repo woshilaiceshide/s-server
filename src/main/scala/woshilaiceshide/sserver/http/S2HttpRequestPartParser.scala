@@ -96,10 +96,16 @@ class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawReq
 
   private def parseChunkedEntity(headers: List[HttpHeader], input: ByteString, bodyStart: Int, clh: `Content-Length`, cth: `Content-Type`, closeAfterResponseCompletion: Boolean) = {
     if (clh == null) {
-      copy(input, bodyStart)
-      emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
-        parseChunk(remain, 0, closeAfterResponseCompletion)
+      if (copy(input, bodyStart)) {
+        emitLazily(chunkStartMessage(headers), closeAfterResponseCompletion) {
+          parseChunk(remain, 0, closeAfterResponseCompletion)
+        }
+      } else {
+        emitDirectly(chunkStartMessage(headers), closeAfterResponseCompletion) {
+          Result.NeedMoreData(more => parseChunk(more, 0, closeAfterResponseCompletion))
+        }
       }
+
     } else fail("A chunked request must not contain a Content-Length header.")
   }
 
@@ -110,11 +116,10 @@ class S2HttpRequestPartParser(settings: spray.can.parsing.ParserSettings, rawReq
       clh.length
     }
     if (contentLength == 0) {
-      if (input.length > bodyStart) {
-        copy(input, bodyStart)
+      if (copy(input, bodyStart)) {
         emitLazily(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) { parseMessageSafe(remain) }
       } else {
-        emitDirectly(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) { reset() }
+        emitDirectly(message(headers, HttpEntity.Empty), closeAfterResponseCompletion) { Result.NeedMoreData(this) }
       }
     } else if (contentLength <= settings.maxContentLength) {
       parseFixedLengthBody(headers, input, bodyStart, contentLength, cth, closeAfterResponseCompletion)
