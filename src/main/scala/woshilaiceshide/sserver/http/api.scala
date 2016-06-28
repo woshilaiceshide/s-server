@@ -36,7 +36,7 @@ object HttpConfigurator {
     sslSessionInfoHeader = false,
     headerValueCacheLimits = headerValueCacheLimits)
 
-  private final case class BytesWithTimestamp(bytes: RichByteArrayRendering, var timestamp: Long)
+  private[http] final case class BytesWithTimestamp(bytes: RichByteArrayRendering, var timestamp: Long)
 }
 
 final case class HttpConfigurator(
@@ -268,27 +268,62 @@ final case class HttpConfigurator(
 
   private val server_header_bytes = RenderSupport.getBytes(s"Server: ${server_name}\r\nDate: ")
   private val cached_server_date_headers = new java.lang.ThreadLocal[HttpConfigurator.BytesWithTimestamp]()
-  def render_server_and_date_header(r: RichBytesRendering) = {
+  private def get_cached_server_date_headers() = {
 
-    val now = System.currentTimeMillis()
-    val now1000 = now / 1000
-    var cached = cached_server_date_headers.get
+    Thread.currentThread() match {
+      case aux: AuxThread => {
+        def work() = {
+          val now = System.currentTimeMillis()
+          val now1000 = now / 1000
+          var cached = aux.cached_server_date_headers
+          if (null == cached) {
+            val tmp = new RichByteArrayRendering(server_header_bytes.length + 31)
+            tmp ~~ server_header_bytes
+            tmp.set_original_start(server_header_bytes.length)
 
-    if (null == cached) {
-      val tmp = new RichByteArrayRendering(server_header_bytes.length + 31)
-      tmp ~~ server_header_bytes
-      tmp.set_original_start(server_header_bytes.length)
+            DateTime(now).renderRfc1123DateTimeString(tmp) ~~ RenderSupport.CrLf
+            cached = HttpConfigurator.BytesWithTimestamp(tmp, now1000)
+            aux.cached_server_date_headers = cached
 
-      DateTime(now).renderRfc1123DateTimeString(tmp) ~~ RenderSupport.CrLf
-      cached = HttpConfigurator.BytesWithTimestamp(tmp, now1000)
-      cached_server_date_headers.set(cached)
-    } else if (1 < now1000 - cached.timestamp) {
+          } else if (1 < now1000 - cached.timestamp) {
+            cached.bytes.reset()
+            DateTime(now).renderRfc1123DateTimeString(cached.bytes) ~~ RenderSupport.CrLf
+            cached.timestamp = now1000
 
-      cached.bytes.reset()
-      DateTime(now).renderRfc1123DateTimeString(cached.bytes) ~~ RenderSupport.CrLf
-      cached.timestamp = now1000
+          }
+          cached
+        }
+        work()
+      }
+      case _ => {
+        def work() = {
+          val now = System.currentTimeMillis()
+          val now1000 = now / 1000
+          var cached = cached_server_date_headers.get
+          if (null == cached) {
+            val tmp = new RichByteArrayRendering(server_header_bytes.length + 31)
+            tmp ~~ server_header_bytes
+            tmp.set_original_start(server_header_bytes.length)
 
+            DateTime(now).renderRfc1123DateTimeString(tmp) ~~ RenderSupport.CrLf
+            cached = HttpConfigurator.BytesWithTimestamp(tmp, now1000)
+            cached_server_date_headers.set(cached)
+
+          } else if (1 < now1000 - cached.timestamp) {
+            cached.bytes.reset()
+            DateTime(now).renderRfc1123DateTimeString(cached.bytes) ~~ RenderSupport.CrLf
+            cached.timestamp = now1000
+
+          }
+          cached
+        }
+        work()
+      }
     }
+  }
+
+  def render_server_and_date_header(r: RichBytesRendering) = {
+    val cached = get_cached_server_date_headers()
     cached.bytes.render(r)
   }
 

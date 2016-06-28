@@ -17,6 +17,8 @@ class AuxThread(r: Runnable) extends Thread(r) {
     cached_header_parser = null
   }
 
+  private[http] var cached_server_date_headers: HttpConfigurator.BytesWithTimestamp = _
+
 }
 
 class AuxThreadFactory extends java.util.concurrent.ThreadFactory {
