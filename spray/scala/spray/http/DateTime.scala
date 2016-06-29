@@ -22,25 +22,27 @@ package spray.http
  * Note that this implementation discards milliseconds (i.e. rounds down to full seconds).
  */
 case class DateTime private (year: Int, // the year
-                             month: Int, // the month of the year. January is 1.
-                             day: Int, // the day of the month. The first day is 1.
-                             hour: Int, // the hour of the day. The first hour is 0.
-                             minute: Int, // the minute of the hour. The first minute is 0.
-                             second: Int, // the second of the minute. The first second is 0.
-                             weekday: Int, // the day of the week. Sunday is 0.
-                             clicks: Long, // milliseconds since January 1, 1970, 00:00:00 GMT
-                             isLeapYear: Boolean) extends Ordered[DateTime] with Renderable {
+    month: Int, // the month of the year. January is 1.
+    day: Int, // the day of the month. The first day is 1.
+    hour: Int, // the hour of the day. The first hour is 0.
+    minute: Int, // the minute of the hour. The first minute is 0.
+    second: Int, // the second of the minute. The first second is 0.
+    weekday: Int, // the day of the week. Sunday is 0.
+    clicks: Long, // milliseconds since January 1, 1970, 00:00:00 GMT
+    isLeapYear: Boolean) extends Ordered[DateTime] with Renderable {
   /**
    * The day of the week as a 3 letter abbreviation:
    * `Sun`, `Mon`, `Tue`, `Wed`, `Thu`, `Fri` or `Sat`
    */
   def weekdayStr: String = DateTime.WEEKDAYS(weekday)
+  def weekdayBytes: Array[Byte] = DateTime.WEEKDAYS_BYTES(weekday)
 
   /**
    * The day of the month as a 3 letter abbreviation:
    * `Jan`, `Feb`, `Mar`, `Apr`, `May`, `Jun`, `Jul`, `Aug`, `Sep`, `Oct`, `Nov` or `Dec`
    */
   def monthStr: String = DateTime.MONTHS(month - 1)
+  def monthBytes: Array[Byte] = DateTime.MONTHS_BYTES(month - 1)
 
   /**
    * Creates a new `DateTime` that represents the point in time the given number of ms later.
@@ -97,8 +99,14 @@ case class DateTime private (year: Int, // the year
   /**
    * RFC1123 date string, e.g. `Sun, 06 Nov 1994 08:49:37 GMT`
    */
-  def renderRfc1123DateTimeString[R <: Rendering](r: R): r.type =
-    put_##(put_##(put_##(put_##(r ~~ weekdayStr ~~ ',' ~~ ' ', day) ~~ ' ' ~~ monthStr ~~ ' ' ~~ year ~~ ' ', hour) ~~ ':', minute) ~~ ':', second) ~~ " GMT"
+  def renderRfc1123DateTimeString[R <: Rendering](r: R): r.type = {
+    //put_##(put_##(put_##(put_##(r ~~ weekdayBytes ~~ ',' ~~ ' ', day) ~~ ' ' ~~ monthBytes ~~ ' ' ~~ year ~~ ' ', hour) ~~ ':', minute) ~~ ':', second) ~~ DateTime.GMT_BYTES
+    r ~~ weekdayBytes ~~ ',' ~~ ' ' ~~ DateTime.BYTES_100(day) ~~ ' ' ~~
+      monthBytes ~~ ' ' ~~ DateTime.BYTES_1800_2200(year - 1800) ~~ ' ' ~~
+      DateTime.BYTES_100(hour) ~~ ':' ~~
+      DateTime.BYTES_100(minute) ~~ ':' ~~
+      DateTime.BYTES_100(second) ~~ DateTime.GMT_BYTES
+  }
 
   /**
    * RFC1123 date string, e.g. `Sun, 06 Nov 1994 08:49:37 GMT`
@@ -112,14 +120,41 @@ case class DateTime private (year: Int, // the year
   override def hashCode() = clicks.##
 
   override def equals(obj: Any) = obj match {
-    case x: DateTime ⇒ x.clicks == clicks
-    case _           ⇒ false
+    case x: DateTime => x.clicks == clicks
+    case _ => false
   }
 }
 
 object DateTime {
+
   val WEEKDAYS = Array("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+  val WEEKDAYS_BYTES = WEEKDAYS.map { d => d.toCharArray().map { _.toByte } }
+
   val MONTHS = Array("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+  val MONTHS_BYTES = MONTHS.map { d => d.toCharArray().map { _.toByte } }
+
+  private val DIGITS = Array("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+  private def formatInt(i: Int, min: Int) = {
+    require(i >= 0)
+    @scala.annotation.tailrec def x(i: Int, suffix: String): String = {
+      if (i > 0) {
+        x(i / 10, DIGITS((i % 10)) + suffix)
+      } else {
+        suffix
+      }
+    }
+    val tmp = x(i, "")
+    if (min <= tmp.length) tmp
+    else {
+      new String(Array.fill(min - tmp.length())('0')) + tmp
+    }
+  }
+
+  val BYTES_100 = (0 until 100).toArray.map { formatInt(_, 2).toCharArray.map { _.toByte } }
+  val BYTES_1800_2200 = (1800 to 2200).toArray.map { formatInt(_, 4).toCharArray.map { _.toByte } }
+
+  val GMT_BYTES = " GMT".toCharArray().map { _.toByte }
+
   val MinValue = DateTime(1800, 1, 1)
   val MaxValue = DateTime(2199, 12, 31, 23, 59, 59)
 
@@ -231,9 +266,9 @@ object DateTime {
     }
     def check(len: Int): Boolean =
       len match {
-        case 19 ⇒ c(4) == '-' && c(7) == '-' && c(10) == 'T' && c(13) == ':' && c(16) == ':'
-        case 24 ⇒ check(19) && c(19) == '.' && isDigit(c(20)) && isDigit(c(21)) && isDigit(c(22)) && c(23) == 'Z'
-        case _  ⇒ false
+        case 19 => c(4) == '-' && c(7) == '-' && c(10) == 'T' && c(13) == ':' && c(16) == ':'
+        case 24 => check(19) && c(19) == '.' && isDigit(c(20)) && isDigit(c(21)) && isDigit(c(22)) && c(23) == 'Z'
+        case _ => false
       }
     if (check(string.length)) {
       try {
@@ -244,7 +279,7 @@ object DateTime {
         val min = i(14) * 10 + i(15)
         val sec = i(17) * 10 + i(18)
         Some(DateTime(year, month, day, hour, min, sec))
-      } catch { case _: IllegalArgumentException ⇒ None }
+      } catch { case _: IllegalArgumentException => None }
     } else None
   }
 }

@@ -102,10 +102,10 @@ object Renderer {
           } else r
 
         value match {
-          case Nil ⇒ r ~~ empty
-          case x: IndexedSeq[T] ⇒ recI(x)
-          case x: LinearSeq[T] ⇒ recL(x)
-          case x ⇒ sys.error("Unsupported Seq type: " + x)
+          case Nil => r ~~ empty
+          case x: IndexedSeq[T] => recI(x)
+          case x: LinearSeq[T] => recL(x)
+          case x => sys.error("Unsupported Seq type: " + x)
         }
       }
     }
@@ -243,18 +243,19 @@ abstract class ByteArrayBasedRendering(sizeHint: Int) extends Rendering {
     this
   }
 
-  private def growBy(delta: Int): Int = {
-    val oldSize = size
-    val neededSize = oldSize.toLong + delta
-    if (array.length < neededSize)
-      if (neededSize < Int.MaxValue) {
-        val newLen = math.min(math.max(array.length.toLong * 2, neededSize), Int.MaxValue).toInt
+  protected final def growBy(delta: Int): Int = {
+    if (delta <= Int.MaxValue - size) {
+      val oldSize = size
+      size = size + delta
+      if (array.length < size) {
+        val newLen = math.min(math.max(array.length.toLong * 2, size), Int.MaxValue).toInt
         val newArray = new Array[Byte](newLen)
         System.arraycopy(array, 0, newArray, 0, array.length)
         array = newArray
-      } else sys.error("Cannot create byte array greater than 2GB in size")
-    size = neededSize.toInt
-    oldSize
+      }
+      oldSize
+
+    } else sys.error("Cannot create byte array greater than 2GB in size")
   }
 }
 
@@ -286,9 +287,9 @@ class HttpDataRendering(rawBytesSizeHint: Int) extends Rendering {
 
   def ~~(data: HttpData): this.type = {
     data match {
-      case HttpData.Empty ⇒
-      case HttpData.Bytes(bytes) ⇒ bsb ++= bytes
-      case x ⇒
+      case HttpData.Empty =>
+      case HttpData.Bytes(bytes) => bsb ++= bytes
+      case x =>
         closeBsb()
         hdb += x
     }

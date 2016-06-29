@@ -33,20 +33,6 @@ private[http] final class RichByteArrayRendering(sizeHint: Int) extends ByteArra
     buffer
   }
 
-  private def growBy(delta: Int): Int = {
-    val oldSize = size
-    val neededSize = oldSize.toLong + delta
-    if (array.length < neededSize)
-      if (neededSize < Int.MaxValue) {
-        val newLen = math.min(math.max(array.length.toLong * 2, neededSize), Int.MaxValue).toInt
-        val newArray = new Array[Byte](newLen)
-        System.arraycopy(array, 0, newArray, 0, array.length)
-        array = newArray
-      } else sys.error("Cannot create byte array greater than 2GB in size")
-    size = neededSize.toInt
-    oldSize
-  }
-
   def ~~(bytes: Array[Byte], offset: Int, length: Int): this.type = {
     if (length > 0 && length + offset <= bytes.length) {
       val oldSize = growBy(length)
