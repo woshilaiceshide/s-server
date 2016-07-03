@@ -80,7 +80,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     tail = null
     pipeline_size = 0
   }
-  @inline private def is_queue_empty() = pipeline_size == 0
+  @inline private def is_pipeling_queue_empty() = pipeline_size == 0
 
   def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
@@ -164,11 +164,11 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                     }
                     case _ => {
                       channelWrapper.closeChannel(true)
+                      //do not make it null now!!!
+                      //current_sink = null
                       this
                     }
                   }
-                  //do not make it null now!!!
-                  //current_sink = null
                 } else {
                   process(continue)
                 }
@@ -219,11 +219,11 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                     }
                     case _ => {
                       channelWrapper.closeChannel(true)
+                      //do not make it null now!!!
+                      //current_sink = null
                       this
                     }
                   }
-                  //do not make it null now!!!
-                  //current_sink = null
                 } else {
                   process(continue)
                 }
@@ -261,14 +261,15 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     tmp
   }
 
-  final private def process_request_in_pipeline(next: Node, channelWrapper: ChannelWrapper) = {
+  //invoked in the i/o thread, which is not reading sockets currently.
+  @scala.annotation.tailrec
+  final private def process_request_in_pipeline(next: Node, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     val request = next.value
     val closeAfterResponseCompletion = next.closeAfterResponseCompletion
     next.value match {
 
       case x: HttpRequest => {
-
         current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
         val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
         action match {
@@ -281,7 +282,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
             val websocket_channel_handler = factory(websocket_channel)
             val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
 
-            if (!is_queue_empty()) {
+            if (!is_pipeling_queue_empty()) {
               //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
               //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
               throw new RuntimeException("no data should be here because handshake does not complete.")
@@ -300,8 +301,29 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
       }
 
-      //TODO
-      case x: MessageChunk => this
+      case x: MessageChunk => {
+        if (current_sink != null) {
+          current_sink match {
+            case c: ChunkedRequestHandler => {
+              c.chunkReceived(x)
+              val next = de_queue()
+              if (null != next) {
+                process_request_in_pipeline(next, channelWrapper)
+              } else {
+                this
+              }
+            }
+            case _ => {
+              channelWrapper.closeChannel(true)
+              //do not make it null now!!!
+              //current_sink = null
+              this
+            }
+          }
+        } else {
+          this
+        }
+      }
 
       case x: ChunkedRequestStart => {
 
@@ -323,9 +345,29 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
       }
 
-      //TODO
-      case x: ChunkedMessageEnd => this
-
+      case x: ChunkedMessageEnd => {
+        if (current_sink != null) {
+          current_sink match {
+            case c: ChunkedRequestHandler => {
+              c.chunkEnded(x)
+              val next = de_queue()
+              if (null != next) {
+                process_request_in_pipeline(next, channelWrapper)
+              } else {
+                this
+              }
+            }
+            case _ => {
+              channelWrapper.closeChannel(true)
+              //do not make it null now!!!
+              //current_sink = null
+              this
+            }
+          }
+        } else {
+          this
+        }
+      }
     }
 
   }

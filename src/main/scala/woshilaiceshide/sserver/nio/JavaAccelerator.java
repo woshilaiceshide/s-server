@@ -31,7 +31,6 @@ public class JavaAccelerator {
 
 			if (status == CHANNEL_NORMAL && null != wrapper.writes()) {
 				try {
-					wrapper.just_op_write_if_needed_or_no_op();
 					wrapper.set_op_write();
 					should_close = false;
 				} catch (Throwable thread) {

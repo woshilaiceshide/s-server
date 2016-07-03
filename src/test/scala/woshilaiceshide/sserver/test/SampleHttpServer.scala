@@ -43,7 +43,7 @@ object SampleHttpServer extends App {
 
     private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World"))
     private def write_ping(channel: HttpChannel) = {
-      channel.writeResponse { ping }
+      channel.writeResponse(ping)
       ResponseAction.responseNormally
     }
     private val path_ping = Uri.Path("/ping")
@@ -58,10 +58,10 @@ object SampleHttpServer extends App {
       ResponseAction.responseNormally
     }
 
+    private val ping_asynchronously = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World Asynchronously"))
     private def write_ping_asynchronously(channel: HttpChannel) = {
       Future {
-        Thread.sleep(3 * 1000);
-        channel.writeResponse(new HttpResponse(200, "pong0\r\n"))
+        channel.writeResponse(ping_asynchronously)
       }
       ResponseAction.responseNormally
     }
@@ -145,10 +145,7 @@ object SampleHttpServer extends App {
     //wrk -c100 -t2 -d30s -H "Connection: keep-alive" -H "User-Agent: ApacheBench/2.4" -H "Accept: */*"  http://127.0.0.1:8787/ping
     def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
 
-      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => {
-        //println(request)
-        write_ping(channel)
-      }
+      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping(channel)
 
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
 
@@ -197,7 +194,8 @@ object SampleHttpServer extends App {
   val configurator = XNioConfigurator(count_for_reader_writers = 2,
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator,
-    buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1),
+    //buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1, true),
+    buffer_pool_factory = DefaultByteBufferPoolFactory(512, 64, true),
     io_thread_factory = new woshilaiceshide.sserver.http.AuxThreadFactory())
 
   val port = 8787

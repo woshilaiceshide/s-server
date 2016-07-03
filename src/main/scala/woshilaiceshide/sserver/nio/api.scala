@@ -213,7 +213,7 @@ final case class FixedByteBufferPool(fragment_size: Int, cached_count: Int, dire
     }
   }
   def return_buffer(buffer: ByteBuffer, helper: Int): Unit = {
-    if (1 != helper) {
+    if (1 == helper) {
       buffer.clear()
       pool.push(buffer)
     }
@@ -240,12 +240,12 @@ final case class SynchronizedFragmentedByteBufferPool(fragment_size: Int, cached
     }
   }
   def return_buffer(buffer: ByteBuffer, helper: Int): Unit = this.synchronized {
-    if (1 != helper) {
+    if (1 == helper) {
       buffer.clear()
       pool.push(buffer)
     }
   }
-  def free(): Unit = {
+  def free(): Unit = this.synchronized {
     pool.clear()
     pool = null
   }
@@ -264,7 +264,7 @@ final case class DefaultByteBufferPoolFactory(fragment_size: Int = 512, cached_c
   }
 
   def get_pool_used_by_biz_thread(): ByteBufferPool = {
-    FixedByteBufferPool(fragment_size, cached_count, direct)
+    SynchronizedFragmentedByteBufferPool(fragment_size, cached_count, direct)
   }
 
   def free(): Unit = {}
