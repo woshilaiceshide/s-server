@@ -147,6 +147,7 @@ object SampleHttpServer extends App {
 
       case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping(channel)
 
+      //wrk -c100 -t2 -d30s --script=./scripts/pipeline_ping.lua http://127.0.0.1:8787/ping_asynchronously
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
 
       case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket_demo"), _, _, _) => accept_websocket()
@@ -169,7 +170,7 @@ object SampleHttpServer extends App {
 
   }
 
-  val http_configurator = new HttpConfigurator(max_request_in_pipeline = 1, use_direct_byte_buffer_for_cached_bytes_rendering = false)
+  val http_configurator = new HttpConfigurator(max_request_in_pipeline = 8, use_direct_byte_buffer_for_cached_bytes_rendering = false)
 
   val factory = new HttpChannelHandlerFactory(handler, http_configurator)
 
@@ -195,7 +196,9 @@ object SampleHttpServer extends App {
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator,
     //buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1, true),
-    buffer_pool_factory = DefaultByteBufferPoolFactory(512, 64, true),
+    //buffer_pool_factory = DefaultByteBufferPoolFactory(512, 64, true),
+    //more i/o, more asynchronously, then make it bigger
+    buffer_pool_factory = DefaultByteBufferPoolFactory(128, 8, true),
     io_thread_factory = new woshilaiceshide.sserver.http.AuxThreadFactory())
 
   val port = 8787
