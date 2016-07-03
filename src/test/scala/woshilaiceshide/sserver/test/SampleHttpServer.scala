@@ -145,7 +145,7 @@ object SampleHttpServer extends App {
     //wrk -c100 -t2 -d30s -H "Connection: keep-alive" -H "User-Agent: ApacheBench/2.4" -H "Accept: */*"  http://127.0.0.1:8787/ping
     def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
 
-      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping(channel)
+      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping_asynchronously(channel) //write_ping(channel)
 
       //wrk -c100 -t2 -d30s --script=./scripts/pipeline_ping.lua http://127.0.0.1:8787/ping_asynchronously
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
