@@ -81,7 +81,7 @@ public class JavaAccelerator {
 				}
 				wrapper.key().cancel();
 			} catch (Throwable throwable) {
-				// TODO
+				SelectorRunner.log().debug("failed when close channel", throwable);
 			}
 		} else {
 			if (generate_written_event) {
