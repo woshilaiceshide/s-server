@@ -412,9 +412,11 @@ class NioSocketReaderWriter private[nio] (
       this.synchronized {
         if (CHANNEL_NORMAL == status) {
 
-          if (should_generate_written_event == false && generate_written_event == true) {
-            should_generate_written_event = generate_written_event
-            set_pend(!already_pended)
+          def generate() = {
+            if (should_generate_written_event == false && generate_written_event == true) {
+              should_generate_written_event = generate_written_event
+              set_pend(!already_pended)
+            }
           }
 
           this.last_active_time = System.currentTimeMillis()
@@ -422,6 +424,7 @@ class NioSocketReaderWriter private[nio] (
           val remaining = if (null != bytes) bytes.remaining() else 0
 
           if (0 == remaining) {
+            generate()
             set_result(WriteResult.WR_OK)
 
           } else if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
@@ -497,7 +500,9 @@ class NioSocketReaderWriter private[nio] (
                 pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, false)
 
               }
-              set_result(WriteResult.WR_OK)
+              generate()
+              val xxx = if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) WriteResult.WR_OK_BUT_OVERFLOWED else WriteResult.WR_OK
+              set_result(xxx)
               set_pend(!already_pended && writes != null)
             }
 

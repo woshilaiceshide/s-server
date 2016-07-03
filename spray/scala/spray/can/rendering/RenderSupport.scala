@@ -62,7 +62,7 @@ object RenderSupport {
   val `Connection: KeepAlive-CrLf` = getBytes(Connection) ++ ": ".getAsciiBytes ++ KeepAlive ++ CrLf
   val `Connection: Close-CrLf` = getBytes(Connection) ++ ": ".getAsciiBytes ++ Close ++ CrLf
 
-  val `Transfer-Encoding: Chunked-TwoCrLf` = getBytes(`Transfer-Encoding`) ++ ": ".getAsciiBytes ++ Chunked ++ TwoCrLf
+  val `Transfer-Encoding: Chunked-TwoCrLf` = getBytes(`Transfer-Encoding`) ++ Chunked ++ TwoCrLf
 
   implicit object MessageChunkRenderer extends Renderer[MessageChunk] {
     def render[R <: Rendering](r: R, chunk: MessageChunk): r.type = {

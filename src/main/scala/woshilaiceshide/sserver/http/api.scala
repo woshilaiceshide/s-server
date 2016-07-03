@@ -140,11 +140,13 @@ final case class HttpConfigurator(
 
   private final def borrow_fresh_bytes_rendering(size: Int, response_part: HttpResponsePart) = {
     val tmp = new RichByteArrayRendering(size)
+    def from_response(response: HttpResponse) = {
+      if (response.status eq StatusCodes.OK) tmp ~~ RenderSupport.DefaultStatusLine
+      else tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+    }
     response_part match {
-      case response: HttpResponse => {
-        if (response.status eq StatusCodes.OK) tmp ~~ RenderSupport.DefaultStatusLine
-        else tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-      }
+      case response: HttpResponse => from_response(response)
+      case c: ChunkedResponseStart => from_response(c.response)
       case _ =>
     }
     tmp
@@ -152,49 +154,54 @@ final case class HttpConfigurator(
   }
 
   private def borrow_bytes_rendering_from_thread_local(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
+    def from_response(response: HttpResponse) = {
+      if (response.status eq StatusCodes.OK) {
+        cached_bytes_rendering_with_status_200.get()
+      } else {
+        var cached = cached_bytes_rendering.get()
+        cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+        cached
+      }
+    }
     if (size <= cached_bytes_rendering_length) {
       response_part match {
-        case response: HttpResponse => {
-          if (response.status eq StatusCodes.OK) {
-            cached_bytes_rendering_with_status_200.get()
-          } else {
-            var cached = cached_bytes_rendering.get()
-            cached ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-            cached
-          }
-        }
+        case response: HttpResponse => from_response(response)
+        case c: ChunkedResponseStart => from_response(c.response)
         case _ => cached_bytes_rendering.get()
       }
 
     } else {
-
       borrow_fresh_bytes_rendering(size, response_part)
     }
   }
 
   private def borrow_bytes_rendering_from_aux_thread(size: Int, response_part: HttpResponsePart, aux: AuxThread): RichBytesRendering = {
+    def from_response(response: HttpResponse) = {
+      if (response.status eq StatusCodes.OK) {
+        if (aux.cached_bytes_rendering_with_status_200 != null) {
+          aux.cached_bytes_rendering_with_status_200
+        } else {
+          val tmp = get_rendering(cached_bytes_rendering_length)
+          tmp ~~ RenderSupport.DefaultStatusLine
+          tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
+          aux.cached_bytes_rendering_with_status_200 = tmp
+          tmp
+        }
+      } else {
+
+        if (aux.cached_bytes_rendering == null) {
+          aux.cached_bytes_rendering = get_rendering(cached_bytes_rendering_length)
+        }
+        aux.cached_bytes_rendering ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
+        aux.cached_bytes_rendering
+      }
+
+    }
+
     if (size <= cached_bytes_rendering_length) {
       response_part match {
-        case response: HttpResponse => {
-          if (response.status eq StatusCodes.OK) {
-            if (aux.cached_bytes_rendering_with_status_200 != null) {
-              aux.cached_bytes_rendering_with_status_200
-            } else {
-              val tmp = get_rendering(cached_bytes_rendering_length)
-              tmp ~~ RenderSupport.DefaultStatusLine
-              tmp.set_original_start(RenderSupport.DefaultStatusLine.size)
-              aux.cached_bytes_rendering_with_status_200 = tmp
-              tmp
-            }
-          } else {
-
-            if (aux.cached_bytes_rendering == null) {
-              aux.cached_bytes_rendering = get_rendering(cached_bytes_rendering_length)
-            }
-            aux.cached_bytes_rendering ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
-            aux.cached_bytes_rendering
-          }
-        }
+        case response: HttpResponse => from_response(response)
+        case c: ChunkedResponseStart => from_response(c.response)
         case _ => {
           if (aux.cached_bytes_rendering != null) {
             aux.cached_bytes_rendering

@@ -49,13 +49,20 @@ final class HttpChannel(
     }
   }
 
-  //TODO test chunked responding
-  //TODO a cached response build utility.
   /**
    * 'server' and 'date' headers may be served by proxies (nginx?).
    *
    * to make the best performance, do your best to use the instantiated objects in
    * 'spray.http.ContentTypes' and 'spray.http.MediaTypes' and 'spray.http.ContentTypes.HttpCharsets'.
+   *
+   * @return a flag of type 'woshilaiceshide.sserver.nio.WriteResult' indicating the bytes is written successfully.
+   * this is a IMPORTANT flag!
+   *
+   * use the returned 'woshilaiceshide.sserver.nio.WriteResult' and 'woshilaiceshide.sserver.http.ResponseAction.responseWithASink(sink: ResponseSink)'
+   * for throttling messages.
+   *
+   * for example, if 'woshilaiceshide.sserver.nio.WriteResult.WR_OK_BUT_OVERFLOWED' is returned, writing should be paused
+   * until 'woshilaiceshide.sserver.http.ResponseSink.channelWritable()' is invoked.
    *
    */
   def writeResponse(response: HttpResponsePart, sizeHint: Int = 1024, write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers) = {
@@ -68,10 +75,9 @@ final class HttpChannel(
       val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
-      //TODO why it's error when finished is false
-
       //if finished, jump to the next request in the pipelining(if existed)
       val generate_written_event = _finished && configurator.max_request_in_pipeline > 1
+      //use 'write_even_if_too_busy = true' as intended
       val write_result = channel.write(r.to_byte_buffer(), true, generate_written_event)
 
       configurator.return_bytes_rendering(r)

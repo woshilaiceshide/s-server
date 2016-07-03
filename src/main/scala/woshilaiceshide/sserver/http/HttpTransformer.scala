@@ -400,7 +400,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
   }
 
   def channelWritable(channelWrapper: ChannelWrapper): Unit = {
-    if (null != current_sink) current_sink.channelIdled()
+    if (null != current_sink) current_sink.channelWritable()
   }
 
   def inputEnded(channelWrapper: ChannelWrapper): Unit = {

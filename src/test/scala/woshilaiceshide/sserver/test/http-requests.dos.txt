@@ -6,7 +6,7 @@ GET /ping HTTP/1.1
 Host: 127.0.0.1:8787
 Connection: keep-alive
 
-GET /ping HTTP/1.1
+GET /chunked_response HTTP/1.1
 Host: 127.0.0.1:8787
 Connection: keep-alive
 

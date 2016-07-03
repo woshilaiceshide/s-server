@@ -6,7 +6,7 @@ import spray.http._
 import spray.http.HttpEntity.apply
 import spray.http.StatusCode.int2StatusCode
 
-//to test, use `nc -C 127.0.0.1 8181 < ./http-requests.dos.txt`
+//to test, use `nc -W 60s -C 127.0.0.1 8181 < ./http-requests.dos.txt`
 object SampleHttpServer extends App {
 
   val log = org.slf4j.LoggerFactory.getLogger(SampleHttpServer.getClass);
@@ -145,7 +145,7 @@ object SampleHttpServer extends App {
     //wrk -c100 -t2 -d30s -H "Connection: keep-alive" -H "User-Agent: ApacheBench/2.4" -H "Accept: */*"  http://127.0.0.1:8787/ping
     def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
 
-      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping_asynchronously(channel) //write_ping(channel)
+      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping(channel)
 
       //wrk -c100 -t2 -d30s --script=./scripts/pipeline_ping.lua http://127.0.0.1:8787/ping_asynchronously
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
@@ -161,6 +161,16 @@ object SampleHttpServer extends App {
           case _ =>
             write_400(channel)
         }
+      }
+
+      case HttpRequest(HttpMethods.GET, Uri.Path("/chunked_response"), _, _, _) => {
+        channel.writeResponse(new ChunkedResponseStart(new HttpResponse(200, "chunked response will start")))
+        channel.writeResponse(MessageChunk("this is the 1st chunk\r\n"))
+        channel.writeResponse(MessageChunk("this is the 2nd chunk\r\n"))
+        channel.writeResponse(MessageChunk("this is the 3rd chunk\r\n"))
+        channel.writeResponse(MessageChunk("this is the last chunk\r\n"))
+        channel.writeResponse(ChunkedMessageEnd)
+        ResponseAction.responseNormally
       }
 
       case x: HttpRequest if classifier.classification(x) == RequestClassification.ChunkedHttpStart => do_not_support_chunked_request(channel)
