@@ -45,7 +45,6 @@ package parsing {
       def continue: Result
     }
     final case class EmitLazily(part: HttpMessagePart, closeAfterResponseCompletion: Boolean, lazy_continue: () ⇒ Result) extends AbstractEmit {
-      throw new scala.NotImplementedError()
       def continue = lazy_continue()
     }
     //no lazy evaluation. this optimization is proved by facts.

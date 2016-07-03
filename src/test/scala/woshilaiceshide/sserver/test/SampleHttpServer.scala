@@ -9,6 +9,8 @@ import spray.http.StatusCode.int2StatusCode
 //to test, use `nc -C 127.0.0.1 8181 < ./http-requests.dos.txt`
 object SampleHttpServer extends App {
 
+  val log = org.slf4j.LoggerFactory.getLogger(SampleHttpServer.getClass);
+
   val handler = new HttpChannelHandler {
 
     import scala.concurrent.ExecutionContext.Implicits.global
@@ -47,6 +49,11 @@ object SampleHttpServer extends App {
     private val path_ping = Uri.Path("/ping")
 
     private def write_404(channel: HttpChannel) = {
+      channel.writeResponse { new HttpResponse(404) }
+      ResponseAction.responseNormally
+    }
+
+    private def write_400(channel: HttpChannel) = {
       channel.writeResponse { new HttpResponse(400) }
       ResponseAction.responseNormally
     }
@@ -61,7 +68,76 @@ object SampleHttpServer extends App {
 
     private def accept_websocket() = ResponseAction.acceptWebsocket { websocket_demo }
 
+    private def count_0123456789_with_x_times(channel: HttpChannel, times: Int) = {
+
+      ResponseAction.acceptChunking(new ChunkedRequestHandler() {
+
+        def channelIdled(): Unit = { /*do nothing*/ }
+        def channelWritable(): Unit = { /*do nothing*/ }
+        def channelClosed(): Unit = { /*do nothing*/ }
+
+        private var finished = false
+        private def format_error() = {
+          finished = true
+          channel.writeResponse(new HttpResponse(400, "request entity must in format: 01234567890123456789 ...\r\n"))
+        }
+        private def ok() = {
+          finished = true
+          channel.writeResponse(new HttpResponse(200, s"${times} of 0123456789 are received correctly\r\n"))
+        }
+        private def times_error() = {
+          finished = true
+          channel.writeResponse(new HttpResponse(400, s"${times} of 0123456789 are expected, but ${already} of ... is received\r\n"))
+        }
+
+        private var already: Int = 0
+        private var last_digit: Byte = -1
+        private def eat_a_digit(d: Byte) = {
+          if (last_digit == -1) {
+            if (0 == d) {
+              last_digit = d
+            } else {
+              format_error()
+            }
+          } else if (last_digit == 9) {
+            if (0 == d) {
+              last_digit = d
+            } else {
+              format_error()
+            }
+          } else {
+            if (last_digit + 1 == d) {
+              last_digit = d
+              if (d == 9) {
+                already = already + 1
+              }
+            } else {
+              format_error()
+            }
+          }
+        }
+
+        def chunkReceived(chunk: MessageChunk): Unit = {
+          val bytes = chunk.data.toByteArray
+          log.debug(s"receve from ${channel.remoteAddress}: ${bytes.map { _.toString }.mkString}")
+          @scala.annotation.tailrec def eat(i: Int): Unit = {
+            if (i < bytes.length && !finished) {
+              eat_a_digit(bytes(i))
+              eat(i + 1)
+            }
+          }
+          eat(0)
+        }
+        def chunkEnded(end: ChunkedMessageEnd): Unit = {
+          if (!finished) {
+            if (already == times) ok() else times_error()
+          }
+        }
+      })
+    }
+
     private def do_not_support_chunked_request(channel: HttpChannel) = {
+      println("do not support chunked")
       channel.writeResponse { new HttpResponse(400, "I DOES NOT support chunked request.") }
       ResponseAction.responseNormally
     }
@@ -77,6 +153,17 @@ object SampleHttpServer extends App {
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
 
       case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket_demo"), _, _, _) => accept_websocket()
+
+      case HttpRequest(HttpMethods.POST, uri, _, _, _) if uri.path.startsWith(Uri.Path("/chunked_request")) => {
+        log.debug(s"a new request targeted at ${uri} from ${channel.remoteAddress}")
+        import Uri.Path._
+        uri.path match {
+          case Slash(Segment("chunked_request", Slash(Segment(times, _)))) =>
+            count_0123456789_with_x_times(channel, times.toInt)
+          case _ =>
+            write_400(channel)
+        }
+      }
 
       case x: HttpRequest if classifier.classification(x) == RequestClassification.ChunkedHttpStart => do_not_support_chunked_request(channel)
 

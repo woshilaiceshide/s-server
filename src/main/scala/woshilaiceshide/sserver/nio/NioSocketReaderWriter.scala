@@ -240,7 +240,7 @@ class NioSocketReaderWriter private[nio] (
 
       } catch {
         case ex: Throwable => {
-          //SelectorRunner.warn(ex, "when key is readable.")
+          SelectorRunner.log.debug("when key is readable", ex)
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       } finally {
@@ -256,7 +256,7 @@ class NioSocketReaderWriter private[nio] (
         }
       } catch {
         case ex: Throwable => {
-          SelectorRunner.log.warn("when key is writable", ex)
+          SelectorRunner.log.debug("when key is writable", ex)
           channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
         }
       }
