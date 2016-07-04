@@ -3,7 +3,9 @@ Some Small & Smart Servers written in Scala, including a nio server and a small 
 
 It's targeted for small footprint when running, with extensibility for mulit-threading when processing http requests' business.
 
-`s-server` uses `'@sun.misc.Contended'` to kick `false sharing` off, so run it on `jvm-8` with `-XX:-RestrictContended` if asynchronous responses are needed. 
+`s-server` uses `'@sun.misc.Contended'` to kick `false sharing` off, so run it on `jvm-8` with `-XX:-RestrictContended` if asynchronous responses are needed.
+
+Http parsing and rendering are based on spray(https://github.com/spray/spray), but I tweaked it much for performance and code size. 
 
 Note that I've refactored s-server very much since version 1.x. Version 2.x is not compatible with version 1.x, and the latter one is not be supported any more. 
 
@@ -29,9 +31,9 @@ and handled by `'channel handler`'s,
 and `'channel handlers`' may use `'channel wrapper`'s to write responses. 
 
 ## Two Examples
-* test/main/scala/woshilaiceshide/sserver/EchoServer.scala
+* `test/main/scala/woshilaiceshide/sserver/EchoServer.scala`
 
-* test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala <br> To play with SampleHttpServer, run `'nc -C 127.0.0.1 8181 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
+* `test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala` <br> This http server contains synchronous response, asynchronous response, chunked response, response for chunked request, and is enabled with pipelining. <br> To request using pipelining, just run `'nc -C 127.0.0.1 8787 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
 
 To test the above examples, just type the following command in your sbt console: 
 * type `'test:run'` in your sbt console to run `'woshilaiceshide.sserver.test.EchoServer'`

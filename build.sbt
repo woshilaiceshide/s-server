@@ -2,7 +2,7 @@ organization := "woshilaiceshide"
 
 name := "s-server"
 
-version := "2.0-SNAPSHOT"
+version := "2.0"
 
 description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
 
@@ -16,7 +16,7 @@ pomIncludeRepository  := {_ => false}
 
 bintrayRepository := "maven"
 
-bintrayOrganization := None
+bintrayOrganization := Some("woshilaiceshide")
 
 bintrayVcsUrl := Some(s"git@github.com:woshilaiceshide/${name.value}.git")
 
