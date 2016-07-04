@@ -11,10 +11,11 @@ object SampleHttpServer extends App {
 
   val log = org.slf4j.LoggerFactory.getLogger(SampleHttpServer.getClass);
 
-  val handler = new HttpChannelHandler {
+  import scala.concurrent._
+  val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+  implicit val ec = ExecutionContext.fromExecutor(executor)
 
-    import scala.concurrent.ExecutionContext.Implicits.global
-    import scala.concurrent._
+  val handler = new HttpChannelHandler {
 
     private val websocket_demo = (c: WebSocketChannel) => {
 
@@ -60,9 +61,8 @@ object SampleHttpServer extends App {
 
     private val ping_asynchronously = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World Asynchronously"))
     private def write_ping_asynchronously(channel: HttpChannel) = {
-      Future {
-        channel.writeResponse(ping_asynchronously)
-      }
+      //channel.post_to_io_thread { channel.writeResponse(ping_asynchronously) }
+      Future { channel.writeResponse(ping_asynchronously) }
       ResponseAction.responseNormally
     }
 
@@ -218,6 +218,10 @@ object SampleHttpServer extends App {
     port,
     factory,
     configurator)
+
+  server.register_on_termination {
+    executor.shutdown()
+  }
 
   server.start(false)
 

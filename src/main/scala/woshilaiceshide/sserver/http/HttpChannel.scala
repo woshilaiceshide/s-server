@@ -16,6 +16,9 @@ final class HttpChannel(
     requestMethod: HttpMethod,
     requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends S2ResponseRenderingComponent {
 
+  def post_to_io_thread(task: Runnable): Boolean = channel.post_to_io_thread(task)
+  def post_to_io_thread(task: => Unit): Boolean = channel.post_to_io_thread(new Runnable() { def run = task })
+
   import S2ResponseRenderingComponent._
 
   def remoteAddress: java.net.SocketAddress = channel.remoteAddress
