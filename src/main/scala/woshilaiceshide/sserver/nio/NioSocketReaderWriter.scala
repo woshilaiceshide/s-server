@@ -50,6 +50,9 @@ private[nio] object NioSocketReaderWriter {
     }
   }
 
+  private val FINISHED = 0x2
+  private val BECOME_WRITABLE = 0x1
+
 }
 
 class NioSocketReaderWriter private[nio] (
@@ -529,7 +532,7 @@ class NioSocketReaderWriter private[nio] (
       try_write.result
     }
 
-    private[nio] final def writing() {
+    private[nio] final def writing(): Int = {
       val tmp = this.synchronized {
         val x = writes
         writes = null
@@ -538,15 +541,11 @@ class NioSocketReaderWriter private[nio] (
       if (null != tmp) {
         val remain = writing0(tmp, tmp.head, 0)
 
-        val become_writable = this.synchronized {
+        val written = this.synchronized {
 
           //clear op_write just here for optimization.
           if (null == remain._1 && writes == null) {
-            try {
-              this.clear_op_write()
-            } catch {
-              case _: Throwable => { safe_close(channel); status = CHANNEL_CLOSED; }
-            }
+            this.clear_op_write()
           }
 
           val prev_bytes_waiting_for_written = bytes_waiting_for_written
@@ -559,17 +558,23 @@ class NioSocketReaderWriter private[nio] (
             writes = remain._1
           }
 
-          if (prev_bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
-            bytes_waiting_for_written < max_bytes_waiting_for_written_per_channel
+          val become_writable = if (prev_bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
+            //bytes_waiting_for_written < max_bytes_waiting_for_written_per_channel
+            if (bytes_waiting_for_written < max_bytes_waiting_for_written_per_channel) BECOME_WRITABLE else 0
           } else {
-            false
+            0 //false
           }
+          val finished = if (null == writes) FINISHED else 0
+          become_writable | finished
         }
         //invoked if needed only.
-        if (become_writable) {
+        if ((written & BECOME_WRITABLE) == BECOME_WRITABLE) {
           if (handler != null) handler.channelWritable(this)
         }
+        written
 
+      } else {
+        FINISHED
       }
 
     }
@@ -643,7 +648,9 @@ class NioSocketReaderWriter private[nio] (
       var attachment: Option[_] = None
       var generate_written_event = false
 
-      val should_close: Boolean = this.synchronized {
+      var try_write = false
+
+      var should_close: Boolean = this.synchronized {
 
         generate_written_event = this.should_generate_written_event
         should_generate_written_event = false
@@ -686,11 +693,24 @@ class NioSocketReaderWriter private[nio] (
           //close_if_failed { clearOpWrite() }
           false
         } else if (status == CHANNEL_NORMAL) {
-          //TODO write immediately???
-          close_if_failed { set_op_write() }
+          try_write = true
+          false
         } else {
           false
         }
+      }
+      if (try_write) {
+        should_close = try {
+          val written = writing()
+          if ((written & FINISHED) != FINISHED) set_op_write()
+          false
+        } catch {
+          case ex: Throwable =>
+            safe_close(channel);
+            //status = CHANNEL_CLOSED;
+            true
+        }
+
       }
       //close outside, not in the "synchronization". keep locks clean.
       if (should_close) {

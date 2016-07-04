@@ -13,11 +13,18 @@ public class JavaAccelerator {
 	public static final int CHANNEL_CLOSING_RIGHT_NOW = 2;
 	public static final int CHANNEL_CLOSED = 3;
 
+	private static void write_immediately(NioSocketReaderWriter.MyChannelWrapper wrapper) {
+		int written = wrapper.writing();
+		if ((written & 0x2) != 0x2)
+			wrapper.set_op_write();
+	}
+
 	public static void check_io(NioSocketReaderWriter.MyChannelWrapper wrapper) {
 
 		scala.Enumeration.Value cause = null;
 		scala.Option<?> attachment = scala.Option.empty();
 		boolean generate_written_event = false;
+		boolean try_write = false;
 		boolean should_close = false;
 
 		synchronized (wrapper) {
@@ -30,14 +37,7 @@ public class JavaAccelerator {
 			int status = wrapper.status();
 
 			if (status == CHANNEL_NORMAL && null != wrapper.writes()) {
-				try {
-					wrapper.set_op_write();
-					should_close = false;
-				} catch (Throwable thread) {
-					SelectorRunner.safe_close(wrapper.channel());
-					wrapper.status_$eq(CHANNEL_CLOSED);
-					should_close = true;
-				}
+				try_write = true;
 			} else if (status == CHANNEL_CLOSED) {
 				should_close = false;
 			} else if (status == CHANNEL_CLOSING_RIGHT_NOW) {
@@ -70,7 +70,16 @@ public class JavaAccelerator {
 				should_close = false;
 			}
 		}
-
+		if (try_write) {
+			try {
+				write_immediately(wrapper);
+				should_close = false;
+			} catch (Throwable thread) {
+				SelectorRunner.safe_close(wrapper.channel());
+				// wrapper.status_$eq(CHANNEL_CLOSED);
+				should_close = true;
+			}
+		}
 		// close outside, not in the "synchronization". keep locks clean.
 		if (should_close) {
 			try {
