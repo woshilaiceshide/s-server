@@ -180,6 +180,7 @@ class NioSocketReaderWriter private[nio] (
       last_check_for_idle_zombie = now
       this.iterate_registered_keys { key =>
         key.attachment() match {
+          case null =>
           case c: NioSocketReaderWriter#MyChannelWrapper =>
             c.check_idle(now)
             c.check_zombie(now)

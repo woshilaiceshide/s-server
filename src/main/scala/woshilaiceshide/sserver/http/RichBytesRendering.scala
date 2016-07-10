@@ -29,8 +29,14 @@ private[http] final class RichByteArrayRendering(sizeHint: Int) extends ByteArra
   private val buffer = ByteBuffer.wrap(this.array)
 
   def to_byte_buffer(): ByteBuffer = {
-    buffer.limit(this.size)
-    buffer
+    if (this.array eq this.original_array) {
+      buffer.limit(this.size)
+      buffer
+    } else {
+      val tmp = ByteBuffer.wrap(this.array)
+      tmp.limit(this.size)
+      tmp
+    }
   }
 
   def ~~(bytes: Array[Byte], offset: Int, length: Int): this.type = {

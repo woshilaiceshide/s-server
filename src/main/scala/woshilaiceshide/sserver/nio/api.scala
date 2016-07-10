@@ -273,6 +273,11 @@ final case class DefaultByteBufferPoolFactory(fragment_size: Int = 512, cached_c
 
 trait NioConfigurator extends SelectorRunnerConfigurator {
 
+  /**
+   * how many runners to read/write sockets?
+   *
+   * if it's set to ZERO, then only ONE runner exists, and it do all the things for listening, reading, writing.
+   */
   def count_for_reader_writers: Int
   def listening_channel_configurator: ServerSocketChannelWrapper => Unit
   def accepted_channel_configurator: SocketChannelWrapper => Unit

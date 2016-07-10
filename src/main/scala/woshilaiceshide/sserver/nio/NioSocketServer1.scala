@@ -35,6 +35,7 @@ class NioSocketServer1 private[nio] (
 
     val wrapper = new ServerSocketChannelWrapper(ssc)
     configurator.listening_channel_configurator(wrapper)
+    SelectorRunner.log.info(s"binding to ${interface}:${port}, backlog is ${wrapper.backlog}")
     if (-1 == wrapper.backlog) {
       ssc.socket().bind(new InetSocketAddress(interface, port))
     } else {

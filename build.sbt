@@ -2,7 +2,7 @@ organization := "woshilaiceshide"
 
 name := "s-server"
 
-version := "2.0"
+version := "2.1"
 
 description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
 
