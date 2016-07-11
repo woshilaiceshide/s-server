@@ -30,6 +30,15 @@ and handled by `'channel handler`'s,
 3.
 and `'channel handlers`' may use `'channel wrapper`'s to write responses. 
 
+## How to Use It?
+1. I've published s-server to bintray, you can add the following line in your build.sbt:
+
+	resolvers += "Woshilaiceshide Releases" at "http://dl.bintray.com/woshilaiceshide/maven/"
+	libraryDependencies += "woshilaiceshide" %% "s-server" % "2.1" withSources() 
+
+2.
+build s-server locally using `'sbt publishLocal'`.
+
 ## Two Examples
 * `test/main/scala/woshilaiceshide/sserver/EchoServer.scala`
 
