@@ -17,8 +17,8 @@ object SampleHttpServer extends App {
 
   val handler = new HttpChannelHandler {
 
-    private val websocket_demo = (c: WebSocketChannel) => {
-
+    private def websocket(request: HttpRequest) = (c: WebSocketChannel) => {
+      c.tryAccept(request)
       new WebSocketChannelHandler() {
 
         def frameReceived(frame: WebSocket13.WSFrame): Unit = {
@@ -66,7 +66,7 @@ object SampleHttpServer extends App {
       ResponseAction.responseNormally
     }
 
-    private def accept_websocket() = ResponseAction.acceptWebsocket { websocket_demo }
+    private def accept_websocket(request: HttpRequest) = ResponseAction.acceptWebsocket { websocket(request) }
 
     private def count_0123456789_with_x_times(channel: HttpChannel, times: Int) = {
 
@@ -150,7 +150,7 @@ object SampleHttpServer extends App {
       //wrk -c100 -t2 -d30s --script=./scripts/pipeline_ping.lua http://127.0.0.1:8787/ping_asynchronously
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
 
-      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket_demo"), _, _, _) => accept_websocket()
+      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket"), _, _, _) => accept_websocket(x)
 
       case HttpRequest(HttpMethods.POST, uri, _, _, _) if uri.path.startsWith(Uri.Path("/chunked_request")) => {
         log.debug(s"a new request targeted at ${uri} from ${channel.remoteAddress}")

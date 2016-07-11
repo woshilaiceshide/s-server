@@ -136,6 +136,11 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                     if (original_parser.remainingCount > 0) {
                       throw new RuntimeException("no data should be here because handshake does not complete.")
                     }
+
+                    if (!websocket_channel.is_accepted) {
+                      throw new RuntimeException("please accept this websocket first using 'woshilaiceshide.sserver.http.WebSocketChannel.tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader], cookies: List[HttpCookie])'")
+                    }
+
                     websocket
                   }
                   case ResponseAction.ResponseWithASink(sink) => {
@@ -286,6 +291,9 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
               //DO NOT invoke websocket's bytesReceived here, or dead locks / too deep recursion will be found.
               //websocket.bytesReceived(lastInput.drop(lastOffset).asByteBuffer, channelWrapper)
               throw new RuntimeException("no data should be here because handshake does not complete.")
+            }
+            if (!websocket_channel.is_accepted) {
+              throw new RuntimeException("please accept this websocket first using 'woshilaiceshide.sserver.http.WebSocketChannel.tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader], cookies: List[HttpCookie])'")
             }
             websocket
           }

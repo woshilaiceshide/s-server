@@ -31,9 +31,11 @@ class WebSocketChannel(channel: ChannelWrapper,
 
   private var response_status: Byte = 0
 
+  def is_accepted() = this.synchronized { this.response_status == ResponseStatus_Accepted }
+
   def maxResponseSize: Int = configurator.max_response_size
 
-  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, cookies: List[HttpCookie]): Boolean = {
+  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, cookies: List[HttpCookie] = Nil): Boolean = {
 
     WebSocket13.tryAccept(request, extraHeaders, cookies) match {
       case WebSocketAcceptance.Failed(response) => {
@@ -102,11 +104,11 @@ class WebSocketChannel(channel: ChannelWrapper,
     val r = configurator.borrow_bytes_rendering(maxResponseSize, response)
     val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
     val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, writeServerAndDateHeader)
-
     val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
     if (closeMode == S2ResponseRenderingComponent.CloseMode.CloseAfterEnd) closeAfterEnd = true
 
     channel.write(r.to_byte_buffer(), true, false)
+    configurator.return_bytes_rendering(r)
 
   }
 

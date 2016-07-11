@@ -68,13 +68,13 @@ final class HttpChannel(
    * until 'woshilaiceshide.sserver.http.ResponseSink.channelWritable()' is invoked.
    *
    */
-  def writeResponse(response: HttpResponsePart, sizeHint: Int = 1024, write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers) = {
+  def writeResponse(response: HttpResponsePart, size_hint: Int = 1024, write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers) = {
 
     val (wr, should_close) = synchronized {
 
       val _finished = check_finished(response)
 
-      val r = configurator.borrow_bytes_rendering(sizeHint, response)
+      val r = configurator.borrow_bytes_rendering(size_hint, response)
       val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 

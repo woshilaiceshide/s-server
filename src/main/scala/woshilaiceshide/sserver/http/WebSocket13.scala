@@ -67,7 +67,7 @@ object WebSocket13 {
   }
 
   //is_already_seen_as_websocket: the caller has known this is a websocket request definitely. this is a small hint for optimization.
-  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, cookies: List[HttpCookie]): WebSocketAcceptance = {
+  def tryAccept(request: HttpRequest, extraHeaders: List[HttpHeader] = Nil, cookies: List[HttpCookie] = Nil): WebSocketAcceptance = {
     if (!isAWebSocketRequest(request)) {
       WebSocketAcceptance.Failed(HttpResponse(400, "not a websocket request", headers = extraHeaders ++ cookies.map { `Set-Cookie`(_) }))
     } else if (!request.headers.exists { x =>
