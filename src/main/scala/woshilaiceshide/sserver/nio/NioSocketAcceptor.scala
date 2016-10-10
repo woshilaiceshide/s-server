@@ -55,7 +55,7 @@ class NioSocketAcceptor private[nio] (
   }
 
   protected def add_a_new_socket_channel(channel: SocketChannel): Unit = {}
-
+  
   protected def stop_roughly(): Unit = {
     safe_close(ssc)
     io_workers.map { _.stop(-1) }
@@ -81,18 +81,15 @@ class NioSocketAcceptor private[nio] (
     if ((ready_ops & OP_ACCEPT) > 0) {
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
-      val wrapper = new SocketChannelWrapper(channel)
-      accepted_channel_configurator(wrapper)
       try {
-        channel.configureBlocking(false)
-        val p = Math.abs(channel.hashCode() % io_workers.length)
+        val p = Math.abs(ssc.hashCode() % io_workers.length)
         if (!io_workers(p).register_socket_channel(channel)) {
-          channel.close()
+          ssc.close()
         }
       } catch {
         case ex: Throwable => {
           SelectorRunner.log.warn("when key is acceptable", ex)
-          safe_close(channel)
+          safe_close(ssc)
         }
       }
 

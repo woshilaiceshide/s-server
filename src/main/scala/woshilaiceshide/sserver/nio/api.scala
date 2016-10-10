@@ -25,7 +25,7 @@ final class ServerSocketChannelWrapper(channel: ServerSocketChannel) {
   }
 }
 
-final class SocketChannelWrapper(channel: SocketChannel) {
+final class SocketChannelWrapper(private[nio] val channel: SocketChannel) {
   def setOption[T](name: java.net.SocketOption[T], value: T) = {
     channel.setOption(name, value)
   }
@@ -318,9 +318,9 @@ final case class XNioConfigurator(
   },
 
   /**
-   * if count_for_reader_writers is 0, then read/write will be in the same thread as the acceptor,
-   * no extra threads will be created.
-   */
+ * if count_for_reader_writers is 0, then read/write will be in the same thread as the acceptor,
+ * no extra threads will be created.
+ */
   count_for_reader_writers: Int,
   listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
   accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
@@ -330,10 +330,10 @@ final case class XNioConfigurator(
   check_idle_interval_in_seconds: Int = 60,
   revise_sun_jdk_bug_level: Boolean = true,
   /**
-   * see woshilaiceshide.sserver.nio.ChannelHandler.inputEnded(channelWrapper: ChannelWrapper).
-   *
-   * a good suggestion is keep it 'false'
-   */
+ * see woshilaiceshide.sserver.nio.ChannelHandler.inputEnded(channelWrapper: ChannelWrapper).
+ *
+ * a good suggestion is keep it 'false'
+ */
   allow_hafl_closure: Boolean = false,
   buffer_pool_factory: ByteBufferPoolFactory = DefaultByteBufferPoolFactory(),
   spin_count_when_write_immediately: Int = 3) extends NioConfigurator

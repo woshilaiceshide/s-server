@@ -99,7 +99,7 @@ class NioSocketReaderWriter private[nio] (
     asynchronousely_pended_io_operations = null
   }
 
-  def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread { target }
+  private[nio] def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread { target }
 
   protected def do_start(): Unit = {}
   protected def stop_roughly(): Unit = {
@@ -108,7 +108,7 @@ class NioSocketReaderWriter private[nio] (
       val attach = key.attachment()
       attach match {
         case c: NioSocketReaderWriter#MyChannelWrapper => c.close_directly()
-        case _ =>
+        case _                                         =>
       }
     }
 
@@ -137,6 +137,10 @@ class NioSocketReaderWriter private[nio] (
   }
 
   protected def add_a_new_socket_channel(channel: SocketChannel) = {
+
+    val wrapper = new SocketChannelWrapper(channel)
+    accepted_channel_configurator(wrapper)
+    channel.configureBlocking(false)
 
     channel_hander_factory.getHandler(new MyChannelInformation(channel)) match {
       case None => {

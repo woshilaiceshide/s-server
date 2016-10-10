@@ -117,7 +117,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         val new_key = old_key.channel().register(selector1, ops, attch)
         attch match {
           case x: HasKey => x.set_key(new_key)
-          case _ =>
+          case _         =>
         }
       }
 
@@ -244,6 +244,14 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   private val task_runner = (obj: AnyRef) => {
     try {
       obj match {
+        case ssc: SocketChannel => {
+          if (is_stopping())
+            safe_close(ssc)
+          else {
+            add_a_new_socket_channel(ssc)
+          }
+
+        }
         case sc: SocketChannel => {
           if (is_stopping())
             safe_close(sc)
@@ -251,7 +259,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
             add_a_new_socket_channel(sc)
         }
         case runnable: Runnable => runnable.run()
-        case _ =>
+        case _                  =>
       }
     } catch {
       case ex: Throwable => log.warn("failed", ex)
