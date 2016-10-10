@@ -252,12 +252,6 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
           }
 
         }
-        case sc: SocketChannel => {
-          if (is_stopping())
-            safe_close(sc)
-          else
-            add_a_new_socket_channel(sc)
-        }
         case runnable: Runnable => runnable.run()
         case _                  =>
       }
