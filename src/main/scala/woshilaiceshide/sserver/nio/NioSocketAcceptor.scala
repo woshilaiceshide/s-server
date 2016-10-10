@@ -55,7 +55,7 @@ class NioSocketAcceptor private[nio] (
   }
 
   protected def add_a_new_socket_channel(channel: SocketChannel): Unit = {}
-  
+
   protected def stop_roughly(): Unit = {
     safe_close(ssc)
     io_workers.map { _.stop(-1) }
@@ -77,12 +77,14 @@ class NioSocketAcceptor private[nio] (
     super.join(timeout)
     io_workers.map { _.join(timeout) }
   }
+  private var i = 0
   protected def process_selected_key(key: SelectionKey, ready_ops: Int): Unit = {
     if ((ready_ops & OP_ACCEPT) > 0) {
       val ssc = key.channel().asInstanceOf[ServerSocketChannel]
       val channel = ssc.accept()
       try {
-        val p = Math.abs(ssc.hashCode() % io_workers.length)
+        i = i + 1
+        val p = Math.abs(i % io_workers.length)
         if (!io_workers(p).register_socket_channel(channel)) {
           ssc.close()
         }
