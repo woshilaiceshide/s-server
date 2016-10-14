@@ -77,12 +77,14 @@ final class SelectedKeySet(initial_size: Int = 1024) extends AbstractSet[Selecti
   def flip(): Array[SelectionKey] = {
     if (use_a) {
       use_a = false
-      keys_a(size_for_key_a) = null
+      //1. useless; 2. index should be checked
+      //keys_a(size_for_key_a) = null
       size_for_key_b = 0
       keys_a
     } else {
       use_a = true
-      keys_b(size_for_key_b) = null
+      //1. useless; 2. index should be checked
+      //keys_b(size_for_key_b) = null
       size_for_key_a = 0
       keys_b
     }
