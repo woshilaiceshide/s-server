@@ -2,7 +2,7 @@ organization := "woshilaiceshide"
 
 name := "s-server"
 
-version := "2.1"
+version := "2.2"
 
 description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
 
@@ -63,8 +63,9 @@ libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.7"
 
 libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.21"
 
-javaOptions in Universal += "-J-Xmx32m"
-javaOptions in Universal += "-J-Xms32m"
+javaOptions in Universal += "-J-XX:-RestrictContended"
+javaOptions in Universal += "-J-Xmx2048m"
+javaOptions in Universal += "-J-Xms2048m"
 //javaOptions in Universal += "-J-XX:+UnlockDiagnosticVMOptions"
 //javaOptions in Universal += "-J-XX:+PrintInlining"
 javaOptions in Universal += "-Dproperty1=value1"
