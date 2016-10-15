@@ -35,7 +35,7 @@ and `'channel handlers`' may use `'channel wrapper`'s to write responses.
 
 	resolvers += "Woshilaiceshide Releases" at "http://dl.bintray.com/woshilaiceshide/maven/"
 
-	libraryDependencies += "woshilaiceshide" %% "s-server" % "2.1" withSources() 
+	libraryDependencies += "woshilaiceshide" %% "s-server" % "2.2" withSources() 
 
 2.
 build s-server locally using `'sbt publishLocal'`.
