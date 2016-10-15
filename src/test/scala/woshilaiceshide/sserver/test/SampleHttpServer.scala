@@ -186,7 +186,7 @@ object SampleHttpServer extends App {
 
   val listening_channel_configurator: ServerSocketChannelWrapper => Unit = wrapper => {
     wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.SO_REUSEADDR, true)
-    wrapper.setBacklog(1024 * 8)
+    wrapper.setBacklog(1024 * 8 * 10)
   }
 
   val accepted_channel_configurator: SocketChannelWrapper => Unit = wrapper => {
@@ -208,7 +208,8 @@ object SampleHttpServer extends App {
     //buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1, true),
     //buffer_pool_factory = DefaultByteBufferPoolFactory(512, 64, true),
     //more i/o, more asynchronously, then make it bigger
-    buffer_pool_factory = DefaultByteBufferPoolFactory(128, 8, true),
+    buffer_pool_factory = DefaultByteBufferPoolFactory(512, 512, true),
+    try_to_optimize_selector_key_set = false, 
     io_thread_factory = new woshilaiceshide.sserver.http.AuxThreadFactory())
 
   val port = 8787
