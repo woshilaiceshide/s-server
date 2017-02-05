@@ -154,7 +154,7 @@ class NioSocketReaderWriter private[nio] (
         }
         channelWrapper.open()
         if (!channel.isOpen()) {
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+          channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
         }
       }
     }
@@ -234,7 +234,7 @@ class NioSocketReaderWriter private[nio] (
           channelWrapper.bytesReceived(READ_BUFFER)
         } else {
           if (!key.isValid() || !channel.isOpen()) {
-            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+            channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
           } else if (configurator.allow_hafl_closure) {
             //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
             //I tried much, but did not catch it!
@@ -242,14 +242,14 @@ class NioSocketReaderWriter private[nio] (
             channelWrapper.clear_op_read()
             channelWrapper.inputEnded()
           } else {
-            channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_NORMALLY)
+            channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_NORMALLY)
           }
         }
 
       } catch {
         case ex: Throwable => {
           SelectorRunner.log.debug("when key is readable", ex)
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+          channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
         }
       } finally {
         READ_BUFFER.clear()
@@ -260,12 +260,12 @@ class NioSocketReaderWriter private[nio] (
       try {
         channelWrapper.writing()
         if (!key.isValid() || !channel.isOpen()) {
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+          channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
         }
       } catch {
         case ex: Throwable => {
           SelectorRunner.log.debug("when key is writable", ex)
-          channelWrapper.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+          channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
         }
       }
     }
@@ -296,7 +296,7 @@ class NioSocketReaderWriter private[nio] (
         safe_close(this.channel)
         safe_op(key.cancel())
         if (null != handler) safe_op {
-          handler.channelClosed(this, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED, None)
+          handler.channelClosed(this, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED, None)
           handler = null
         }
       }
@@ -629,13 +629,13 @@ class NioSocketReaderWriter private[nio] (
         if (null != handler) {
           handler.channelIdled(this)
         }
-        this.close(true, ChannelClosedCause.BECAUSE_IDLE)
+        this.close(true, ChannelClosedCause.IDLED)
       }
       status
     }
     private[nio] def check_zombie(current: Long) = this.synchronized {
       if (status == CHANNEL_NORMAL && !this.channel.isOpen()) {
-        this.close(true, ChannelClosedCause.BECUASE_SOCKET_CLOSED_UNEXPECTED)
+        this.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
       }
       status
     }

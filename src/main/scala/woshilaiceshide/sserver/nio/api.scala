@@ -39,9 +39,9 @@ object ChannelClosedCause extends scala.Enumeration {
   val BY_BIZ = Value
   val SERVER_STOPPING = Value
   val BY_PEER = Value
-  val BECUASE_SOCKET_CLOSED_UNEXPECTED = Value
-  val BECUASE_SOCKET_CLOSED_NORMALLY = Value
-  val BECAUSE_IDLE = Value
+  val SOCKET_CLOSED_UNEXPECTED = Value
+  val SOCKET_CLOSED_NORMALLY = Value
+  val IDLED = Value
 }
 
 /*
