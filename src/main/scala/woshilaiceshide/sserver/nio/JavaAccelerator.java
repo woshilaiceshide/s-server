@@ -23,13 +23,10 @@ public class JavaAccelerator {
 
 		scala.Enumeration.Value cause = null;
 		scala.Option<?> attachment = scala.Option.empty();
-		boolean generate_written_event = false;
 		boolean try_write = false;
 		boolean should_close = false;
 
 		synchronized (wrapper) {
-			generate_written_event = wrapper.should_generate_written_event();
-			wrapper.should_generate_written_event_$eq(false);
 			cause = wrapper.closed_cause();
 			attachment = wrapper.attachment_for_closed();
 
@@ -90,13 +87,6 @@ public class JavaAccelerator {
 				wrapper.key().cancel();
 			} catch (Throwable throwable) {
 				SelectorRunner.log().debug("failed when close channel", throwable);
-			}
-		} else {
-			if (generate_written_event) {
-				if (null != wrapper.handler()) {
-					// nothing to do with oldHandler
-					wrapper.handler_$eq(wrapper.handler().writtenHappened(wrapper));
-				}
 			}
 		}
 

@@ -22,9 +22,9 @@ object WebSocketChannel {
 }
 
 class WebSocketChannel(channel: ChannelWrapper,
-    private[this] var closeAfterEnd: Boolean,
-    requestMethod: HttpMethod,
-    requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends S2ResponseRenderingComponent {
+                       private[this] var closeAfterEnd: Boolean,
+                       requestMethod: HttpMethod,
+                       requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends S2ResponseRenderingComponent {
 
   import WebSocketChannel._
   import WebSocket13._
@@ -107,18 +107,18 @@ class WebSocketChannel(channel: ChannelWrapper,
     val closeNow = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
     if (closeMode == S2ResponseRenderingComponent.CloseMode.CloseAfterEnd) closeAfterEnd = true
 
-    channel.write(r.to_byte_buffer(), true, false)
+    channel.write(r.to_byte_buffer(), true)
     configurator.return_bytes_rendering(r)
 
   }
 
   def writeString(s: String) = {
     val rendered = render(s)
-    channel.write(rendered.toArray, true, false, false)
+    channel.write(rendered.toArray, true, false)
   }
   def writeBytes(bytes: Array[Byte]) = {
     val rendered = render(bytes, WebSocket13.OpCode.BINARY)
-    channel.write(rendered.toArray, true, false, false)
+    channel.write(rendered.toArray, true, false)
   }
   def close(closeCode: Option[CloseCode.Value] = CloseCode.NORMAL_CLOSURE_OPTION) = {
 
@@ -134,13 +134,13 @@ class WebSocketChannel(channel: ChannelWrapper,
     if (continued) {
       val frame = WSClose(closeCode.getOrElse(CloseCode.NORMAL_CLOSURE), why(null), EMPTY_BYTE_ARRAY, true, false, EMPTY_BYTE_ARRAY)
       val rendered = render(frame)
-      channel.write(rendered.toArray, true, false, false)
+      channel.write(rendered.toArray, true, false)
       channel.closeChannel(false, closeCode)
     }
   }
   def ping() = {
     val rendered = render(WebSocket13.EMPTY_BYTE_ARRAY, WebSocket13.OpCode.PING)
-    channel.write(rendered.toArray, true, false, false)
+    channel.write(rendered.toArray, true, false)
   }
 }
 
@@ -199,7 +199,7 @@ class WebsocketTransformer(
           parser = parser1
           this
         }
-        case WSResult.End => { /* nothing to do */ null /*this*/ }
+        case WSResult.End                      => { /* nothing to do */ null /*this*/ }
         case WSResult.Error(closeCode, reason) => { channelWrapper.closeChannel(false); null /*this*/ }
       }
     }
@@ -211,14 +211,12 @@ class WebsocketTransformer(
 
   def channelWritable(channelWrapper: ChannelWrapper): Unit = handler.channelWritable()
 
-  def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler = this //nothing else
-
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
     cause match {
       case ChannelClosedCause.BY_BIZ => {
         val closeCode = attachment match {
           case Some(code: WebSocket13.CloseCode.Value) => code
-          case _ => WebSocket13.CloseCode.CLOSED_ABNORMALLY
+          case _                                       => WebSocket13.CloseCode.CLOSED_ABNORMALLY
         }
         handler.fireClosed(closeCode, cause.toString())
       }

@@ -58,7 +58,7 @@ final class HttpChannel(
    * to make the best performance, do your best to use the instantiated objects in
    * 'spray.http.ContentTypes' and 'spray.http.MediaTypes' and 'spray.http.ContentTypes.HttpCharsets'.
    *
-   * @return a flag of type 'woshilaiceshide.sserver.nio.WriteResult' indicating the bytes is written successfully.
+   * @return a flag of type 'woshilaiceshide.sserver.nio.WriteResult' indicating the bytes are written successfully.
    * this is a IMPORTANT flag!
    *
    * use the returned 'woshilaiceshide.sserver.nio.WriteResult' and 'woshilaiceshide.sserver.http.ResponseAction.responseWithASink(sink: ResponseSink)'
@@ -78,10 +78,8 @@ final class HttpChannel(
       val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
-      //if finished, jump to the next request in the pipelining(if existed)
-      val generate_written_event = _finished && configurator.max_request_in_pipeline > 1
       //use 'write_even_if_too_busy = true' as intended
-      val write_result = channel.write(r.to_byte_buffer(), true, generate_written_event)
+      val write_result = channel.write(r.to_byte_buffer(), true, false)
 
       configurator.return_bytes_rendering(r)
 

@@ -22,7 +22,7 @@ import SelectorRunner._
 
 private[nio] object NioSocketReaderWriter {
 
-  //Byte or Int for helper given padding/alignment, object sizes are the same.
+  //Given padding/alignment, Byte or Int for helper, object sizes are the same.
   final class BytesNode(val bytes: ByteBuffer, var next: BytesNode = null, val helper: Int)
   final class BytesList(val head: BytesNode, var last: BytesNode = null) {
     def append(x: ByteBuffer, helper: Int) = {
@@ -318,15 +318,21 @@ class NioSocketReaderWriter private[nio] (
     private[NioSocketReaderWriter] def close(rightNow: Boolean = false, cause: ChannelClosedCause.Value, attachment: Option[_] = None): Unit = {
       val should_pend = this.synchronized {
         val rightNow1 = if (rightNow) true else writes == null
-        if (CHANNEL_CLOSING_RIGHT_NOW != status) {
+        if (CHANNEL_CLOSING_RIGHT_NOW != status && CHANNEL_CLOSED != status) {
           closed_cause = cause
           attachment_for_closed = attachment
         }
         if (CHANNEL_NORMAL == status) {
           status = if (rightNow1) CHANNEL_CLOSING_RIGHT_NOW else CHANNEL_CLOSING_GRACEFULLY
           !already_pended
+
+        } else if (CHANNEL_CLOSING_GRACEFULLY == status && rightNow1) {
+          status = CHANNEL_CLOSING_RIGHT_NOW
+          !already_pended
+
         } else {
           false
+
         }
 
       }
@@ -341,7 +347,7 @@ class NioSocketReaderWriter private[nio] (
 
     }
 
-    //Only the writing to the channel is taken into account when calculating the idle-time-out by default.
+    //Only the writing to the channel is taken into account when calculating the idle-time-out, by default.
     //So if transferring big files, such as in http chunking requests that last long time, use resetIdle(). 
     def resetIdle(): Unit = this.synchronized {
       this.last_active_time = System.currentTimeMillis()
@@ -384,7 +390,6 @@ class NioSocketReaderWriter private[nio] (
 
     //use a (byte)flag to store the following two fields?
     private[nio] var already_pended = false
-    private[nio] var should_generate_written_event = false
 
     @tailrec private final def write_immediately(buffer: ByteBuffer, times: Int): Unit = {
       if (0 < times) {
@@ -403,11 +408,7 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    /**
-     * if generate_written_event is true, then 'bytesWritten' will be fired.
-     *
-     */
-    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult = {
+    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult = {
 
       val in_io_worker_thread = NioSocketReaderWriter.this.is_in_io_worker_thread()
 
@@ -420,19 +421,11 @@ class NioSocketReaderWriter private[nio] (
       this.synchronized {
         if (CHANNEL_NORMAL == status) {
 
-          def generate() = {
-            if (should_generate_written_event == false && generate_written_event == true) {
-              should_generate_written_event = generate_written_event
-              set_pend(!already_pended)
-            }
-          }
-
           this.last_active_time = System.currentTimeMillis()
 
           val remaining = if (null != bytes) bytes.remaining() else 0
 
           if (0 == remaining) {
-            generate()
             set_result(WriteResult.WR_OK)
 
           } else if (!write_even_if_too_busy && bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {
@@ -440,10 +433,10 @@ class NioSocketReaderWriter private[nio] (
 
           } else {
 
-            @tailrec def pend_bytes(buffer: ByteBuffer, pool: ByteBufferPool, used_by_io_thread: Boolean): Unit = {
+            @tailrec def pend_unreusable_bytes(buffer: ByteBuffer, pool: ByteBufferPool, used_by_io_thread: Boolean): Unit = {
               if (buffer.hasRemaining()) {
 
-                val borrowed = pool.borrow_buffer(512)
+                val borrowed = pool.borrow_buffer(buffer.remaining())
                 if (0 >= borrowed.helper) {
                   throw new Error("supposed to be not here!")
                 }
@@ -468,7 +461,7 @@ class NioSocketReaderWriter private[nio] (
                   writes.append(borrowed.buffer, helper)
                 }
                 if (buffer.hasRemaining()) {
-                  pend_bytes(buffer, pool, used_by_io_thread)
+                  pend_unreusable_bytes(buffer, pool, used_by_io_thread)
                 }
               }
             }
@@ -481,9 +474,9 @@ class NioSocketReaderWriter private[nio] (
               }
             }
 
-            def write1() = {
+            def write0() = {
               //move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
-              //or the selector's i/o thread may collide with the writing thread, which will twice the cost.
+              //or the selector's i/o thread may collide with the current writing thread, which will twice the cost.
               if (null == writes && in_io_worker_thread) {
                 write_immediately(bytes, configurator.spin_count_when_write_immediately)
                 if (bytes.hasRemaining()) {
@@ -491,7 +484,7 @@ class NioSocketReaderWriter private[nio] (
                   if (bytes_is_reusable) {
                     pend_reusable_bytes(bytes)
                   } else {
-                    pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+                    pend_unreusable_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
                   }
 
                 }
@@ -501,20 +494,19 @@ class NioSocketReaderWriter private[nio] (
 
               } else if (in_io_worker_thread) {
                 bytes_waiting_for_written = bytes_waiting_for_written + remaining
-                pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+                pend_unreusable_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
 
               } else {
                 bytes_waiting_for_written = bytes_waiting_for_written + remaining
-                pend_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, false)
+                pend_unreusable_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, false)
 
               }
-              generate()
               val xxx = if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) WriteResult.WR_OK_BUT_OVERFLOWED else WriteResult.WR_OK
               set_result(xxx)
               set_pend(!already_pended && writes != null)
             }
 
-            write1()
+            write0()
 
           }
 
@@ -600,7 +592,7 @@ class NioSocketReaderWriter private[nio] (
             } else if (node.helper < 0) {
               NioSocketReaderWriter.this.buffer_pool_used_by_io_thread.return_buffer(bytes, (0 - node.helper).toByte)
             } else {
-              //when helper is zero, the buffer is not internal, it's just a reusable buffer from the outside. 
+              //when helper is zero, the buffer is not internal, it's just a reusable buffer from the outside.
             }
             writing0(original_list, node.next, written_bytes + written)
 
@@ -651,14 +643,10 @@ class NioSocketReaderWriter private[nio] (
 
       var cause: ChannelClosedCause.Value = null
       var attachment: Option[_] = None
-      var generate_written_event = false
 
       var try_write = false
 
       var should_close: Boolean = this.synchronized {
-
-        generate_written_event = this.should_generate_written_event
-        should_generate_written_event = false
 
         cause = this.closed_cause
         attachment = this.attachment_for_closed
@@ -725,14 +713,6 @@ class NioSocketReaderWriter private[nio] (
             handler = null
           }
           key.cancel()
-        }
-      } else {
-        if (generate_written_event) {
-          if (null != this.handler) {
-            val newHandler = this.handler.writtenHappened(this)
-            //nothing to do with oldHandler
-            this.handler = newHandler
-          }
         }
       }
     }

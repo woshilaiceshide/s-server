@@ -145,12 +145,12 @@ object SampleHttpServer extends App {
     //wrk -c100 -t2 -d30s -H "Connection: keep-alive" -H "User-Agent: ApacheBench/2.4" -H "Accept: */*"  http://127.0.0.1:8787/ping
     def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = request match {
 
-      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping => write_ping(channel)
+      case HttpRequest(HttpMethods.GET, uri, _, _, _) if uri.path == path_ping     => write_ping(channel)
 
       //wrk -c100 -t2 -d30s --script=./scripts/pipeline_ping.lua http://127.0.0.1:8787/ping_asynchronously
       case HttpRequest(HttpMethods.GET, Uri.Path("/ping_asynchronously"), _, _, _) => write_ping_asynchronously(channel)
 
-      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket"), _, _, _) => accept_websocket(x)
+      case x @ HttpRequest(HttpMethods.GET, Uri.Path("/websocket"), _, _, _)       => accept_websocket(x)
 
       case HttpRequest(HttpMethods.POST, uri, _, _, _) if uri.path.startsWith(Uri.Path("/chunked_request")) => {
         log.debug(s"a new request targeted at ${uri} from ${channel.remoteAddress}")
@@ -209,7 +209,8 @@ object SampleHttpServer extends App {
     //buffer_pool_factory = DefaultByteBufferPoolFactory(512, 64, true),
     //more i/o, more asynchronously, then make it bigger
     buffer_pool_factory = DefaultByteBufferPoolFactory(512, 512, true),
-    try_to_optimize_selector_key_set = false, 
+    receive_buffer_size = 1024 * 512,
+    try_to_optimize_selector_key_set = false,
     io_thread_factory = new woshilaiceshide.sserver.http.AuxThreadFactory())
 
   val port = 8787

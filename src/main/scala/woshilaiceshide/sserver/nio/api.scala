@@ -68,7 +68,6 @@ trait ChannelWrapper {
   override def toString() = s"""${remoteAddress}->${localAddress}@@${hashCode}}"""
 
   /**
-   *
    * @param bytes_is_reusable
    * this parameter is an advanced one. it should be false in general.
    * if bytes_is_reusable is true, then the given 'bytes' will be reused directly.
@@ -82,26 +81,21 @@ trait ChannelWrapper {
    *
    * 2.
    *   all bytes are written successfully, or none written(no partial written).
-   *
-   * 3.
-   *   if generate_written_event is true, then 'writtenHappend' will be fired.
-   *   note that 'writtenHappened' means just an "writing' event, and zero byte may be written.
-   *   multiple 'generate_written_event' may be folded into one.
-   *
    */
-  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult = {
-    write(bytes, 0, bytes.length, write_even_if_too_busy, generate_written_event, bytes_is_reusable)
+  def write(bytes: Array[Byte], write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult = {
+    write(bytes, 0, bytes.length, write_even_if_too_busy, bytes_is_reusable)
   }
 
-  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult = {
-    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, generate_written_event, bytes_is_reusable)
+  def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult = {
+    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, bytes_is_reusable)
   }
 
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean): WriteResult = {
-    write(buffer, write_even_if_too_busy, generate_written_event, false)
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean): WriteResult = {
+    write(buffer, write_even_if_too_busy, false)
   }
 
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, generate_written_event: Boolean, bytes_is_reusable: Boolean): WriteResult
+  //TODO what's about a optional customized event followed by this writing?
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult
 }
 
 /**
@@ -142,12 +136,6 @@ trait ChannelHandler {
    * this sink is important for throttling.
    */
   def channelWritable(channelWrapper: ChannelWrapper): Unit
-
-  /**
-   * this sink may be used when some continuation should start after some writes happened.
-   * see 'ChannelWrapper.write(...)' for more information.
-   */
-  def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler
 
   def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit
 }
@@ -207,7 +195,7 @@ final case class FixedByteBufferPool(fragment_size: Int, cached_count: Int, dire
   def borrow_buffer(size_hint: Int): Borrowed = {
     val tmp = pool.pop()
     if (tmp.isEmpty) {
-      Borrowed(2, ByteBuffer.allocate(fragment_size))
+      Borrowed(2, ByteBuffer.allocate(fragment_size * Math.min(size_hint / fragment_size + 1, 2)))
     } else {
       Borrowed(1, tmp.get)
     }
@@ -234,7 +222,7 @@ final case class SynchronizedFragmentedByteBufferPool(fragment_size: Int, cached
   def borrow_buffer(size_hint: Int): Borrowed = this.synchronized {
     val tmp = pool.pop()
     if (tmp.isEmpty) {
-      Borrowed(2, ByteBuffer.allocate(fragment_size))
+      Borrowed(2, ByteBuffer.allocate(fragment_size * Math.min(size_hint / fragment_size + 1, 2)))
     } else {
       Borrowed(1, tmp.get)
     }
