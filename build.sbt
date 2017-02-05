@@ -75,7 +75,7 @@ javaOptions in Universal += s"-version=${version.value}"
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'
 val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
-jol := Seq("org.openjdk.jol" % "jol-core" % "0.5", "org.openjdk.jol" % "jol-cli" % "0.5")
+jol := Seq("org.openjdk.jol" % "jol-core" % "0.7", "org.openjdk.jol" % "jol-cli" % "0.7")
 //libraryDependencies ++= jol.value
 //mainClass in Compile := Some("org.openjdk.jol.Main")
 
