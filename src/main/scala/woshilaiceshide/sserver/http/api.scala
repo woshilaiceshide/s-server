@@ -43,7 +43,7 @@ final case class HttpConfigurator(
     parser_settings: spray.can.parsing.ParserSettings = HttpConfigurator.default_parser_settings,
     raw_request_uri_header: Boolean = false,
     max_request_in_pipeline: Int = 1,
-    server_name: String = "S-SERVER/2.2",
+    server_name: String = "S-SERVER/2.3",
     chunkless_streaming: Boolean = false,
     transparent_header_requestes: Boolean = false,
 

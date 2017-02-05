@@ -2,7 +2,7 @@ organization := "woshilaiceshide"
 
 name := "s-server"
 
-version := "2.2"
+version := "2.3"
 
 description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
 
@@ -38,9 +38,9 @@ retrieveManaged := false
 
 enablePlugins(JavaAppPackaging)
 
-unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "src" / "scala" )
+unmanagedSourceDirectories in Compile += baseDirectory( _ / "src" / "scala" ).value
 
-unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "spray" / "scala" )
+unmanagedSourceDirectories in Compile += baseDirectory( _ / "spray" / "scala" ).value
 
 //libraryDependencies ++= 
 //  Seq(
@@ -55,13 +55,13 @@ unmanagedSourceDirectories in Compile <+= baseDirectory( _ / "spray" / "scala" )
 //  //"io.spray"            %%   "spray-util"    % "1.3.3"
 //  )
 
-libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.7"
+libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.16"
 
 libraryDependencies += "org.parboiled" % "parboiled-scala_2.11" % "1.1.7"
 
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.7"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.9"
 
-libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.21"
+libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.22"
 
 javaOptions in Universal += "-J-XX:-RestrictContended"
 javaOptions in Universal += "-J-Xmx64m"
