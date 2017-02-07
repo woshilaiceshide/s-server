@@ -49,6 +49,7 @@ sealed abstract class ResponseAction
 //3. websocket, stateful and a different parser/handler needed
 object ResponseAction {
 
+  private[http] final case class ResponseWithThis(response: HttpResponse) extends ResponseAction
   private[http] object ResponseNormally extends ResponseAction
   private[http] final case class ResponseWithASink(sink: ResponseSink) extends ResponseAction
   private[http] final case class AcceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler) extends ResponseAction
@@ -94,7 +95,7 @@ private[http] object DynamicRequestClassifier extends RequestClassifier {
   def classification(request: HttpRequest): RequestClassification.Value = {
     request match {
       case x if WebSocket13.isAWebSocketRequest(x) => RequestClassification.WebsocketStart
-      case _ => RequestClassification.PlainHttp
+      case _                                       => RequestClassification.PlainHttp
     }
   }
 

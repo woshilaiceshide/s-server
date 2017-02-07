@@ -79,7 +79,7 @@ final class HttpChannel(
       val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
       //use 'write_even_if_too_busy = true' as intended
-      val write_result = channel.write(r.to_byte_buffer(), true, false, true)
+      val write_result = channel.write(r.to_byte_buffer(), true, false)
 
       configurator.return_bytes_rendering(r)
 

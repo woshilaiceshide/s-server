@@ -425,7 +425,7 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean, as_soon_as_possible: Boolean): WriteResult = {
+    def write(bytes: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult = {
 
       val in_io_worker_thread = NioSocketReaderWriter.this.is_in_io_worker_thread()
 
@@ -494,7 +494,7 @@ class NioSocketReaderWriter private[nio] (
             def write0() = {
               //move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
               //or the selector's i/o thread may collide with the current writing thread, which will twice the cost.
-              if (null == writes && in_io_worker_thread && as_soon_as_possible) {
+              if (null == writes && in_io_worker_thread) {
                 write_immediately(bytes, configurator.spin_count_when_write_immediately)
                 if (bytes.hasRemaining()) {
                   bytes_waiting_for_written = bytes_waiting_for_written + bytes.remaining()
@@ -546,6 +546,146 @@ class NioSocketReaderWriter private[nio] (
       try_write.result
     }
 
+    private def write(bytes: BytesList, remaining: Int): WriteResult = {
+
+      val in_io_worker_thread = NioSocketReaderWriter.this.is_in_io_worker_thread()
+
+      var please_wakeup = false
+
+      val try_write = new JavaAccelerator.TryWrite()
+      def set_result(result: WriteResult) = try_write.result = result
+      def set_pend(pend: Boolean) = if ((!try_write.pend) && pend) { try_write.pend = true }
+
+      this.synchronized {
+        if (CHANNEL_NORMAL == status) {
+
+          this.last_active_time = System.currentTimeMillis()
+
+          if (0 == remaining) {
+            set_result(WriteResult.WR_OK)
+
+          } else { //write_even_if_too_busy
+
+            def write0() = {
+              //move all the i/o operations into the selector's i/o thread, even if channel.write(...) is thread-safe, 
+              //or the selector's i/o thread may collide with the current writing thread, which will twice the cost.
+              if (null == writes && in_io_worker_thread) {
+                val (not_written, written_count) = writing1(bytes)
+                writes = not_written
+                bytes_waiting_for_written = remaining - written_count
+
+              } else {
+                bytes_waiting_for_written = bytes_waiting_for_written + remaining
+                writes.append(bytes)
+
+              }
+              val xxx = if (bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) WriteResult.WR_OK_BUT_OVERFLOWED else WriteResult.WR_OK
+              set_result(xxx)
+              set_pend(!already_pended && writes != null)
+            }
+
+            write0()
+
+          }
+
+          if (try_write.pend) {
+            already_pended = true
+            //if in workerThread, no need for waking up, or processor will be wasted for one more "listen()"
+            please_wakeup = !in_io_worker_thread
+
+          }
+
+        } else {
+          set_result(WriteResult.WR_FAILED_BECAUSE_CHANNEL_CLOSED)
+        }
+      }
+
+      //pending comes before waking up
+      if (try_write.pend) pend_for_io_operation(this, in_io_worker_thread)
+      if (please_wakeup) NioSocketReaderWriter.this.wakeup_selector()
+
+      try_write.result
+    }
+
+    //I am not thread safe.
+    private[nio] class MyCachable(capacity: Int) extends Cachable {
+
+      private var cached: BytesList = null
+      private var cached_size: Int = 0
+
+      @tailrec
+      private final def pend_unreusable_bytes(buffer: ByteBuffer, pool: ByteBufferPool, used_by_io_thread: Boolean): Unit = {
+        if (buffer.hasRemaining()) {
+
+          val borrowed = pool.borrow_buffer(buffer.remaining())
+          if (0 >= borrowed.helper) {
+            throw new Error("supposed to be not here!")
+          }
+
+          if (buffer.remaining() > borrowed.buffer.capacity()) {
+            val limit = buffer.limit()
+            buffer.limit(buffer.position() + borrowed.buffer.capacity())
+            borrowed.buffer.put(buffer)
+            borrowed.buffer.flip()
+            buffer.limit(limit)
+
+          } else {
+            borrowed.buffer.put(buffer)
+            borrowed.buffer.flip()
+          }
+
+          val helper = if (used_by_io_thread) -borrowed.helper else borrowed.helper
+
+          if (cached == null) {
+            cached = new BytesList(new BytesNode(borrowed.buffer, null, helper), null)
+          } else {
+            cached.append(borrowed.buffer, helper)
+          }
+          if (buffer.hasRemaining()) {
+            pend_unreusable_bytes(buffer, pool, used_by_io_thread)
+          }
+        }
+      }
+
+      def pend_reusable_bytes(buffer: ByteBuffer): Unit = {
+        if (cached == null) {
+          cached = new BytesList(new BytesNode(buffer, null, 0), null)
+        } else {
+          cached.append(buffer, 0)
+        }
+      }
+
+      def write(bytes: ByteBuffer, bytes_is_reusable: Boolean): WriteResult = {
+        val in_io_worker_thread = NioSocketReaderWriter.this.is_in_io_worker_thread()
+        val remaining = if (null != bytes) bytes.remaining() else 0
+        if (remaining > 0) {
+          cached_size = cached_size + remaining
+          if (bytes_is_reusable) {
+            pend_reusable_bytes(bytes)
+
+          } else if (in_io_worker_thread) {
+            pend_unreusable_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_io_thread, true)
+
+          } else {
+            pend_unreusable_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, true)
+          }
+        }
+        if (cached_size >= capacity) {
+          flush()
+        } else {
+          WriteResult.WR_OK
+        }
+      }
+      def flush(): WriteResult = {
+        val tmp = MyChannelWrapper.this.write(cached, cached_size)
+        cached = null
+        cached_size = 0
+        tmp
+      }
+    }
+
+    def cachable(capacity: Int): Cachable = new MyCachable(capacity)
+
     private[nio] final def writing(): Int = {
       val tmp = this.synchronized {
         val x = writes
@@ -553,24 +693,24 @@ class NioSocketReaderWriter private[nio] (
         x
       }
       if (null != tmp) {
-        //val remain = writing0(tmp, tmp.head, 0)
-        val remain = writing1(tmp)
+        //val (not_written, written_count) = writing0(tmp, tmp.head, 0)
+        val (not_written, written_count) = writing1(tmp)
 
         val written = this.synchronized {
 
           //clear op_write just here for optimization.
-          if (null == remain._1 && writes == null) {
+          if (null == not_written && writes == null) {
             this.clear_op_write()
           }
 
           val prev_bytes_waiting_for_written = bytes_waiting_for_written
-          bytes_waiting_for_written = bytes_waiting_for_written - remain._2
+          bytes_waiting_for_written = bytes_waiting_for_written - written_count
 
           if (null == writes) {
-            writes = remain._1
-          } else if (null != remain._1) {
-            remain._1.append(writes)
-            writes = remain._1
+            writes = not_written
+          } else if (null != not_written) {
+            not_written.append(writes)
+            writes = not_written
           }
 
           val become_writable = if (prev_bytes_waiting_for_written > max_bytes_waiting_for_written_per_channel) {

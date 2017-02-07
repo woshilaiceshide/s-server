@@ -44,6 +44,11 @@ object ChannelClosedCause extends scala.Enumeration {
   val IDLED = Value
 }
 
+//it may be not thread safe
+trait Cachable {
+  def write(bytes: ByteBuffer, bytes_is_reusable: Boolean): WriteResult
+  def flush(): WriteResult
+}
 /*
    * all operations are thread safe
    */
@@ -87,15 +92,19 @@ trait ChannelWrapper {
   }
 
   def write(bytes: Array[Byte], offset: Int, length: Int, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult = {
-    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, bytes_is_reusable, true)
+    write(ByteBuffer.wrap(bytes, offset, length), write_even_if_too_busy, bytes_is_reusable)
   }
 
   def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean): WriteResult = {
-    write(buffer, write_even_if_too_busy, false, true)
+    write(buffer, write_even_if_too_busy, false)
   }
 
   //TODO what's about a optional customized event followed by this writing?
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean, as_soon_as_possible: Boolean): WriteResult
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult
+
+  //the result Cachable is not thread safe
+  def cachable(capacity: Int): Cachable
+
 }
 
 /**
