@@ -49,27 +49,29 @@ sealed abstract class ResponseAction
 //3. websocket, stateful and a different parser/handler needed
 object ResponseAction {
 
-  private[http] final case class ResponseWithThis(response: HttpResponse) extends ResponseAction
-  private[http] object ResponseNormally extends ResponseAction
-  private[http] final case class ResponseWithASink(sink: ResponseSink) extends ResponseAction
-  private[http] final case class AcceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler) extends ResponseAction
-  private[http] final case class AcceptChunking(handler: ChunkedRequestHandler) extends ResponseAction
+  final case class ResponseWithThis(response: HttpResponse, size_hint: Int) extends ResponseAction
+  object ResponseNormally extends ResponseAction
+  final case class ResponseWithASink(sink: ResponseSink) extends ResponseAction
+  final case class AcceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler) extends ResponseAction
+  final case class AcceptChunking(handler: ChunkedRequestHandler) extends ResponseAction
+
+  def responseWithThis(response: HttpResponse, size_hint: Int) = ResponseWithThis(response, size_hint)
 
   //I'll work with this response finely.
-  def responseNormally: ResponseAction = ResponseNormally
+  def responseNormally: ResponseNormally.type = ResponseNormally
 
   //maybe a chunked response or a big asynchronous response will be sent, 
   //so some sink is help to tweak the related response stream.
-  def responseWithASink(sink: ResponseSink): ResponseAction = ResponseWithASink(sink)
+  def responseWithASink(sink: ResponseSink): ResponseWithASink = ResponseWithASink(sink)
 
   //return a websocket handler instead of websocket transformer, 
   //because the transformer need to be instantiated every time, which will be coded incorrectly by some coders.
-  def acceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler): ResponseAction = {
+  def acceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler): AcceptWebsocket = {
     new AcceptWebsocket(factory)
   }
 
   //I'll work with this chunked request.
-  def acceptChunking(handler: ChunkedRequestHandler): ResponseAction = {
+  def acceptChunking(handler: ChunkedRequestHandler): AcceptChunking = {
     new AcceptChunking(handler)
   }
 

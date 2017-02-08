@@ -42,10 +42,9 @@ object SampleHttpServer extends App {
 
     }
 
-    private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World"))
+    private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello, World!"))
     private def write_ping(channel: HttpChannel) = {
-      channel.writeResponse(ping)
-      ResponseAction.responseNormally
+      ResponseAction.responseWithThis(ping, size_hint = 512)
     }
     private val path_ping = Uri.Path("/ping")
 
@@ -180,7 +179,7 @@ object SampleHttpServer extends App {
 
   }
 
-  val http_configurator = new HttpConfigurator(max_request_in_pipeline = 8, use_direct_byte_buffer_for_cached_bytes_rendering = false)
+  val http_configurator = new HttpConfigurator(max_request_in_pipeline = 1024, use_direct_byte_buffer_for_cached_bytes_rendering = false)
 
   val factory = new HttpChannelHandlerFactory(handler, http_configurator)
 
@@ -208,8 +207,8 @@ object SampleHttpServer extends App {
     //buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1, true),
     //buffer_pool_factory = DefaultByteBufferPoolFactory(512, 64, true),
     //more i/o, more asynchronously, then make it bigger
-    buffer_pool_factory = DefaultByteBufferPoolFactory(512, 512, true),
-    receive_buffer_size = 1024 * 512,
+    buffer_pool_factory = DefaultByteBufferPoolFactory(512, 1024, true),
+    receive_buffer_size = 1024 * 1024,
     try_to_optimize_selector_key_set = false,
     io_thread_factory = new woshilaiceshide.sserver.http.AuxThreadFactory())
 

@@ -171,7 +171,7 @@ class WebsocketTransformer(
 
   def customizedObjectReceived(obj: AnyRef, channelWrapper: ChannelWrapper): Unit = {}
 
-  //TODO to be optimized
+  //TODO to be optimized using Cachable etc???
   def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
     val byteString = ByteString(byteBuffer)

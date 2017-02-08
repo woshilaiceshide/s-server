@@ -13,6 +13,7 @@ import scala.annotation._
 final class HttpChannel(
     private[http] val channel: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
+    private[this] val transformer: HttpTransformer,
     requestMethod: HttpMethod,
     requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends S2ResponseRenderingComponent {
 
@@ -68,7 +69,9 @@ final class HttpChannel(
    * until 'woshilaiceshide.sserver.http.ResponseSink.channelWritable()' is invoked.
    *
    */
-  def writeResponse(response: HttpResponsePart, size_hint: Int = 1024, write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers) = {
+  def writeResponse(response: HttpResponsePart,
+                    size_hint: Int = 1024,
+                    write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers): WriteResult = {
 
     val (wr, should_close) = synchronized {
 
@@ -76,15 +79,47 @@ final class HttpChannel(
 
       val r = configurator.borrow_bytes_rendering(size_hint, response)
       val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
-      val closeMode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
+      val close_mode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
       //use 'write_even_if_too_busy = true' as intended
       val write_result = channel.write(r.to_byte_buffer(), true, false)
 
       configurator.return_bytes_rendering(r)
 
-      val close_now = closeMode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
-      if (closeMode == CloseMode.CloseAfterEnd) closeAfterEnd = true
+      val close_now = close_mode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
+      if (close_mode == CloseMode.CloseAfterEnd) closeAfterEnd = true
+
+      if (_finished && configurator.max_request_in_pipeline > 1) {
+        post_to_io_thread { transformer.process_request_in_pipeline(channel) }
+      }
+
+      (write_result, close_now)
+    }
+
+    if (should_close) channel.closeChannel(false)
+
+    wr
+  }
+  private[http] def writeResponse0(response: HttpResponsePart,
+                                   size_hint: Int = 1024,
+                                   write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers,
+                                   as_soon_as_possible: Boolean): WriteResult = {
+
+    val (wr, should_close) = synchronized {
+
+      val _finished = check_finished(response)
+
+      val r = configurator.borrow_bytes_rendering(size_hint, response)
+      val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
+      val close_mode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
+
+      //use 'write_even_if_too_busy = true' as intended
+      val write_result = channel.write(r.to_byte_buffer(), true, false, as_soon_as_possible = as_soon_as_possible)
+
+      configurator.return_bytes_rendering(r)
+
+      val close_now = close_mode.shouldCloseNow(ctx.responsePart, closeAfterEnd)
+      if (close_mode == CloseMode.CloseAfterEnd) closeAfterEnd = true
 
       (write_result, close_now)
     }

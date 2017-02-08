@@ -99,11 +99,17 @@ trait ChannelWrapper {
     write(buffer, write_even_if_too_busy, false)
   }
 
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult = {
+    write(buffer, write_even_if_too_busy, bytes_is_reusable, true)
+  }
+
   //TODO what's about a optional customized event followed by this writing?
-  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean): WriteResult
+  def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean, as_soon_as_possible: Boolean): WriteResult
 
   //the result Cachable is not thread safe
   def cachable(capacity: Int): Cachable
+
+  def is_open(): Boolean
 
 }
 

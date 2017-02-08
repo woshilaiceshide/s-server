@@ -89,17 +89,16 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     val result = parser.apply(akka.spray.createByteStringUnsafe(byteBuffer))
 
     @scala.annotation.tailrec def process(result: Result): ChannelHandler = {
-
-      val clear =
-        if (null == current_http_channel) {
-          true
-        } else if (current_http_channel.isCompleted) {
-          //null-ed it as early as possible
-          current_http_channel = null
-          true
-        } else {
-          false
-        }
+      //TODO if channel is closed because "Keep-Alive" is false(or other causes), exit as early as possible
+      val clear = if (null == current_http_channel) {
+        true
+      } else if (current_http_channel.isCompleted) {
+        //null-ed it as early as possible
+        current_http_channel = null
+        true
+      } else {
+        false
+      }
 
       result match {
         //closeAfterResponseCompletion will be fine even if it's a 'MessageChunk'
@@ -117,15 +116,23 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                   current_sink = null
                 }
 
-                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, this, x.method, x.protocol, configurator)
                 val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
                 action match {
+                  case x: ResponseAction.ResponseWithThis => {
+                    current_http_channel.writeResponse0(x.response, x.size_hint, as_soon_as_possible = false)
+                    current_http_channel = null
+                    process(continue)
+                  }
                   case ResponseAction.ResponseNormally => {
+                    if (current_http_channel.isCompleted) {
+                      //null-ed it as early as possible
+                      current_http_channel = null
+                    }
                     //pipeline may be OK, even if http pipeline is disabled. 
                     process(continue)
                   }
                   case ResponseAction.AcceptWebsocket(factory) => {
-
                     val websocket_channel = new WebSocketChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
                     val websocket_channel_handler = factory(websocket_channel)
                     val websocket = new WebsocketTransformer(websocket_channel_handler, websocket_channel, configurator)
@@ -191,11 +198,16 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
                   current_sink = null
                 }
 
-                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
+                current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, this, x.request.method, x.request.protocol, configurator)
                 val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
                 action match {
                   case ResponseAction.AcceptChunking(h) => {
                     current_sink = h
+                    process(continue)
+                  }
+                  case x: ResponseAction.ResponseWithThis => {
+                    current_http_channel.writeResponse0(x.response, x.size_hint, as_soon_as_possible = false)
+                    current_http_channel = null
                     process(continue)
                   }
                   case ResponseAction.ResponseNormally => {
@@ -275,10 +287,19 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     next.value match {
 
       case x: HttpRequest => {
-        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.method, x.protocol, configurator)
+        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, this, x.method, x.protocol, configurator)
         val action = handler.requestReceived(x, current_http_channel, DynamicRequestClassifier)
         action match {
+          case x: ResponseAction.ResponseWithThis => {
+            current_http_channel.writeResponse0(x.response, x.size_hint, as_soon_as_possible = false)
+            current_http_channel = null
+            this
+          }
           case ResponseAction.ResponseNormally => {
+            if (current_http_channel.isCompleted) {
+              //null-ed it as early as possible
+              current_http_channel = null
+            }
             this
           }
           case ResponseAction.AcceptWebsocket(factory) => {
@@ -335,14 +356,23 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
       case x: ChunkedRequestStart => {
 
-        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, x.request.method, x.request.protocol, configurator)
+        current_http_channel = new HttpChannel(channelWrapper, closeAfterResponseCompletion, this, x.request.method, x.request.protocol, configurator)
         val action = handler.requestReceived(x.request, current_http_channel, AChunkedRequestStart)
         action match {
           case ResponseAction.AcceptChunking(h) => {
             current_sink = h
             this
           }
+          case x: ResponseAction.ResponseWithThis => {
+            current_http_channel.writeResponse0(x.response, x.size_hint, as_soon_as_possible = false)
+            current_http_channel = null
+            this
+          }
           case ResponseAction.ResponseNormally => {
+            if (current_http_channel.isCompleted) {
+              //null-ed it as early as possible
+              current_http_channel = null
+            }
             this
           }
           case _ => {
@@ -380,7 +410,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
 
   }
 
-  def writtenHappened(channelWrapper: ChannelWrapper): ChannelHandler = {
+  private[http] def process_request_in_pipeline(channelWrapper: ChannelWrapper): Unit = {
 
     if (null == current_http_channel || current_http_channel.isCompleted) {
 
@@ -393,12 +423,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
       val next = de_queue()
       if (null != next) {
         process_request_in_pipeline(next, channelWrapper)
-      } else {
-        this
       }
-
-    } else {
-      this
     }
 
   }
