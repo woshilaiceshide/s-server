@@ -48,12 +48,6 @@ private[nio] object NioSocketReaderWriter {
         this
       }
     }
-    def put(x: ByteBuffer, in_io_worker_thread: Boolean) = {
-      val tmp = if (null != last) last else head
-      if (in_io_worker_thread && tmp.helper < 0) {
-        tmp.bytes.put(x)
-      }
-    }
     def toArray() = {
       @scala.annotation.tailrec
       def len(node: BytesNode, already: Int): Int = {
@@ -457,9 +451,6 @@ class NioSocketReaderWriter private[nio] (
           } else {
 
             @tailrec def pend_unreusable_bytes(buffer: ByteBuffer, pool: ByteBufferPool, used_by_io_thread: Boolean): Unit = {
-              if (buffer.hasRemaining() && writes != null) {
-                writes.put(buffer, used_by_io_thread)
-              }
               if (buffer.hasRemaining()) {
 
                 val borrowed = pool.borrow_buffer(buffer.remaining())
@@ -624,9 +615,6 @@ class NioSocketReaderWriter private[nio] (
 
       @tailrec
       private final def pend_unreusable_bytes(buffer: ByteBuffer, pool: ByteBufferPool, used_by_io_thread: Boolean): Unit = {
-        if (buffer.hasRemaining() && cached != null) {
-          cached.put(buffer, used_by_io_thread)
-        }
         if (buffer.hasRemaining()) {
           val borrowed = pool.borrow_buffer(buffer.remaining())
           if (0 >= borrowed.helper) {
