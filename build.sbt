@@ -28,7 +28,7 @@ transitiveClassifiers := Seq("sources")
 
 EclipseKeys.withSource := true
 
-scalaVersion := "2.11.8"
+scalaVersion := "2.12.1"
 
 scalacOptions := Seq("-unchecked", "-deprecation","-optimise", "-encoding", "utf8", "-Yno-adapted-args", "-target:jvm-1.8")
 
@@ -55,17 +55,17 @@ unmanagedSourceDirectories in Compile += baseDirectory( _ / "spray" / "scala" ).
 //  //"io.spray"            %%   "spray-util"    % "1.3.3"
 //  )
 
-libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.16"
+libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.17"
 
-libraryDependencies += "org.parboiled" % "parboiled-scala_2.11" % "1.1.7"
+libraryDependencies += "org.parboiled" %% "parboiled-scala" % "1.1.8"
 
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.9"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.1"
 
-libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.22"
+libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.24"
 
 javaOptions in Universal += "-J-XX:-RestrictContended"
-javaOptions in Universal += "-J-Xmx64m"
-javaOptions in Universal += "-J-Xms64m"
+javaOptions in Universal += "-J-Xmx1024m"
+javaOptions in Universal += "-J-Xms1024m"
 //javaOptions in Universal += "-J-XX:+UnlockDiagnosticVMOptions"
 //javaOptions in Universal += "-J-XX:+PrintInlining"
 javaOptions in Universal += "-Dproperty1=value1"
@@ -75,7 +75,7 @@ javaOptions in Universal += s"-version=${version.value}"
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'
 val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
-jol := Seq("org.openjdk.jol" % "jol-core" % "0.7", "org.openjdk.jol" % "jol-cli" % "0.7")
+jol := Seq("org.openjdk.jol" % "jol-core" % "0.7.1", "org.openjdk.jol" % "jol-cli" % "0.7.1")
 //libraryDependencies ++= jol.value
 //mainClass in Compile := Some("org.openjdk.jol.Main")
 

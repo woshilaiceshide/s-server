@@ -7,7 +7,7 @@ It's targeted for small footprint when running, with extensibility for mulit-thr
 
 Http parsing and rendering are based on spray(https://github.com/spray/spray), but I tweaked it much for performance and code size. 
 
-Note that I've refactored s-server very much since version 1.x. Version 2.x is not compatible with version 1.x, and the latter one is not be supported any more. 
+Note that I've refactored s-server very much since version 1.x. Version 2.3 is not compatible with previous versions, and the previous ones are not be supported any more. 
 
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!

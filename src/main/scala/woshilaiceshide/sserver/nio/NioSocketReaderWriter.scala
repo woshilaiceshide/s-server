@@ -48,6 +48,7 @@ private[nio] object NioSocketReaderWriter {
         this
       }
     }
+
     private def put(a: ByteBuffer, b: ByteBuffer): Unit = {
       val prev_limit = a.limit()
       val a_capacity = a.capacity()
@@ -58,9 +59,10 @@ private[nio] object NioSocketReaderWriter {
         a.flip()
       }
     }
+
     def put(x: ByteBuffer, in_io_worker_thread: Boolean): Unit = {
       val tmp = if (null != last) last else head
-      if (in_io_worker_thread ^ tmp.helper > 0) {
+      if ((in_io_worker_thread && tmp.helper < 0) || (!in_io_worker_thread && tmp.helper > 0)) {
         put(tmp.bytes, x)
       }
     }

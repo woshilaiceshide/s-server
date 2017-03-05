@@ -44,25 +44,25 @@ object SampleHttpServer extends App {
 
     private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello, World!"))
     private def write_ping(channel: HttpChannel) = {
-      ResponseAction.responseWithThis(ping, size_hint = 512)
+      ResponseAction.responseWithThis(ping, size_hint = 512, false)
     }
     private val path_ping = Uri.Path("/ping")
 
     private def write_404(channel: HttpChannel) = {
       channel.writeResponse { new HttpResponse(404) }
-      ResponseAction.responseNormally
+      ResponseAction.responseByMyself
     }
 
     private def write_400(channel: HttpChannel) = {
       channel.writeResponse { new HttpResponse(400) }
-      ResponseAction.responseNormally
+      ResponseAction.responseByMyself
     }
 
     private val ping_asynchronously = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello World Asynchronously"))
     private def write_ping_asynchronously(channel: HttpChannel) = {
       //channel.post_to_io_thread { channel.writeResponse(ping_asynchronously) }
       Future { channel.writeResponse(ping_asynchronously) }
-      ResponseAction.responseNormally
+      ResponseAction.responseByMyself
     }
 
     private def accept_websocket(request: HttpRequest) = ResponseAction.acceptWebsocket { websocket(request) }
@@ -138,7 +138,7 @@ object SampleHttpServer extends App {
     private def do_not_support_chunked_request(channel: HttpChannel) = {
       println("do not support chunked")
       channel.writeResponse { new HttpResponse(400, "I DOES NOT support chunked request.") }
-      ResponseAction.responseNormally
+      ResponseAction.responseByMyself
     }
 
     //wrk -c100 -t2 -d30s -H "Connection: keep-alive" -H "User-Agent: ApacheBench/2.4" -H "Accept: */*"  http://127.0.0.1:8787/ping
@@ -169,7 +169,7 @@ object SampleHttpServer extends App {
         channel.writeResponse(MessageChunk("this is the 3rd chunk\r\n"))
         channel.writeResponse(MessageChunk("this is the last chunk\r\n"))
         channel.writeResponse(ChunkedMessageEnd)
-        ResponseAction.responseNormally
+        ResponseAction.responseByMyself
       }
 
       case x: HttpRequest if classifier.classification(x) == RequestClassification.ChunkedHttpStart => do_not_support_chunked_request(channel)
@@ -201,7 +201,7 @@ object SampleHttpServer extends App {
   val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
   */
 
-  val configurator = XNioConfigurator(count_for_reader_writers = 2,
+  val configurator = XNioConfigurator(count_for_reader_writers = 1,
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator,
     //buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1, true),

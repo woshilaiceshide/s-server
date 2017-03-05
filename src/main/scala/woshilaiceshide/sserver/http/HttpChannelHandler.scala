@@ -15,7 +15,7 @@ import woshilaiceshide.sserver.nio._
 
 class HttpChannelHandlerFactory(http_channel_handler: HttpChannelHandler, configurator: HttpConfigurator) extends ChannelHandlerFactory {
 
-  //HttpTransformer is instantiated every time because the handler is stateful.
+  //HttpTransformer is instantiated every time because the handler is stateful/un-reusable.
   def getHandler(channel: ChannelInformation): Option[ChannelHandler] = {
 
     val transformer = new HttpTransformer(http_channel_handler, configurator)
@@ -49,16 +49,19 @@ sealed abstract class ResponseAction
 //3. websocket, stateful and a different parser/handler needed
 object ResponseAction {
 
-  final case class ResponseWithThis(response: HttpResponse, size_hint: Int) extends ResponseAction
-  object ResponseNormally extends ResponseAction
+  final case class ResponseWithThis(response: HttpResponse, size_hint: Int, close_if_overflowed: Boolean, write_server_and_date_headers: Boolean) extends ResponseAction
+  object ResponseByMyself extends ResponseAction
   final case class ResponseWithASink(sink: ResponseSink) extends ResponseAction
   final case class AcceptWebsocket(factory: WebSocketChannel => WebSocketChannelHandler) extends ResponseAction
   final case class AcceptChunking(handler: ChunkedRequestHandler) extends ResponseAction
 
-  def responseWithThis(response: HttpResponse, size_hint: Int) = ResponseWithThis(response, size_hint)
+  def responseWithThis(response: HttpResponse,
+                       size_hint: Int = 1024,
+                       close_if_overflowed: Boolean = false,
+                       write_server_and_date_headers: Boolean = true) = ResponseWithThis(response, size_hint, close_if_overflowed, write_server_and_date_headers)
 
   //I'll work with this response finely.
-  def responseNormally: ResponseNormally.type = ResponseNormally
+  def responseByMyself: ResponseByMyself.type = ResponseByMyself
 
   //maybe a chunked response or a big asynchronous response will be sent, 
   //so some sink is help to tweak the related response stream.
@@ -120,7 +123,7 @@ trait PlainRequestHttpChannelHandler extends HttpChannelHandler {
 
   final def requestReceived(request: HttpRequest, channel: HttpChannel, classifier: RequestClassifier): ResponseAction = {
     requestReceived(request, channel)
-    ResponseAction.responseNormally
+    ResponseAction.responseByMyself
   }
 
 }

@@ -14,6 +14,7 @@ final class HttpChannel(
     private[http] val channel: ChannelWrapper,
     private[this] var closeAfterEnd: Boolean,
     private[this] val transformer: HttpTransformer,
+    private[this] var has_cached: Boolean,
     requestMethod: HttpMethod,
     requestProtocol: HttpProtocol, val configurator: HttpConfigurator) extends S2ResponseRenderingComponent {
 
@@ -68,12 +69,14 @@ final class HttpChannel(
    * for example, if 'woshilaiceshide.sserver.nio.WriteResult.WR_OK_BUT_OVERFLOWED' is returned, writing should be paused
    * until 'woshilaiceshide.sserver.http.ResponseSink.channelWritable()' is invoked.
    *
+   * if pipelining is used heavily, please try to make write_as_soon_as_possible false.
    */
   def writeResponse(response: HttpResponsePart,
                     size_hint: Int = 1024,
-                    write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers): WriteResult = {
+                    write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers,
+                    write_as_soon_as_possible: Boolean = true): WriteResult = {
 
-    val (wr, should_close) = synchronized {
+    val (wr, should_close) = transformer.synchronized {
 
       val _finished = check_finished(response)
 
@@ -81,6 +84,7 @@ final class HttpChannel(
       val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val close_mode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
+      if (has_cached) { transformer.flush(); has_cached = false }
       //use 'write_even_if_too_busy = true' as intended
       val write_result = channel.write(r.to_byte_buffer(), true, false)
 
@@ -100,12 +104,13 @@ final class HttpChannel(
 
     wr
   }
-  private[http] def writeResponse0(response: HttpResponsePart,
-                                   size_hint: Int = 1024,
-                                   write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers,
-                                   as_soon_as_possible: Boolean): WriteResult = {
 
-    val (wr, should_close) = synchronized {
+  private[http] def writeResponseToCache(response: HttpResponsePart,
+                                         size_hint: Int = 1024,
+                                         write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers,
+                                         cachable: Cachable): WriteResult = {
+
+    val (wr, should_close) = transformer.synchronized {
 
       val _finished = check_finished(response)
 
@@ -113,8 +118,9 @@ final class HttpChannel(
       val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val close_mode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
+      if (has_cached) { transformer.flush(); has_cached = false }
       //use 'write_even_if_too_busy = true' as intended
-      val write_result = channel.write(r.to_byte_buffer(), true, false, as_soon_as_possible = as_soon_as_possible)
+      val write_result = cachable.write(r.to_byte_buffer(), false)
 
       configurator.return_bytes_rendering(r)
 
@@ -127,6 +133,10 @@ final class HttpChannel(
     if (should_close) channel.closeChannel(false)
 
     wr
+  }
+
+  def close() = {
+    channel.closeChannel(false)
   }
 
 }
