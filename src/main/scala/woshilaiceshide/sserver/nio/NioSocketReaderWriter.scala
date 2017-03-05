@@ -283,7 +283,7 @@ class NioSocketReaderWriter private[nio] (
 
       } catch {
         case ex: Throwable => {
-          SelectorRunner.log.debug("when key is readable", ex)
+          SelectorRunner.log.warn("when key is readable", ex)
           channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
         }
       } finally {
@@ -617,6 +617,7 @@ class NioSocketReaderWriter private[nio] (
           }
 
         } else {
+          if (null != bytes) return_bytes_list(bytes.head)
           set_result(WriteResult.WR_FAILED_BECAUSE_CHANNEL_CLOSED)
         }
       }
@@ -691,6 +692,7 @@ class NioSocketReaderWriter private[nio] (
 
           } else {
             pend_unreusable_bytes(bytes, NioSocketReaderWriter.this.buffer_pool_used_by_biz_thread, true)
+
           }
         }
         if (cached_size >= capacity) {
@@ -799,6 +801,15 @@ class NioSocketReaderWriter private[nio] (
         NioSocketReaderWriter.this.buffer_pool_used_by_io_thread.return_buffer(node.bytes, (0 - node.helper).toByte)
       } else {
         //when helper is zero, the buffer is not internal, it's just a reusable buffer from the outside.
+      }
+    }
+
+    @tailrec def return_bytes_list(head: BytesNode): Unit = {
+      if (null != head) {
+        return_bytes(head)
+        if (null != head.next) {
+          return_bytes_list(head.next)
+        }
       }
     }
 

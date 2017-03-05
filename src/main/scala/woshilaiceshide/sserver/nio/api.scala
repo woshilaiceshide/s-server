@@ -339,7 +339,7 @@ final case class XNioConfigurator(
  */
   allow_hafl_closure: Boolean = false,
   buffer_pool_factory: ByteBufferPoolFactory = DefaultByteBufferPoolFactory(),
-  spin_count_when_write_immediately: Int = 3) extends NioConfigurator
+  spin_count_when_write_immediately: Int = 1) extends NioConfigurator
 
 object NioSocketServer {
 

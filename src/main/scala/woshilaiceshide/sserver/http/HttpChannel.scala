@@ -118,7 +118,6 @@ final class HttpChannel(
       val ctx = new S2ResponsePartRenderingContext(response, requestMethod, requestProtocol, closeAfterEnd)
       val close_mode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
-      if (has_cached) { transformer.flush(); has_cached = false }
       //use 'write_even_if_too_busy = true' as intended
       val write_result = cachable.write(r.to_byte_buffer(), false)
 

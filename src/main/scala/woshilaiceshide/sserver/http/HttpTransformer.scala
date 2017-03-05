@@ -94,10 +94,12 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     val r = if (null != cachable) {
       cachable.flush()
       cachable = null
-    } else {
+    } else if (null != prev_response) {
       prev_http_channel.writeResponse(prev_response.response, prev_response.size_hint, prev_response.write_server_and_date_headers)
       prev_http_channel = null
       prev_response = null
+    } else {
+      WriteResult.WR_OK
     }
     r
   }
@@ -107,7 +109,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
       prev_http_channel = ht
     } else {
       if (null == cachable) {
-        cachable = ht.channel.cachable(rwt.size_hint)
+        cachable = ht.channel.cachable(configurator.max_size_for_response_for_pipelining)
       }
       var breaked = false
       if (prev_response != null) {
@@ -346,10 +348,13 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
       }
     }
 
-    val tmp = process(result)
-    flush_cache()
-    original_parser.shadow()
-    tmp
+    try {
+      val tmp = process(result)
+      original_parser.shadow()
+      tmp
+    } finally {
+      flush_cache()
+    }
   }
 
   //invoked in the i/o thread, which is not reading sockets currently.
@@ -526,6 +531,8 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
       current_sink.channelClosed()
       current_sink = null
     }
+
+    //nothing to do with cachable
 
     parser = null
   }

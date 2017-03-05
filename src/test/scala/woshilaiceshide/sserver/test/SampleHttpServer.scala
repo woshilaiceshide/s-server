@@ -44,7 +44,7 @@ object SampleHttpServer extends App {
 
     private val ping = new HttpResponse(200, HttpEntity(ContentTypes.`text/plain`, "Hello, World!"))
     private def write_ping(channel: HttpChannel) = {
-      ResponseAction.responseWithThis(ping, size_hint = 512, false)
+      ResponseAction.responseWithThis(ping, size_hint = 128, false)
     }
     private val path_ping = Uri.Path("/ping")
 

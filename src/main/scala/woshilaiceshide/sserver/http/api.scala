@@ -43,6 +43,7 @@ final case class HttpConfigurator(
     parser_settings: spray.can.parsing.ParserSettings = HttpConfigurator.default_parser_settings,
     raw_request_uri_header: Boolean = false,
     max_request_in_pipeline: Int = 1,
+    max_size_for_response_for_pipelining: Int = 1024 * 8,
     server_name: String = "S-SERVER/2.3",
     chunkless_streaming: Boolean = false,
     transparent_header_requestes: Boolean = false,
@@ -51,20 +52,20 @@ final case class HttpConfigurator(
     size_for_content_length_cache: Int = 1024 * 4,
 
     /**
-     * direct byte buffers will save memory copy when doing i/o.
-     * but read/write direct byte buffers in jvm codes(not jni codes) would be slower in general.
-     * and in different platforms and/or different jvms, things are different.
-     *
-     * so do your own test to determine this option's value.
-     *
-     * I just keep it false by default.
-     *
-     * for more information, please see http://stackoverflow.com/questions/5670862/bytebuffer-allocate-vs-bytebuffer-allocatedirect
-     */
+ * direct byte buffers will save memory copy when doing i/o.
+ * but read/write direct byte buffers in jvm codes(not jni codes) would be slower in general.
+ * and in different platforms and/or different jvms, things are different.
+ *
+ * so do your own test to determine this option's value.
+ *
+ * I just keep it false by default.
+ *
+ * for more information, please see http://stackoverflow.com/questions/5670862/bytebuffer-allocate-vs-bytebuffer-allocatedirect
+ */
     use_direct_byte_buffer_for_cached_bytes_rendering: Boolean = false,
     /**
-     * keep it large enough please. every thread that writes http response will keep one cached render locally.
-     */
+ * keep it large enough please. every thread that writes http response will keep one cached render locally.
+ */
     cached_bytes_rendering_length: Int = 1024,
 
     header_parser_pool_size: Int = 8,
@@ -73,10 +74,10 @@ final case class HttpConfigurator(
     max_payload_length_in_websocket_frame: Int = 2048,
 
     /**
-     * when writing http response, server and date headers should be written?
-     *
-     * its can be overridden using 'woshilaiceshide.sserver.http.HttpChannel.writeResponse(response: HttpResponsePart, sizeHint: Int, writeServerAndDateHeader: Boolean)'
-     */
+ * when writing http response, server and date headers should be written?
+ *
+ * its can be overridden using 'woshilaiceshide.sserver.http.HttpChannel.writeResponse(response: HttpResponsePart, sizeHint: Int, writeServerAndDateHeader: Boolean)'
+ */
     write_server_and_date_headers: Boolean = true) {
 
   import woshilaiceshide.sserver.utility._
@@ -145,9 +146,9 @@ final case class HttpConfigurator(
       else tmp ~~ RenderSupport.StatusLineStart ~~ response.status ~~ RenderSupport.CrLf
     }
     response_part match {
-      case response: HttpResponse => from_response(response)
+      case response: HttpResponse  => from_response(response)
       case c: ChunkedResponseStart => from_response(c.response)
-      case _ =>
+      case _                       =>
     }
     tmp
 
@@ -165,9 +166,9 @@ final case class HttpConfigurator(
     }
     if (size <= cached_bytes_rendering_length) {
       response_part match {
-        case response: HttpResponse => from_response(response)
+        case response: HttpResponse  => from_response(response)
         case c: ChunkedResponseStart => from_response(c.response)
-        case _ => cached_bytes_rendering.get()
+        case _                       => cached_bytes_rendering.get()
       }
 
     } else {
@@ -200,7 +201,7 @@ final case class HttpConfigurator(
 
     if (size <= cached_bytes_rendering_length) {
       response_part match {
-        case response: HttpResponse => from_response(response)
+        case response: HttpResponse  => from_response(response)
         case c: ChunkedResponseStart => from_response(c.response)
         case _ => {
           if (aux.cached_bytes_rendering != null) {
@@ -226,7 +227,7 @@ final case class HttpConfigurator(
   private[http] def borrow_bytes_rendering(size: Int, response_part: HttpResponsePart): RichBytesRendering = {
     Thread.currentThread() match {
       case aux: AuxThread => borrow_bytes_rendering_from_aux_thread(size, response_part, aux)
-      case _ => borrow_bytes_rendering_from_thread_local(size, response_part)
+      case _              => borrow_bytes_rendering_from_thread_local(size, response_part)
     }
   }
 
