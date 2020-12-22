@@ -26,9 +26,7 @@ compileOrder in Compile := CompileOrder.Mixed
 
 transitiveClassifiers := Seq("sources")
 
-EclipseKeys.withSource := true
-
-scalaVersion := "2.12.1"
+scalaVersion := "2.12.12"
 
 scalacOptions := Seq("-unchecked", "-deprecation","-optimise", "-encoding", "utf8", "-Yno-adapted-args", "-target:jvm-1.8")
 
