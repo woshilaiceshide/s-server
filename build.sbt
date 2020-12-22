@@ -28,7 +28,7 @@ transitiveClassifiers := Seq("sources")
 
 scalaVersion := "2.12.12"
 
-scalacOptions := Seq("-unchecked", "-deprecation","-optimise", "-encoding", "utf8", "-Yno-adapted-args", "-target:jvm-1.8")
+scalacOptions := Seq("-unchecked", "-deprecation", "-opt:l:inline", "-opt-inline-from:**", "-encoding", "utf8", "-Yno-adapted-args", "-target:jvm-1.8")
 
 javacOptions ++= Seq("-Xlint:deprecation", "-Xlint:unchecked", "-source", "1.8", "-target", "1.8", "-g:vars")
 
@@ -73,7 +73,7 @@ javaOptions in Universal += s"-version=${version.value}"
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'
 val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
-jol := Seq("org.openjdk.jol" % "jol-core" % "0.7.1", "org.openjdk.jol" % "jol-cli" % "0.7.1")
+jol := Seq("org.openjdk.jol" % "jol-core" % "0.14", "org.openjdk.jol" % "jol-cli" % "0.14")
 //libraryDependencies ++= jol.value
 //mainClass in Compile := Some("org.openjdk.jol.Main")
 
