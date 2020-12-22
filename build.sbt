@@ -55,11 +55,11 @@ unmanagedSourceDirectories in Compile += baseDirectory( _ / "spray" / "scala" ).
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.17"
 
-libraryDependencies += "org.parboiled" %% "parboiled-scala" % "1.1.8"
+libraryDependencies += "org.parboiled" %% "parboiled-scala" % "1.3.1"
 
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.1"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 
-libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.24"
+libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.30"
 
 javaOptions in Universal += "-J-XX:-RestrictContended"
 javaOptions in Universal += "-J-Xmx1024m"
@@ -72,9 +72,10 @@ javaOptions in Universal += s"-version=${version.value}"
 
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'
-val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
-jol := Seq("org.openjdk.jol" % "jol-core" % "0.14", "org.openjdk.jol" % "jol-cli" % "0.14")
+//val jol = settingKey[scala.collection.Seq[sbt.ModuleID]]("jol libraries")
+//jol := Seq("org.openjdk.jol" % "jol-core" % "0.14", "org.openjdk.jol" % "jol-cli" % "0.14")
 //libraryDependencies ++= jol.value
+
 //mainClass in Compile := Some("org.openjdk.jol.Main")
 
 mappings in Universal ++= (baseDirectory.value / "conf" * "*" get) map (x => x -> ("conf/" + x.getName))

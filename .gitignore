@@ -1,11 +1,12 @@
 /target/
 /.classpath
 /.project
+/.idea/
 /.settings/
 /lib_managed/
 /TODO
 /bin/
 /.cache-main
-/.README.md.html
 /.cache-tests
-/bin/
+/.README.md.html
+
