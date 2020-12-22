@@ -16,7 +16,7 @@
 
 package spray.http
 
-case class HttpProtocol private[http] (value: String) extends LazyValueBytesRenderable
+final case class HttpProtocol private (value: String) extends LazyValueBytesRenderable
 
 object HttpProtocols extends ObjectRegistry[String, HttpProtocol] {
   private def register(p: HttpProtocol): HttpProtocol = register(p.value, p)

@@ -17,9 +17,11 @@
 package spray.http
 
 import scala.annotation.tailrec
-import scala.reflect.{ classTag, ClassTag }
+import scala.reflect.{ClassTag, classTag}
 import HttpHeaders._
 import HttpCharsets._
+import spray.can.parsing.ParsingException
+import spray.http.StatusCodes.HTTPVersionNotSupported
 
 sealed trait HttpMessagePartWrapper {
   def messagePart: HttpMessagePart
@@ -134,10 +136,14 @@ sealed abstract class HttpMessage extends HttpMessageStart with HttpMessageEnd {
 }
 
 object HttpMessage {
+
+  def badConnectionBehavior: Nothing = throw new ParsingException(HTTPVersionNotSupported)
+
   private[spray] def connectionCloseExpected(protocol: HttpProtocol, connectionHeader: Option[Connection]): Boolean =
     protocol match {
       case HttpProtocols.`HTTP/1.1` ⇒ connectionHeader.isDefined && connectionHeader.get.hasClose
       case HttpProtocols.`HTTP/1.0` ⇒ connectionHeader.isEmpty || connectionHeader.get.hasNoKeepAlive
+      case _ => badConnectionBehavior
     }
 }
 
