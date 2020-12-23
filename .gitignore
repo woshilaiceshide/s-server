@@ -2,6 +2,7 @@
 /.classpath
 /.project
 /.idea/
+/.bsp/
 /.settings/
 /lib_managed/
 /TODO
