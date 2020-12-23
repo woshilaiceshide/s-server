@@ -9,6 +9,11 @@ Http parsing and rendering are based on spray(https://github.com/spray/spray), b
 
 Note that I've refactored s-server very much since version 1.x. Version 2.3 is not compatible with previous versions, and the previous ones are not be supported any more. 
 
+## Benchmark
+s-server is optimized for tcp services extremely. In TechEmpower Framework Benchmarks (TFB) 2017, s-server got good scores, such as the following:
+
+![Alt text](https://raw.githubusercontent.com/woshilaiceshide/s-server/master/asset/techempower-17.jpg "TechEmpower Framework Benchmarks (TFB) 2017")
+
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
 * only one single thread is needed for basic running, and this thread can be used as an external task runner and a fuzzy scheduler. (the builtin fuzzy scheduler may be disabled when constructing the server instance.)
