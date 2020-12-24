@@ -12,7 +12,7 @@ Note that I've refactored s-server very much since version 1.x. Version 2.3 is n
 ## Benchmark
 s-server is optimized for tcp services extremely. In TechEmpower Framework Benchmarks (TFB) 2017, s-server got good scores, such as the following:
 
-![Alt text](https://raw.githubusercontent.com/woshilaiceshide/s-server/master/asset/techempower-17.jpg "TechEmpower Framework Benchmarks (TFB) 2017")
+![TechEmpower Framework Benchmarks (TFB) 2017](https://raw.githubusercontent.com/woshilaiceshide/s-server/master/asset/techempower-17.jpg "TechEmpower Framework Benchmarks (TFB) 2017")
 
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
