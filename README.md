@@ -17,13 +17,13 @@ s-server is optimized for tcp services extremely. In TechEmpower Framework Bench
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
 * only one single thread is needed for basic running, and this thread can be used as an external task runner and a fuzzy scheduler. (the builtin fuzzy scheduler may be disabled when constructing the server instance.)
-* support multi-threading when processing messages in bussiness codes
+* support multi-threading when processing messages in business codes
 * builtin checking for idle connections
 * builtin support for throttling messages
 * support http pipelining
 * support http chunking
 * support websocket(v13 only)
-* plain http connections can be switched to websocket connections. (but not vice versus)(NO practical use???)
+* plain http connections can be switched(upgraded) to websocket connections. (but not vice versus)
 
 ## Model
 1.
