@@ -5,19 +5,35 @@ It's targeted for small footprint when running, with extensibility for mulit-thr
 
 `s-server` uses `'@sun.misc.Contended'` to kick `false sharing` off, so run it on `jvm-8` with `-XX:-RestrictContended` if asynchronous responses are needed.
 
-Http parsing and rendering are based on spray(https://github.com/spray/spray), but I tweaked it much for performance and code size. 
+Http parsing and rendering are based on [spray](https://github.com/spray/spray), but I tweaked it much for performance and code size. 
 
-Note that I've refactored s-server very much since version 1.x. Version 2.3 is not compatible with previous versions, and the previous ones are not be supported any more. 
+Note that s-server 3.x is the current supported release, other version is deprecated. 
 
 ## Benchmark
 s-server is optimized for tcp services extremely. In TechEmpower Framework Benchmarks (TFB) 2017, s-server got good scores, such as the following:
 
 ![TechEmpower Framework Benchmarks (TFB) 2017](https://raw.githubusercontent.com/woshilaiceshide/s-server/master/asset/techempower-17.jpg "TechEmpower Framework Benchmarks (TFB) 2017")
 
-## About '100% CPU with epoll'
-The previous releases(>= v2.5) of s-server have dealt with [100% CPU with epoll](https://bugs.java.com/bugdatabase/view_bug.do?bug_id=6403933).
-The main related codes can be seen on [this link](https://github.com/woshilaiceshide/s-server/blob/v2.5/src/main/scala/woshilaiceshide/sserver/nio/SelectorRunner.scala#L105).
-Since 3.x, s-server clears out all those codes. So do not run s-server on jdk 6 and 7. 
+## How to Use It?
+Three Examples: 
+* [EchoServer](https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/EchoServer.scala)
+
+* [SampleHttpServer](https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/SampleHttpServer.scala) <br> This sample http server contains synchronous response, asynchronous response, chunked response, response for chunked request, websocket, and is enabled with pipelining. <br> To request using pipelining, just run `'nc -C 127.0.0.1 8787 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
+
+* [AdvancedHttpServer](https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/AdvancedHttpServer.scala)
+
+To test the above examples, just type the following command in your sbt console:
+* type `'test:run'` in your sbt console to run `'woshilaiceshide.sserver.test.EchoServer'`
+
+* type `'test:runMain'` in your sbt console followed by a `'TAB'` to prompt you the valid choices
+
+* type the following commands in your sbt console to make a standalone distribution with all the tests using sbt-native-packager:
+
+  	set unmanagedSourceDirectories in Compile := (unmanagedSourceDirectories in Compile).value ++ (unmanagedSourceDirectories in Test).value
+  	set mainClass in Compile := Some("woshilaiceshide.sserver.test.EchoServer")
+  	#or set mainClass in Compile := Some("woshilaiceshide.sserver.test.SampleHttpServer")
+  	#or set mainClass in Compile := Some("woshilaiceshide.sserver.test.AdvancedHttpServer")
+  	stage
 
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
@@ -30,57 +46,29 @@ Since 3.x, s-server clears out all those codes. So do not run s-server on jdk 6 
 * support websocket(v13 only)
 * plain http connections can be switched(upgraded) to websocket connections. (but not vice versus)
 
-## Model
-1.
-requests flow in `'channel`'s,
- 
-2.
-and handled by `'channel handler`'s,
- 
-3.
-and `'channel handlers`' may use `'channel wrapper`'s to write responses. 
+## About '100% CPU with epoll'
+The previous releases(<= v2.5) of s-server have dealt with [100% CPU with epoll](https://bugs.java.com/bugdatabase/view_bug.do?bug_id=6403933).
+The main related codes can be seen on [this link](https://github.com/woshilaiceshide/s-server/blob/v2.5/src/main/scala/woshilaiceshide/sserver/nio/SelectorRunner.scala#L105).
+Since 3.x, s-server clears out all those codes. So do not run s-server on jdk 6 and 7.
 
-## How to Use It?
+## Model
+* requests flow in `channel`
+* and handled by `channel handler`
+* and `channel handler` may use `channel wrapper` to write responses. 
+
+## How to Add It to My Projects?
 1. I've published s-server to bintray, you can add the following line in your build.sbt:
 
 	resolvers += "Woshilaiceshide Releases" at "http://dl.bintray.com/woshilaiceshide/maven/"
 
-	libraryDependencies += "woshilaiceshide" %% "s-server" % "2.3" withSources() 
+	libraryDependencies += "woshilaiceshide" %% "s-server" % "3.0" withSources() 
 
 2.
 build s-server locally using `'sbt publishLocal'`.
 
-## Two Examples
-* `test/main/scala/woshilaiceshide/sserver/EchoServer.scala`
-
-* `test/main/scala/woshilaiceshide/sserver/SampleHttpServer.scala` <br> for a quick glance, see https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/SampleHttpServer.scala <br> This sample http server contains synchronous response, asynchronous response, chunked response, response for chunked request, websocket, and is enabled with pipelining. <br> To request using pipelining, just run `'nc -C 127.0.0.1 8787 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
-
-To test the above examples, just type the following command in your sbt console: 
-* type `'test:run'` in your sbt console to run `'woshilaiceshide.sserver.test.EchoServer'`
-
-* type `'test:runMain'` in your sbt console followed by a `'TAB'` to prompt you the valid choices
-
-* type the following commands in your sbt console to make a standalone distribution with all the tests using sbt-native-packager:
-
-		set unmanagedSourceDirectories in Compile := (unmanagedSourceDirectories in Compile).value ++ (unmanagedSourceDirectories in Test).value
-		set mainClass in Compile := Some("woshilaiceshide.sserver.test.EchoServer")
-		dist
-or
-
-		set unmanagedSourceDirectories in Compile := (unmanagedSourceDirectories in Compile).value ++ (unmanagedSourceDirectories in Test).value
-		set mainClass in Compile := Some("woshilaiceshide.sserver.test.SampleHttpServer")
-		dist
-
 ## Real Projects
-1.
-**https://github.com/woshilaiceshide/scala-web-repl**
-
-I'v written a project named `"Scala-Web-REPL`", which uses a web terminal as its interactive console.
-
-2.
-**...**
-
-If your development touches `'s-server'`, you may tell me to write your project here.
+* I'v written a project named [Scala-Web-REPL](https://github.com/woshilaiceshide/scala-web-repl), which uses a web terminal as its interactive console.
+* ... If your development touches `'s-server'`, you may tell me to write your project here.
 
 ## Optimizations & TODO
 * optimize socket i/o operations: 1). reducing i/o operations, 2). making i/o just carried out as directly as possible without repost them to the underlying executor.

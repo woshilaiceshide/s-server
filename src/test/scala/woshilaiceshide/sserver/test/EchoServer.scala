@@ -11,7 +11,9 @@ object EchoServer extends App {
       def channelOpened(channelWrapper: ChannelWrapper): Unit = {
         println("open...")
       }
+
       def inputEnded(channelWrapper: ChannelWrapper) = channelWrapper.closeChannel(false)
+
       def bytesReceived(byteBuffer: java.nio.ByteBuffer, channelWrapper: ChannelWrapper): ChannelHandler = {
 
         val bytes = woshilaiceshide.sserver.utility.Utility.toBytesArray(byteBuffer)
@@ -29,14 +31,17 @@ object EchoServer extends App {
         this
 
       }
+
       def channelIdled(channelWrapper: ChannelWrapper): Unit = {
         println("idled")
-        channelWrapper.write("idle".map { _.toByte }.toArray, true, false)
+        channelWrapper.write("idle".map (_.toByte).toArray, true, false)
         channelWrapper.closeChannel(false)
       }
+
       def channelWritable(channelWrapper: ChannelWrapper): Unit = {
 
       }
+
       def channelClosed(channelWrapper: ChannelWrapper, cause: ChannelClosedCause.Value, attachment: Option[_]): Unit = {
         println("closed...")
       }
@@ -55,7 +60,11 @@ object EchoServer extends App {
     wrapper.setOption[java.lang.Boolean](java.net.StandardSocketOptions.TCP_NODELAY, true)
   }
 
-  val configurator = XNioConfigurator(count_for_reader_writers = 2, listening_channel_configurator = listening_channel_configurator, accepted_channel_configurator = accepted_channel_configurator)
+  val configurator = XNioConfigurator(
+    count_for_reader_writers = 2,
+    listening_channel_configurator = listening_channel_configurator,
+    accepted_channel_configurator = accepted_channel_configurator)
+
   val server = NioSocketServer(
     "0.0.0.0",
     8787,
