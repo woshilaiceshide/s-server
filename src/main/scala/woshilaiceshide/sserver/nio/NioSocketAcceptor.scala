@@ -18,17 +18,17 @@ import scala.annotation.tailrec
 import SelectorRunner._
 
 class NioSocketAcceptor private[nio] (
-    interface: String,
-    port: Int,
-    channel_hander_factory: ChannelHandlerFactory,
-    configurator: NioConfigurator) extends SelectorRunner(configurator) {
+                                       interface: String,
+                                       port: Int,
+                                       channel_handler_factory: ChannelHandlerFactory,
+                                       configurator: NioConfigurator) extends SelectorRunner(configurator) {
 
   import configurator._
 
   private val ssc = ServerSocketChannel.open()
 
   private val io_workers = Array.fill(count_for_reader_writers) {
-    new NioSocketReaderWriter(channel_hander_factory, configurator)
+    new NioSocketReaderWriter(channel_handler_factory, configurator)
   }
 
   protected def do_start(): Unit = {

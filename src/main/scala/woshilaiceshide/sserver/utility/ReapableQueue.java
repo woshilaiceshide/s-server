@@ -216,7 +216,7 @@ public class ReapableQueue<T> {
 			if (old_tail == null) {
 				// it can not happen!!!
 				// if happened, this class is coded uncorrectly.
-				throw new Error("supposed to be not here!!!");
+				throw new Error("supposed to be not here.");
 			}
 			// for jvm's gc.
 			old_tail.set_next(old_tail);

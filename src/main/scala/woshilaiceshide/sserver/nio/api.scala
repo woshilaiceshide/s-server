@@ -45,7 +45,7 @@ object ChannelClosedCause extends scala.Enumeration {
 }
 
 //it may be not thread safe
-trait Cachable {
+trait Cacheable {
   def write(bytes: ByteBuffer, bytes_is_reusable: Boolean): WriteResult
   def flush(): WriteResult
 }
@@ -106,8 +106,8 @@ trait ChannelWrapper {
   //TODO what's about a optional customized event followed by this writing?
   def write(buffer: ByteBuffer, write_even_if_too_busy: Boolean, bytes_is_reusable: Boolean, as_soon_as_possible: Boolean): WriteResult
 
-  //the result Cachable is not thread safe
-  def cachable(capacity: Int): Cachable
+  //the result Cacheable is not thread safe
+  def cacheable(capacity: Int): Cacheable
 
   def is_open(): Boolean
 
@@ -175,7 +175,7 @@ trait ChannelHandlerFactory {
 abstract case class X(i: Int)
 
 trait SelectorRunnerConfigurator {
-  def rebuild_selector_for_epoll_100_perent_cpu_bug: Boolean
+  def rebuild_selector_for_epoll_100_percent_cpu_bug: Boolean
   def rebuild_selector_threshold: Int
   def try_to_optimize_selector_key_set: Boolean
   def default_select_timeout: Int
@@ -309,37 +309,37 @@ trait NioConfigurator extends SelectorRunnerConfigurator {
 
 final case class XNioConfigurator(
 
-  rebuild_selector_for_epoll_100_perent_cpu_bug: Boolean = false,
-  rebuild_selector_threshold: Int = 1,
-  try_to_optimize_selector_key_set: Boolean = true,
-  default_select_timeout: Int = 30 * 1000,
-  enable_fuzzy_scheduler: Boolean = false,
-  io_thread_factory: java.util.concurrent.ThreadFactory = new java.util.concurrent.ThreadFactory() {
+                                   rebuild_selector_for_epoll_100_percent_cpu_bug: Boolean = false,
+                                   rebuild_selector_threshold: Int = 1,
+                                   try_to_optimize_selector_key_set: Boolean = true,
+                                   default_select_timeout: Int = 30 * 1000,
+                                   enable_fuzzy_scheduler: Boolean = false,
+                                   io_thread_factory: java.util.concurrent.ThreadFactory = new java.util.concurrent.ThreadFactory() {
     def newThread(r: Runnable) = {
       new Thread(r)
     }
   },
 
-  /**
+                                   /**
  * if count_for_reader_writers is 0, then read/write will be in the same thread as the acceptor,
  * no extra threads will be created.
  */
-  count_for_reader_writers: Int,
-  listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
-  accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
-  receive_buffer_size: Int = 1024 * 4,
-  socket_max_idle_time_in_seconds: Int = 90,
-  max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
-  check_idle_interval_in_seconds: Int = 60,
-  revise_sun_jdk_bug_level: Boolean = true,
-  /**
+                                   count_for_reader_writers: Int,
+                                   listening_channel_configurator: ServerSocketChannelWrapper => Unit = _ => {},
+                                   accepted_channel_configurator: SocketChannelWrapper => Unit = _ => {},
+                                   receive_buffer_size: Int = 1024 * 4,
+                                   socket_max_idle_time_in_seconds: Int = 90,
+                                   max_bytes_waiting_for_written_per_channel: Int = 64 * 1024,
+                                   check_idle_interval_in_seconds: Int = 60,
+                                   revise_sun_jdk_bug_level: Boolean = true,
+                                   /**
  * see woshilaiceshide.sserver.nio.ChannelHandler.inputEnded(channelWrapper: ChannelWrapper).
  *
  * a good suggestion is keep it 'false'
  */
-  allow_hafl_closure: Boolean = false,
-  buffer_pool_factory: ByteBufferPoolFactory = DefaultByteBufferPoolFactory(),
-  spin_count_when_write_immediately: Int = 1) extends NioConfigurator
+                                   allow_hafl_closure: Boolean = false,
+                                   buffer_pool_factory: ByteBufferPoolFactory = DefaultByteBufferPoolFactory(),
+                                   spin_count_when_write_immediately: Int = 1) extends NioConfigurator
 
 object NioSocketServer {
 

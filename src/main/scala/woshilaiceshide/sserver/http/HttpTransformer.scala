@@ -84,7 +84,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
   }
   @inline private def is_pipeling_queue_empty() = pipeline_size == 0
 
-  private var cachable: Cachable = null
+  private var cachable: Cacheable = null
   private var prev_response: ResponseAction.ResponseWithThis = null
   private var prev_http_channel: HttpChannel = null
   private def has_cached: Boolean = null != cachable || null != prev_response
@@ -109,7 +109,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
       prev_http_channel = ht
     } else {
       if (null == cachable) {
-        cachable = ht.channel.cachable(configurator.max_size_for_response_for_pipelining)
+        cachable = ht.channel.cacheable(configurator.max_size_for_response_for_pipelining)
       }
       var breaked = false
       if (prev_response != null) {

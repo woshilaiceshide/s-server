@@ -92,8 +92,8 @@ private[nio] object NioSocketReaderWriter {
 }
 
 class NioSocketReaderWriter private[nio] (
-    channel_hander_factory: ChannelHandlerFactory,
-    configurator: NioConfigurator) extends SelectorRunner(configurator) {
+                                           channel_handler_factory: ChannelHandlerFactory,
+                                           configurator: NioConfigurator) extends SelectorRunner(configurator) {
 
   import NioSocketReaderWriter._
   import configurator._
@@ -114,7 +114,7 @@ class NioSocketReaderWriter private[nio] (
 
   private val receive_buffer_size_1 = if (0 < receive_buffer_size) receive_buffer_size else 1 * 1024
   //this only client buffer will become read only before it's given to the handler
-  //use head byte buffer here, because it may be read many times. 
+  //use head byte buffer here, because it may be read many times.
   private val READ_BUFFER = ByteBuffer.allocate(receive_buffer_size_1)
 
   //some i/o operations related to those channels are pending
@@ -178,7 +178,7 @@ class NioSocketReaderWriter private[nio] (
     accepted_channel_configurator(wrapper)
     channel.configureBlocking(false)
 
-    channel_hander_factory.getHandler(new MyChannelInformation(channel)) match {
+    channel_handler_factory.getHandler(new MyChannelInformation(channel)) match {
       case None => {
         safe_close(channel)
       }
@@ -630,7 +630,7 @@ class NioSocketReaderWriter private[nio] (
     }
 
     //I am not thread safe.
-    private[nio] class MyCachable(capacity: Int) extends Cachable {
+    private[nio] class MyCacheable(capacity: Int) extends Cacheable {
 
       private var cached: BytesList = null
       private var cached_size: Int = 0
@@ -709,7 +709,7 @@ class NioSocketReaderWriter private[nio] (
       }
     }
 
-    def cachable(capacity: Int): Cachable = new MyCachable(capacity)
+    def cacheable(capacity: Int): Cacheable = new MyCacheable(capacity)
 
     def is_open(): Boolean = this.synchronized { status == 1 }
 

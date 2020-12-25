@@ -21,11 +21,11 @@ import SelectorRunner._
  * a nio socket server in a single thread.
  */
 class NioSocketServer1 private[nio] (
-  interface: String,
-  port: Int,
-  channel_hander_factory: ChannelHandlerFactory,
-  configurator: NioConfigurator)
-    extends NioSocketReaderWriter(channel_hander_factory, configurator) {
+                                      interface: String,
+                                      port: Int,
+                                      channel_handler_factory: ChannelHandlerFactory,
+                                      configurator: NioConfigurator)
+    extends NioSocketReaderWriter(channel_handler_factory, configurator) {
 
   private val ssc = ServerSocketChannel.open()
 

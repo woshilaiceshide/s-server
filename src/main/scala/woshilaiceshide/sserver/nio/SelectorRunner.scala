@@ -113,9 +113,9 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         val old_key = iterator.next()
         old_key.cancel()
         val ops = old_key.interestOps()
-        val attch = old_key.attachment()
-        val new_key = old_key.channel().register(selector1, ops, attch)
-        attch match {
+        val attach = old_key.attachment()
+        val new_key = old_key.channel().register(selector1, ops, attach)
+        attach match {
           case x: HasKey => x.set_key(new_key)
           case _         =>
         }
@@ -147,7 +147,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
    * this method is thread safe.
    */
   def wakeup_selector() = {
-    if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
+    if (configurator.rebuild_selector_for_epoll_100_percent_cpu_bug) {
       val lock = lock_for_selector.readLock()
       lock.lock()
       try {
@@ -484,7 +484,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
     //lock_for_selector is not needed because i am in the i/o thread.
 
-    val selected = if (configurator.rebuild_selector_for_epoll_100_perent_cpu_bug) {
+    val selected = if (configurator.rebuild_selector_for_epoll_100_percent_cpu_bug) {
       if (wokenup.compareAndSet(true, false)) {
         successive_select_count_for_0_key_0_time = 0
         selector.selectNow()

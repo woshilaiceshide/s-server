@@ -108,7 +108,7 @@ final class HttpChannel(
   private[http] def writeResponseToCache(response: HttpResponsePart,
                                          size_hint: Int = 1024,
                                          write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers,
-                                         cachable: Cachable): WriteResult = {
+                                         cachable: Cacheable): WriteResult = {
 
     val (wr, should_close) = transformer.synchronized {
 
