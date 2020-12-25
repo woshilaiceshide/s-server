@@ -119,20 +119,20 @@ class NioSocketReaderWriter private[nio] (
 
   //some i/o operations related to those channels are pending
   //note that those operations will be checked in the order they are pended as soon as possible.
-  private var asynchronousely_pended_io_operations: ReapableQueue[MyChannelWrapper] = new ReapableQueue()
-  private var synchronousely_pended_io_operations: List[MyChannelWrapper] = Nil
+  private var asynchronously_pended_io_operations: ReapableQueue[MyChannelWrapper] = new ReapableQueue[MyChannelWrapper]()
+  private var synchronously_pended_io_operations: List[MyChannelWrapper] = Nil
   private def pend_for_io_operation(channelWrapper: MyChannelWrapper, in_io_worker_thread: Boolean) = {
     if (in_io_worker_thread) {
-      synchronousely_pended_io_operations = channelWrapper :: synchronousely_pended_io_operations
+      synchronously_pended_io_operations = channelWrapper :: synchronously_pended_io_operations
     } else {
-      asynchronousely_pended_io_operations.add(channelWrapper)
+      asynchronously_pended_io_operations.add(channelWrapper)
     }
   }
 
   this.register_on_termination {
-    synchronousely_pended_io_operations = null
-    asynchronousely_pended_io_operations.end()
-    asynchronousely_pended_io_operations = null
+    synchronously_pended_io_operations = null
+    asynchronously_pended_io_operations.end()
+    asynchronously_pended_io_operations = null
   }
 
   private[nio] def register_socket_channel(target: SocketChannel): Boolean = post_to_io_thread { target }
@@ -233,16 +233,16 @@ class NioSocketReaderWriter private[nio] (
       var has = false
 
       {
-        if (!synchronousely_pended_io_operations.isEmpty) {
-          val reaped = synchronousely_pended_io_operations
-          synchronousely_pended_io_operations = Nil
+        if (!synchronously_pended_io_operations.isEmpty) {
+          val reaped = synchronously_pended_io_operations
+          synchronously_pended_io_operations = Nil
           reaped.foreach(io_checker)
           has = true
         }
       }
 
       {
-        val reaped = asynchronousely_pended_io_operations.reap(false)
+        val reaped = asynchronously_pended_io_operations.reap(false)
         if (null != reaped) {
           ReapableQueueUtility.foreach(reaped, io_checker)
           has = true

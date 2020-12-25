@@ -19,10 +19,6 @@ object SelectorRunner {
 
   val log = org.slf4j.LoggerFactory.getLogger(classOf[SelectorRunner]);
 
-  trait HasKey {
-    def set_key(new_key: SelectionKey): Unit
-  }
-
   class NotRunningException(msg: String) extends RuntimeException(msg)
   class NotInIOThreadException(msg: String) extends RuntimeException(msg)
   object NotInIOThreadException {
@@ -56,8 +52,6 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
   //private val default_select_timeout = 30 * 1000
   protected var select_timeout = configurator.default_select_timeout
-
-  import java.util.concurrent.locks.ReentrantReadWriteLock
 
   private var selected_keys: SelectedKeySet = null
 
@@ -165,7 +159,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
   private val status = new java.util.concurrent.atomic.AtomicInteger(INITIALIZED)
 
-  private val tasks: ReapableQueue[AnyRef] = new ReapableQueue()
+  private val immediate_tasks: ReapableQueue[AnyRef] = new ReapableQueue[AnyRef]()
   /**
    * only can be posted when the runner is in 'STARTED' status.
    */
@@ -176,15 +170,15 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
    * only can be posted when the runner is in 'STARTED' status.
    */
   def post_to_io_thread(task: AnyRef): Boolean = {
-    if (tasks.add(task)) {
+    if (immediate_tasks.add(task)) {
       wakeup_selector()
       true
     } else {
-      return false
+      false
     }
   }
   private def end_tasks() = {
-    tasks.end()
+    immediate_tasks.end()
   }
 
   protected def add_a_new_socket_channel(channel: SocketChannel): Unit
@@ -207,8 +201,8 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       case ex: Throwable => log.warn("failed", ex)
     }
   }
-  private def reap_tasks(is_last_reap: Boolean) = {
-    val tasks_to_do = tasks.reap(is_last_reap)
+  private def reap_immediate_tasks(is_last_reap: Boolean) = {
+    val tasks_to_do = immediate_tasks.reap(is_last_reap)
     if (null != tasks_to_do) {
       ReapableQueueUtility.foreach(tasks_to_do, task_runner)
     }
@@ -327,7 +321,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         close_selector()
         reap_timed_tasks()
         end_tasks()
-        reap_tasks(true)
+        reap_immediate_tasks(true)
         reap_terminated()
         false
       }
@@ -374,7 +368,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       close_selector()
       reap_timed_tasks()
       end_tasks()
-      reap_tasks(true)
+      reap_immediate_tasks(true)
       reap_terminated()
       log.info(s"stopped(#${this.hashCode()})")
     }
@@ -484,7 +478,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       true
     }
 
-    reap_tasks(false)
+    reap_immediate_tasks(false)
     reap_timed_tasks()
 
     if (continued) {

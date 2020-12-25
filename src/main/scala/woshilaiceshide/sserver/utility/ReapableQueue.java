@@ -110,6 +110,10 @@ public class ReapableQueue<T> {
 	}
 
 	// track the chain of transformation
+	// 0: normal
+	// 1: ended
+	// 2: in last reap currently
+	// 3: last reap completed
 	private java.util.concurrent.atomic.AtomicInteger ended = new AtomicInteger(0);
 
 	// kick false sharing

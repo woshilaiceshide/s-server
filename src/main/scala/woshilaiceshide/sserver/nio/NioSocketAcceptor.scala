@@ -77,7 +77,7 @@ class NioSocketAcceptor private[nio] (
   protected def before_next_loop(): Unit = {
     //nothing else
   }
-  override def join(timeout: Long) = {
+  override def join(timeout: Long): Unit = {
     super.join(timeout)
     io_workers.map { _.join(timeout) }
   }
