@@ -63,8 +63,7 @@ Since 3.x, s-server clears out all those codes. So do not run s-server on jdk 6 
 
 	libraryDependencies += "woshilaiceshide" %% "s-server" % "3.0" withSources() 
 
-2.
-build s-server locally using `'sbt publishLocal'`.
+2. build s-server locally using `'sbt publishLocal'`.
 
 ## Real Projects
 * I'v written a project named [Scala-Web-REPL](https://github.com/woshilaiceshide/scala-web-repl), which uses a web terminal as its interactive console.
