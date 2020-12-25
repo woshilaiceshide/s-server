@@ -270,7 +270,7 @@ class NioSocketReaderWriter private[nio] (
         } else {
           if (!key.isValid() || !channel.isOpen()) {
             channelWrapper.close(true, ChannelClosedCause.SOCKET_CLOSED_UNEXPECTED)
-          } else if (configurator.allow_hafl_closure) {
+          } else if (configurator.allow_half_closure) {
             //-1 can not be a hint for "closed by peer" or "just input is shutdown by peer, but output is alive".
             //I tried much, but did not catch it!
             //business codes may "ping" to find out weather the peer is fine, or just shutdown the whole socket in this situation. 
@@ -306,7 +306,7 @@ class NioSocketReaderWriter private[nio] (
     }
   }
 
-  protected[nio] final class MyChannelWrapper(private[nio] val channel: SocketChannel, private[nio] var handler: ChannelHandler) extends ChannelWrapper with SelectorRunner.HasKey {
+  protected[nio] final class MyChannelWrapper(private[nio] val channel: SocketChannel, private[nio] var handler: ChannelHandler) extends ChannelWrapper {
 
     private[nio] def isInputShutdown() = channel.socket().isInputShutdown()
     private[nio] def isOutputShutdown() = channel.socket().isOutputShutdown()
@@ -316,7 +316,6 @@ class NioSocketReaderWriter private[nio] (
     private[nio] var status = CHANNEL_NORMAL
 
     private[nio] var key: SelectionKey = null
-    def set_key(new_key: SelectionKey): Unit = this.key = new_key
 
     def remoteAddress: java.net.SocketAddress = channel.getRemoteAddress
     def localAddress: java.net.SocketAddress = channel.getLocalAddress

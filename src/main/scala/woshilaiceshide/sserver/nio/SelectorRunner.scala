@@ -58,7 +58,6 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   protected var select_timeout = configurator.default_select_timeout
 
   import java.util.concurrent.locks.ReentrantReadWriteLock
-  private val lock_for_selector = new ReentrantReadWriteLock(false)
 
   private var selected_keys: SelectedKeySet = null
 
@@ -100,68 +99,17 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   }
 
   private var selector = new_selector()
-  //epoll's 100% cpu bug, see http://bugs.java.com/view_bug.do?bug_id=6403933
-  //this method will be invoked in the i/o thread only.
-  private def rebuild_selector() = {
-    val lock = lock_for_selector.writeLock()
-    lock.lock()
-    try {
-      val selector0 = selector
-      val selector1 = new_selector()
-      val iterator = selector.keys.iterator()
-      while (iterator.hasNext()) {
-        val old_key = iterator.next()
-        old_key.cancel()
-        val ops = old_key.interestOps()
-        val attach = old_key.attachment()
-        val new_key = old_key.channel().register(selector1, ops, attach)
-        attach match {
-          case x: HasKey => x.set_key(new_key)
-          case _         =>
-        }
-      }
-
-      selector = selector1
-
-      safe_close(selector0)
-
-    } finally {
-      lock.unlock()
-    }
-  }
-  //this method is invoked in the i/o thread only, but it changes 'selector'. 
-  //so 'lock_for_selector' is needed.
+  //this method is invoked in the i/o thread only.
   private def close_selector() = {
-    val lock = lock_for_selector.writeLock()
-    lock.lock()
-    try {
-      if (null != selector) safe_close(selector); selector = null;
-    } finally {
-      lock.unlock()
-    }
-
+    if (null != selector) safe_close(selector); selector = null;
   }
-
-  private val wokenup = new java.util.concurrent.atomic.AtomicBoolean(false)
   /**
    * this method is thread safe.
    */
   def wakeup_selector() = {
-    if (configurator.rebuild_selector_for_epoll_100_percent_cpu_bug) {
-      val lock = lock_for_selector.readLock()
-      lock.lock()
-      try {
-        if (wokenup.compareAndSet(false, true)) {
-          if (null != selector) selector.wakeup()
-        }
-      } finally {
-        lock.unlock()
-      }
-    } else {
-      val tmp = selector
-      //wakeup() on a dead selector is fine. tested for hotspot jdk.
-      if (null != tmp) selector.wakeup()
-    }
+    val tmp = selector
+    //wakeup() on a dead selector is fine. tested for hotspot jdk.
+    if (null != tmp) selector.wakeup()
   }
 
   /**
@@ -478,35 +426,11 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   //a just normal field, not labeled as volatile
   private var already_in_stopping = false
   protected def is_stopping() = already_in_stopping
-  //no keys selected and no time waited, it's for epoll's 100% cpu bug.
-  private var successive_select_count_for_0_key_0_time = 0
   @tailrec private def loop(): Unit = {
 
     //lock_for_selector is not needed because i am in the i/o thread.
 
-    val selected = if (configurator.rebuild_selector_for_epoll_100_percent_cpu_bug) {
-      if (wokenup.compareAndSet(true, false)) {
-        successive_select_count_for_0_key_0_time = 0
-        selector.selectNow()
-      } else {
-        val start = System.currentTimeMillis()
-        val tmp = selector.select(select_timeout)
-        //the interrupted status is cleared as intended.
-        val interrupted = Thread.interrupted()
-        if (0 == tmp && !interrupted && System.currentTimeMillis() - start == 0) {
-          successive_select_count_for_0_key_0_time = successive_select_count_for_0_key_0_time + 1
-          if (successive_select_count_for_0_key_0_time > Math.max(3, configurator.rebuild_selector_threshold)) {
-            rebuild_selector()
-            successive_select_count_for_0_key_0_time = 0
-          }
-        } else {
-          successive_select_count_for_0_key_0_time = 0
-        }
-        tmp
-      }
-    } else {
-      selector.select(select_timeout)
-    }
+    val selected = selector.select(select_timeout)
 
     if (selected > 0) {
 

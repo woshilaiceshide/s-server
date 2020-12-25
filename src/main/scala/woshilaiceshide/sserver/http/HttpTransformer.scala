@@ -84,16 +84,16 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
   }
   @inline private def is_pipeling_queue_empty() = pipeline_size == 0
 
-  private var cachable: Cacheable = null
+  private var cacheable: Cacheable = null
   private var prev_response: ResponseAction.ResponseWithThis = null
   private var prev_http_channel: HttpChannel = null
-  private def has_cached: Boolean = null != cachable || null != prev_response
+  private def has_cached: Boolean = null != cacheable || null != prev_response
 
   //https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/package-summary.html#MemoryVisibility
   private[http] def flush() = {
-    val r = if (null != cachable) {
-      cachable.flush()
-      cachable = null
+    val r = if (null != cacheable) {
+      cacheable.flush()
+      cacheable = null
     } else if (null != prev_response) {
       prev_http_channel.writeResponse(prev_response.response, prev_response.size_hint, prev_response.write_server_and_date_headers)
       prev_http_channel = null
@@ -104,16 +104,16 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     r
   }
   private def cache_response(ht: HttpChannel, rwt: ResponseAction.ResponseWithThis) = {
-    if (null == cachable && null == prev_response) {
+    if (null == cacheable && null == prev_response) {
       prev_response = rwt
       prev_http_channel = ht
     } else {
-      if (null == cachable) {
-        cachable = ht.channel.cacheable(configurator.max_size_for_response_for_pipelining)
+      if (null == cacheable) {
+        cacheable = ht.channel.cacheable(configurator.max_size_for_response_for_pipelining)
       }
       var breaked = false
       if (prev_response != null) {
-        val wr = prev_http_channel.writeResponseToCache(prev_response.response, prev_response.size_hint, prev_response.write_server_and_date_headers, cachable)
+        val wr = prev_http_channel.writeResponseToCache(prev_response.response, prev_response.size_hint, prev_response.write_server_and_date_headers, cacheable)
         if (wr == WriteResult.WR_OK_BUT_OVERFLOWED && prev_response.close_if_overflowed) {
           ht.channel.closeChannel(false)
           breaked = true
@@ -122,7 +122,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
         prev_http_channel = null
       }
       if (!breaked) {
-        val wr = ht.writeResponseToCache(rwt.response, rwt.size_hint, rwt.write_server_and_date_headers, cachable)
+        val wr = ht.writeResponseToCache(rwt.response, rwt.size_hint, rwt.write_server_and_date_headers, cacheable)
         if (wr == WriteResult.WR_OK_BUT_OVERFLOWED && rwt.close_if_overflowed) {
           ht.channel.closeChannel(false)
         }

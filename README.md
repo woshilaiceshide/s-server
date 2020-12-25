@@ -14,6 +14,11 @@ s-server is optimized for tcp services extremely. In TechEmpower Framework Bench
 
 ![TechEmpower Framework Benchmarks (TFB) 2017](https://raw.githubusercontent.com/woshilaiceshide/s-server/master/asset/techempower-17.jpg "TechEmpower Framework Benchmarks (TFB) 2017")
 
+## About '100% CPU with epoll'
+The previous releases(>= v2.5) of s-server have dealt with [100% CPU with epoll](https://bugs.java.com/bugdatabase/view_bug.do?bug_id=6403933).
+The main related codes can be seen on [this link](https://github.com/woshilaiceshide/s-server/blob/v2.5/src/main/scala/woshilaiceshide/sserver/nio/SelectorRunner.scala#L105).
+Since 3.x, s-server clears out all those codes. So do not run s-server on jdk 6 and 7. 
+
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
 * only one single thread is needed for basic running, and this thread can be used as an external task runner and a fuzzy scheduler. (the builtin fuzzy scheduler may be disabled when constructing the server instance.)

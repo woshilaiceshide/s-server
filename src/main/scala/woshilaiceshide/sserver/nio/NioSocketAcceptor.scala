@@ -17,6 +17,10 @@ import scala.annotation.tailrec
 
 import SelectorRunner._
 
+/**
+ * a nio socket server in multi-threads.
+ * @see woshilaiceshide.sserver.nio.NioSocketServer1
+ */
 class NioSocketAcceptor private[nio] (
                                        interface: String,
                                        port: Int,

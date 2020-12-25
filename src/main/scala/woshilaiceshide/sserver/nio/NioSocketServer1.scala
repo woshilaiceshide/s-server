@@ -19,6 +19,7 @@ import SelectorRunner._
 
 /**
  * a nio socket server in a single thread.
+ * @see woshilaiceshide.sserver.nio.NioSocketAcceptor
  */
 class NioSocketServer1 private[nio] (
                                       interface: String,
