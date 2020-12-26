@@ -51,7 +51,7 @@ trait S2ResponseRenderingComponent {
 
   def serverHeaderValue: String = configurator.server_name
   def chunklessStreaming: Boolean = configurator.chunkless_streaming
-  def transparentHeadRequests: Boolean = configurator.transparent_header_requestes
+  def transparentHeadRequests: Boolean = configurator.transparent_header_requests
 
   private def suppressionWarning(log: akka.event.LoggingAdapter, h: HttpHeader): Unit =
     suppressionWarning(log, h, "this header is set internally and automatically!")

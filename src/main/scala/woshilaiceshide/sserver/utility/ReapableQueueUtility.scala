@@ -7,7 +7,9 @@ trait ReapableQueueUtility {
   @tailrec final def foreach[T](reaped: ReapableQueue.Reaped[T], runner: T => Unit): Unit = {
     val current = reaped.get_current_and_advance()
     if (current != null) {
-      runner(current.value)
+      if (current.isNormal) {
+        runner(current.value)
+      }
       foreach(reaped, runner)
     }
   }

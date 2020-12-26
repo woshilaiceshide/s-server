@@ -205,7 +205,7 @@ object AdvancedHttpServer extends App {
   val mt = new MultipleThreadHandlerFactory(1, threadFactory, Integer.MAX_VALUE, factory)
   */
 
-  val configurator = XNioConfigurator(count_for_reader_writers = 1,
+  val configurator = XNioConfigurator(count_for_reader_writers = 2,
     listening_channel_configurator = listening_channel_configurator,
     accepted_channel_configurator = accepted_channel_configurator,
     //buffer_pool_factory = DefaultByteBufferPoolFactory(1, 1, true),

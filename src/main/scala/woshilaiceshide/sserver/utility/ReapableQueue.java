@@ -5,247 +5,212 @@ import java.util.concurrent.atomic.*;
 /**
  * multiple threads can be 'add(...)' concurrently, but only one thread may
  * 'reap()' and/or 'end()' at the same time.
- * 
- * @author woshilaiceshide
  *
  * @param <T>
+ * @author woshilaiceshide
  */
 public class ReapableQueue<T> {
 
-	@SuppressWarnings("rawtypes")
-	private static AtomicReferenceFieldUpdater<ReapableQueue, Node> head_updater = AtomicReferenceFieldUpdater
-			.newUpdater(ReapableQueue.class, Node.class, "head");
+    //@SuppressWarnings("rawtypes")
+    //private static AtomicReferenceFieldUpdater<ReapableQueue, Node> head_updater = AtomicReferenceFieldUpdater.newUpdater(ReapableQueue.class, Node.class, "head");
 
-	@SuppressWarnings("rawtypes")
-	private static AtomicReferenceFieldUpdater<ReapableQueue, Node> tail_updater = AtomicReferenceFieldUpdater
-			.newUpdater(ReapableQueue.class, Node.class, "tail");
+    @SuppressWarnings("rawtypes")
+    private static final AtomicReferenceFieldUpdater<ReapableQueue, Node> tail_updater = AtomicReferenceFieldUpdater
+            .newUpdater(ReapableQueue.class, Node.class, "tail");
 
-	@SuppressWarnings("rawtypes")
-	private static AtomicReferenceFieldUpdater<Node, Node> next_updater = AtomicReferenceFieldUpdater
-			.newUpdater(Node.class, Node.class, "next");
+    @SuppressWarnings("rawtypes")
+    private static final AtomicReferenceFieldUpdater<Node, Node> next_updater = AtomicReferenceFieldUpdater
+            .newUpdater(Node.class, Node.class, "next");
 
-	public static class ReapException extends Exception {
-		private static final long serialVersionUID = 1L;
+    public static class ReapException extends Exception {
+        private static final long serialVersionUID = 1L;
 
-		public ReapException(String msg) {
-			super(msg);
-		}
-	}
+        public ReapException(String msg) {
+            super(msg);
+        }
+    }
 
-	public static class Node<T> {
-		public final T value;
-		volatile Node<T> next;
+    public static final byte SIGNAL_NORMAL = 0;
+    public static final byte SIGNAL_FAKE_HEAD = 1;
+    public static final byte SIGNAL_END = 2;
 
-		Node(T value, Node<T> next) {
-			this.value = value;
-			this.next = next;
-		}
+    public static final class Node<T> {
+        public final T value;
+        volatile Node<T> next;
+        public final byte signal;
 
-		Node(T value) {
-			this(value, null);
-		}
+        Node(T value, Node<T> next) {
+            this.value = value;
+            this.next = next;
+            this.signal = SIGNAL_NORMAL;
+        }
 
-		// please see
-		// http://robsjava.blogspot.com/2013/06/a-faster-volatile.html
-		void set_next(Node<T> new_next) {
-			next_updater.set(this, new_next);
-			return;
-		}
+        Node(T value) {
+            this(value, null);
+        }
 
-		void set_next(Node<T> old_next, Node<T> new_next) {
-			next_updater.compareAndSet(this, old_next, new_next);
-			return;
-		}
+        Node(T value, Node<T> next, byte signal) {
+            this.value = value;
+            this.next = next;
+            this.signal = signal;
+        }
 
-		@SuppressWarnings("unchecked")
-		public Node<T> get_next() {
-			return next_updater.get(this);
-		}
-	}
+        public final boolean isNormal() {
+            return this.signal == SIGNAL_NORMAL;
+        }
 
-	public static class Reaped<T> {
-		public Node<T> head;
-		public final Node<T> tail;
+        public final boolean isFakeHead() {
+            return this.signal == SIGNAL_FAKE_HEAD;
+        }
 
-		public Reaped(Node<T> head, Node<T> tail) {
-			this.head = head;
-			this.tail = tail;
-		}
+        public final boolean isEnd() {
+            return this.signal == SIGNAL_END;
+        }
 
-		public Node<T> get_current_and_advance() {
-			if (this.head == null) {
-				return null;
-			} else {
-				Node<T> tmp = this.head;
-				if (this.head == this.tail) {
-					this.head = null;
-				} else {
-					Node<T> next = this.head.get_next();
-					int i = 0;
-					while (true) {
-						if (next != null)
-							break;
-						else
-							next = this.head.get_next();
+        // please see
+        // http://robsjava.blogspot.com/2013/06/a-faster-volatile.html
+        void set_next(Node<T> new_next) {
+            next_updater.set(this, new_next);
+            return;
+        }
 
-						if (i < 1024) {
-							i++;
-						} else {
-							try {
-								Thread.sleep(System.currentTimeMillis() % 10);
-							} catch (Throwable throwable) {
-								// omitted
-							}
-						}
-					}
-					this.head = next;
-				}
-				// for jvm's gc
-				tmp.set_next(null);
-				return tmp;
-			}
+        void set_next(Node<T> old_next, Node<T> new_next) {
+            next_updater.compareAndSet(this, old_next, new_next);
+            return;
+        }
 
-		}
+        @SuppressWarnings("unchecked")
+        public Node<T> get_next() {
+            return next_updater.get(this);
+        }
+    }
 
-	}
+    public static class Reaped<T> {
+        public Node<T> head;
+        public final Node<T> tail;
 
-	// track the chain of transformation
-	// 0: normal
-	// 1: ended
-	// 2: in last reap currently
-	// 3: last reap completed
-	private java.util.concurrent.atomic.AtomicInteger ended = new AtomicInteger(0);
+        public Reaped(Node<T> head, Node<T> tail) {
+            this.head = head;
+            this.tail = tail;
+        }
 
-	// kick false sharing
-	@sun.misc.Contended
-	// @SuppressWarnings("unused")
-	private volatile Node<T> head = null;
+        Node<T> get_current_and_advance() {
+            if (null == this.head) {
+                return null;
+            } else if (this.head != this.tail) {
+                //fake head
+                Node<T> next = null;
+                do {
+                    next = this.head.get_next();
+                } while (next == null);
+                Node<T> tmp = this.head;
+                this.head = next;
+                return tmp;
+            } else /* if (this.head == this.tail) */ {
+                if (this.head.isNormal()) {
+                    Node<T> tmp = this.head;
+                    this.head = null;
+                    return tmp;
+                } else {
+                    return null;
+                }
+            }
+        }
 
-	// kick false sharing
-	@sun.misc.Contended
-	// @SuppressWarnings("unused")
-	private volatile Node<T> tail = null;
+    }
 
-	/**
-	 * this method may be invoked in multiple threads concurrently.
-	 * 
-	 * @param value
-	 * @return if accepted and can be reaped, true is returned, otherwise false.
-	 */
-	@SuppressWarnings("unchecked")
-	public boolean add(T value) {
+    // kick false sharing
+    @sun.misc.Contended
+    // @SuppressWarnings("unused")
+    //private volatile Node<T> head = null;
+    private Node<T> head = null;
 
-		if (ended.get() != 0)
-			return false;
+    // kick false sharing
+    @sun.misc.Contended
+    // @SuppressWarnings("unused")
+    private volatile Node<T> tail = null;
 
-		Node<T> new_tail = new Node<T>(value);
-		Node<T> old_tail = tail_updater.getAndSet(this, new_tail);
-		if (null != old_tail) {
-			// if reaped right now, then do not set_next(...)
-			old_tail.set_next(null, new_tail);
-		} else {
-			head_updater.set(this, new_tail);
-		}
+    public ReapableQueue() {
+        Node<T> head = new Node<>(null, null, SIGNAL_FAKE_HEAD);
+        this.head = head;
+        this.tail = head;
+    }
 
-		if (ended.get() == 0) {
-			return true;
+    /**
+     * this method may be invoked in multiple threads concurrently.
+     *
+     * @param value
+     * @return if accepted and can be reaped, true is returned, otherwise false.
+     */
+    @SuppressWarnings("unchecked")
+    public boolean add(T value) {
 
-		} else if (ended.get() == 1) {
-			return true;
+        Node<T> tmp = new Node<>(value, null);
+        do {
+            Node<T> old_tail = tail_updater.get(this);
+            if (!old_tail.isEnd()) {
+                if (tail_updater.compareAndSet(this, old_tail, tmp)) {
+                    old_tail.set_next(tmp);
+                    return true;
+                } else {
 
-		}
+                }
+            } else {
+                return false;
+            }
+        } while (true);
 
-		// if ended is 2, then wait for 3.
-		int i = 0;
-		while (ended.get() != 3) {
-			if (i < 1024) {
-				i++;
-			} else {
-				try {
-					Thread.sleep(System.currentTimeMillis() % 10);
-				} catch (Throwable throwable) {
-					// omitted
-				}
-			}
-		}
+    }
 
-		int j = 0;
-		while (true) {
+    @SuppressWarnings("unchecked")
+    /**
+     * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
+     * time.
+     *
+     * @param is_last_reap
+     * @return
+     */
+    public Reaped<T> reap(final boolean is_last_reap) throws ReapException {
 
-			if (tail_updater.get(this) == new_tail) {
-				// it will not be reaped out.
-				tail_updater.compareAndSet(this, new_tail, old_tail);
-				return false;
-			} else if (tail_updater.get(this) == null) {
-				// it's reaped out already.
-				return true;
-			}
+        Node<T> tmp = new Node<>(null, null, SIGNAL_FAKE_HEAD);
+        do {
+            Node<T> old_tail = tail_updater.get(this);
+            if(old_tail.isFakeHead()) {
+                return null;
+            } else if (!old_tail.isEnd()) {
+                //Node<T> old_head = head_updater.get(this);
+                Node<T> old_head = this.head;
+                if (tail_updater.compareAndSet(this, old_tail, tmp)) {
+                    //head_updater.set(this, tmp);
+                    this.head = tmp;
+                    return new Reaped<>(old_head, old_tail);
+                }
+            } else {
+                //Node<T> old_head = head_updater.get(this);
+                Node<T> old_head = this.head;
+                return new Reaped<>(old_head, old_tail);
+            }
+        } while (true);
+    }
 
-			if (j < 1024) {
-				j++;
-			} else {
-				try {
-					Thread.sleep(System.currentTimeMillis() % 10);
-				} catch (Throwable throwable) {
-					// omitted
-				}
-			}
-		}
+    /**
+     * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
+     * time.
+     */
+    public void end() {
 
-	}
-
-	@SuppressWarnings("unchecked")
-	/**
-	 * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
-	 * time.
-	 * 
-	 * @param is_last_reap
-	 * @return
-	 */
-	public Reaped<T> reap(final boolean is_last_reap) throws ReapException {
-
-		// do not re-order for readability
-		if (is_last_reap) {
-			if (!ended.compareAndSet(1, 2)) {
-				// already ended and reaped.
-				// return null;
-				throw new ReapException("already ended and reaped");
-			}
-		}
-
-		Node<T> old_head = head_updater.get(this);
-		if (old_head != null) {
-
-			Node<T> old_tail = tail_updater.getAndSet(this, null);
-			if (old_tail == null) {
-				// it can not happen!!!
-				// if happened, this class is coded uncorrectly.
-				throw new Error("supposed to be not here.");
-			}
-			// for jvm's gc.
-			old_tail.set_next(old_tail);
-
-			head_updater.compareAndSet(this, old_head, null);
-
-			if (is_last_reap)
-				ended.compareAndSet(2, 3);
-
-			return new Reaped<T>(old_head, old_tail);
-
-		} else {
-
-			return null;
-		}
-
-	}
-
-	/**
-	 * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
-	 * time.
-	 */
-	public void end() {
-		ended.compareAndSet(0, 1);
-		// DO NOT reap here!!!
-	}
+        Node<T> ended = new Node<>(null, null, SIGNAL_END);
+        do {
+            Node<T> tail = tail_updater.get(this);
+            if (!tail.isEnd()) {
+                if (tail_updater.compareAndSet(this, tail, ended)) {
+                    tail.set_next(ended);
+                    break;
+                }
+            } else {
+                break;
+            }
+        } while (true);
+    }
 
 }
