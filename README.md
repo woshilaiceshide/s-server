@@ -18,9 +18,13 @@ s-server is optimized for tcp services extremely. In TechEmpower Framework Bench
 Three Examples: 
 * [EchoServer](https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/EchoServer.scala)
 
-* [SampleHttpServer](https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/SampleHttpServer.scala) <br> This sample http server contains synchronous response, asynchronous response, chunked response, response for chunked request, websocket, and is enabled with pipelining. <br> To request using pipelining, just run `'nc -C 127.0.0.1 8787 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
+* [SampleHttpServer](https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/SampleHttpServer.scala) 
+  <br> 
+  This sample http server contains synchronous response only. <br> To request using pipelining, just run `'nc -C 127.0.0.1 8787 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
 
 * [AdvancedHttpServer](https://github.com/woshilaiceshide/s-server/blob/master/src/test/scala/woshilaiceshide/sserver/test/AdvancedHttpServer.scala)
+  <br>
+  This sample http server contains synchronous response, asynchronous response, chunked response, response for chunked request, websocket, and is enabled with pipelining. <br> To request using pipelining, just run `'nc -C 127.0.0.1 8787 < src/test/scala/woshilaiceshide/sserver/http-requests.dos.txt`'.
 
 To test the above examples, just type the following command in your sbt console:
 * type `'test:run'` in your sbt console to run `'woshilaiceshide.sserver.test.EchoServer'`
