@@ -55,7 +55,7 @@ object SampleHttpServer extends App {
     accepted_channel_configurator = accepted_channel_configurator,
     buffer_pool_factory = DefaultByteBufferPoolFactory(512, 1024, true),
     receive_buffer_size = 1024 * 1024,
-    try_to_optimize_selector_key_set = true,
+    try_to_optimize_selector_key_set = false,
     io_thread_factory = new woshilaiceshide.sserver.http.AuxThreadFactory())
 
   val port = 8787
