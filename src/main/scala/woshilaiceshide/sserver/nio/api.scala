@@ -71,6 +71,8 @@ trait ChannelWrapper {
 
   def post_to_io_thread(task: Runnable): Boolean
 
+  def is_in_io_worker_thread(): Boolean
+
   def remoteAddress: java.net.SocketAddress
 
   def localAddress: java.net.SocketAddress

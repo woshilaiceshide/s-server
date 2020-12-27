@@ -388,6 +388,7 @@ class NioSocketReaderWriter private[nio] (
     }
 
     def post_to_io_thread(task: Runnable): Boolean = NioSocketReaderWriter.this.post_to_io_thread(task)
+    def is_in_io_worker_thread(): Boolean = NioSocketReaderWriter.this.is_in_io_worker_thread();
 
     private[nio] def inputEnded() = {
       if (null != handler) {

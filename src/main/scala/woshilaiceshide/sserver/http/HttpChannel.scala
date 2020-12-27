@@ -20,6 +20,7 @@ final class HttpChannel(
 
   def post_to_io_thread(task: Runnable): Boolean = channel.post_to_io_thread(task)
   def post_to_io_thread(task: => Unit): Boolean = channel.post_to_io_thread(new Runnable() { def run = task })
+  def is_in_io_worker_thread(): Boolean = channel.is_in_io_worker_thread()
 
   import S2ResponseRenderingComponent._
 
@@ -94,7 +95,11 @@ final class HttpChannel(
       if (close_mode == CloseMode.CloseAfterEnd) closeAfterEnd = true
 
       if (_finished && configurator.max_request_in_pipeline > 1) {
-        post_to_io_thread { transformer.process_request_in_pipeline(channel) }
+        if(is_in_io_worker_thread()) {
+          transformer.process_request_in_pipeline(channel)
+        } else {
+          post_to_io_thread { transformer.process_request_in_pipeline(channel) }
+        }
       }
 
       (write_result, close_now)
