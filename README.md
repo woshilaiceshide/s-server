@@ -65,7 +65,7 @@ Since 3.x, s-server clears out all those codes. So do not run s-server on jdk 6 
 
 	resolvers += "Woshilaiceshide Releases" at "http://dl.bintray.com/woshilaiceshide/maven/"
 
-	libraryDependencies += "woshilaiceshide" %% "s-server" % "3.0" withSources() 
+	libraryDependencies += "woshilaiceshide" %% "s-server" % "3.1" withSources() 
 
 2. build s-server locally using `'sbt publishLocal'`.
 
