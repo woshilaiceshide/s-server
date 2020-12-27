@@ -44,7 +44,7 @@ final case class HttpConfigurator(
                                    raw_request_uri_header: Boolean = false,
                                    max_request_in_pipeline: Int = 1,
                                    max_size_for_response_for_pipelining: Int = 1024 * 8,
-                                   server_name: String = "S-SERVER/3.1-SNAPSHOT",
+                                   server_name: String = "S-SERVER/3.1",
                                    chunkless_streaming: Boolean = false,
                                    transparent_header_requests: Boolean = false,
 
