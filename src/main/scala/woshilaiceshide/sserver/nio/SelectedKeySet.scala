@@ -17,6 +17,7 @@ final class SelectedKeySet(initial_size: Int = 1024) extends AbstractSet[Selecti
   private var size_for_key_b: Int = 0
 
   private var use_a: Boolean = true
+  private var EMPTY_ARRAY: Array[SelectionKey] = new Array(initial_size)
 
   private def enlarge_a() = {
     val new_size = if (keys_a.length > SelectedKeySet.MAX_SIZE_WHEN_ENLARGE) {
@@ -27,6 +28,10 @@ final class SelectedKeySet(initial_size: Int = 1024) extends AbstractSet[Selecti
     val new_keys = new Array[SelectionKey](new_size)
     System.arraycopy(keys_a, 0, new_keys, 0, size_for_key_a)
     keys_a = new_keys
+
+    if(EMPTY_ARRAY.length < new_size) {
+      EMPTY_ARRAY = new Array[SelectionKey](new_size)
+    }
   }
 
   private def enlarge_b() = {
@@ -38,6 +43,10 @@ final class SelectedKeySet(initial_size: Int = 1024) extends AbstractSet[Selecti
     val new_keys = new Array[SelectionKey](new_size)
     System.arraycopy(keys_b, 0, new_keys, 0, size_for_key_b)
     keys_b = new_keys
+
+    if(EMPTY_ARRAY.length < new_size) {
+      EMPTY_ARRAY = new Array[SelectionKey](new_size)
+    }
   }
 
   override def add(key: SelectionKey): Boolean = {
@@ -87,6 +96,14 @@ final class SelectedKeySet(initial_size: Int = 1024) extends AbstractSet[Selecti
       //keys_b(size_for_key_b) = null
       size_for_key_a = 0
       keys_b
+    }
+  }
+
+  def resetFlipped() = {
+    if(use_a) {
+      System.arraycopy(EMPTY_ARRAY, 0, keys_b, 0, size_for_key_b)
+    } else {
+      System.arraycopy(EMPTY_ARRAY, 0, keys_a, 0, size_for_key_a)
     }
   }
 

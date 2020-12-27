@@ -436,12 +436,13 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
             //completed
           } else {
             val key = keys(i)
-            keys(i) = null
+            //keys(i) = null
             process_selected_key(key, key.readyOps())
             iterate_keys(keys, i + 1)
           }
         }
         iterate_keys(keys, 0)
+        selected_keys.resetFlipped()
 
       } else {
         val iterator = selector.selectedKeys().iterator()
