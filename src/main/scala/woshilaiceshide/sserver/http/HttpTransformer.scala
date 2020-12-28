@@ -142,6 +142,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
     def cache_flushed() = cache_status = 0
     def flush_cache() = {
       if (cache_status == (1 | 2)) {
+        //TODO synchronized in flush already??? duplicated???
         HttpTransformer.this.synchronized { flush() }
         cache_status = 0
       } else if (cache_status == 1) {
