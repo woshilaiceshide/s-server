@@ -1,34 +1,36 @@
 package woshilaiceshide.sserver.nio
 
-import java.net.InetSocketAddress
-import java.util.Iterator
+import woshilaiceshide.sserver.utility._
 
 import java.io.Closeable
-import java.io.IOException
-
-import java.nio.ByteBuffer
-import java.nio.CharBuffer
 import java.nio.channels._
-import java.nio.charset._
-
 import scala.annotation.tailrec
-
-import woshilaiceshide.sserver.utility._
 
 object SelectorRunner {
 
   val log = org.slf4j.LoggerFactory.getLogger(classOf[SelectorRunner]);
 
   class NotRunningException(msg: String) extends RuntimeException(msg)
+
   class NotInIOThreadException(msg: String) extends RuntimeException(msg)
+
   object NotInIOThreadException {
     def apply() = {
       new NotInIOThreadException(s"please run this method in i/o thread. the current thread is ${Thread.currentThread().getName}-${Thread.currentThread().getId}")
     }
   }
 
-  def safe_close(x: Closeable) = try { if (null != x) x.close(); } catch { case ex: Throwable => log.warn("failed", ex) }
-  def safe_op[T](x: => T) = try { x } catch { case ex: Throwable => log.warn("failed", ex) }
+  def safe_close(x: Closeable) = try {
+    if (null != x) x.close();
+  } catch {
+    case ex: Throwable => log.warn("failed", ex)
+  }
+
+  def safe_op[T](x: => T) = try {
+    x
+  } catch {
+    case ex: Throwable => log.warn("failed", ex)
+  }
 
   final case class TimedTask(when_to_run: Long, runnable: Runnable)
 
@@ -93,10 +95,13 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   }
 
   private var selector = new_selector()
+
   //this method is invoked in the i/o thread only.
   private def close_selector() = {
-    if (null != selector) safe_close(selector); selector = null;
+    if (null != selector) safe_close(selector);
+    selector = null;
   }
+
   /**
    * this method is thread safe.
    */
@@ -148,24 +153,29 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       val iterator = selector.keys().iterator()
       while (iterator.hasNext()) {
         val key = iterator.next()
-        safe_op { worker.apply(key) }
+        safe_op {
+          worker.apply(key)
+        }
       }
     } else throw new NotRunningException("selector runner is stopping or stopped or not started.")
 
   }
 
   private var worker_thread: Thread = null
+
   def get_worker_thread() = worker_thread
 
   private val status = new java.util.concurrent.atomic.AtomicInteger(INITIALIZED)
 
   private val immediate_tasks: ReapableQueue[AnyRef] = new ReapableQueue[AnyRef]()
+
   /**
    * only can be posted when the runner is in 'STARTED' status.
    */
   def post_to_io_thread(task: => Unit): Boolean = post_to_io_thread(new Runnable() {
     def run() = task
   })
+
   /**
    * only can be posted when the runner is in 'STARTED' status.
    */
@@ -177,6 +187,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       false
     }
   }
+
   private def end_tasks() = {
     immediate_tasks.end()
   }
@@ -195,17 +206,15 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
         }
         case runnable: Runnable => runnable.run()
-        case _                  =>
+        case _ =>
       }
     } catch {
       case ex: Throwable => log.warn("failed", ex)
     }
   }
-  private def reap_immediate_tasks(is_last_reap: Boolean) = {
-    val tasks_to_do = immediate_tasks.reap(is_last_reap)
-    if (null != tasks_to_do) {
-      ReapableQueueUtility.foreach(tasks_to_do, task_runner)
-    }
+
+  private def reap_immediate_tasks() = {
+    ReapableQueueUtility.reap(immediate_tasks, task_runner)
   }
 
   //please invoke this method after you start the nio socket server.
@@ -213,6 +222,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
   private val lock_for_timed_tasks = new Object
   private var timed_tasks: LinkedNodeList[TimedTask] = LinkedNodeList.newEmpty()
+
   def schedule_fuzzily(task: Runnable, delayInSeconds: Int) = {
     if (!configurator.enable_fuzzy_scheduler) {
       false
@@ -228,6 +238,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       }
     }
   }
+
   private def reap_timed_tasks() = {
     if (configurator.enable_fuzzy_scheduler) {
       val timed_tasks_to_do = lock_for_timed_tasks.synchronized {
@@ -241,21 +252,28 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         }
       }
       if (null != timed_tasks_to_do)
-        timed_tasks_to_do.foreach { x => safe_op { x.runnable.run() } }
+        timed_tasks_to_do.foreach { x => safe_op {
+          x.runnable.run()
+        }
+        }
     }
   }
 
   private var terminated = false
   private val lock_for_terminated = new Object
   private var when_terminated: LinkedNodeList[Runnable] = LinkedNodeList.newEmpty()
+
   def register_on_termination[T](code: => T) = lock_for_terminated.synchronized {
     if (terminated) {
       false
     } else {
-      when_terminated.append(new Runnable { def run = code })
+      when_terminated.append(new Runnable {
+        def run = code
+      })
       true
     }
   }
+
   private def reap_terminated() = {
     val termination_sinks = lock_for_terminated.synchronized {
       //disable registerOnTermination first, before executing the sinks.
@@ -289,18 +307,22 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
     log.warn("stopping gracefully")
     stop_gracefully()
   }
+
   /**
    * if true returned(it means "no more work left"), I'll stop immediately.
    */
   protected def stop_gracefully(): Boolean
+
   /**
    * if true, then some work is in progress so this runner can not be stopped.
    */
   protected def has_remaining_work(): Boolean
+
   /**
    * just before the next loop.
    */
   protected def before_next_loop(): Unit
+
   /**
    * process the selected key. do your best to use the given parameter named 'ready_ops', and do not user 'key.readyOps()'
    */
@@ -321,7 +343,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         close_selector()
         reap_timed_tasks()
         end_tasks()
-        reap_immediate_tasks(true)
+        reap_immediate_tasks()
         reap_terminated()
         false
       }
@@ -330,6 +352,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
   }
 
   private var async: Boolean = false
+
   def is_async = async
 
   def start(asynchronously: Boolean = true) = {
@@ -341,7 +364,9 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         //worker_thread should not be assigned in the new thread's running.
         worker_thread = {
           val tmp = configurator.io_thread_factory.newThread(new Runnable {
-            override def run() = if (start0()) { safe_loop() }
+            override def run() = if (start0()) {
+              safe_loop()
+            }
           })
           tmp.setName(s"sserver-selector-h${hashCode()}-t${System.currentTimeMillis()}")
           tmp
@@ -350,7 +375,9 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       } else {
         async = false
         worker_thread = Thread.currentThread()
-        if (start0()) { safe_loop() }
+        if (start0()) {
+          safe_loop()
+        }
       }
     }
   }
@@ -368,17 +395,21 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       close_selector()
       reap_timed_tasks()
       end_tasks()
-      reap_immediate_tasks(true)
+      reap_immediate_tasks()
       reap_terminated()
       log.info(s"stopped(#${this.hashCode()})")
     }
   }
 
   private var stop_deadline: Long = 0
+
   /**
    * if i'm stopped using a "timeout", then this is the deadline.
    */
-  def get_stop_deadline() = this.synchronized { stop_deadline }
+  def get_stop_deadline() = this.synchronized {
+    stop_deadline
+  }
+
   /**
    * the status is returned.
    *
@@ -404,11 +435,16 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
         } else {
           stop_deadline = Math.max(0, timeout) + System.currentTimeMillis()
         }
-        safe_op { wakeup_selector() }
-        safe_op { worker_thread.interrupt() }
+        safe_op {
+          wakeup_selector()
+        }
+        safe_op {
+          worker_thread.interrupt()
+        }
       }
     }
   }
+
   def join(timeout: Long) = {
     if (worker_thread != Thread.currentThread()) {
       worker_thread.join(timeout)
@@ -419,7 +455,9 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
 
   //a just normal field, not labeled as volatile
   private var already_in_stopping = false
+
   protected def is_stopping() = already_in_stopping
+
   @tailrec private def loop(): Unit = {
 
     //lock_for_selector is not needed because i am in the i/o thread.
@@ -441,6 +479,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
             iterate_keys(keys, i + 1)
           }
         }
+
         iterate_keys(keys, 0)
         selected_keys.resetFlipped()
 
@@ -479,7 +518,7 @@ abstract class SelectorRunner(configurator: SelectorRunnerConfigurator) {
       true
     }
 
-    reap_immediate_tasks(false)
+    reap_immediate_tasks()
     reap_timed_tasks()
 
     if (continued) {

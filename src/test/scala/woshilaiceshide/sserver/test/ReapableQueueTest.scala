@@ -51,25 +51,20 @@ object ReapableQueueTest extends App {
         Thread.sleep(s)
       }
 
-      val is_last_reap = i == max_loop
-
-      if (is_last_reap) {
+      if (i == max_loop) {
         queue.end()
       }
 
-      val reaped = queue.reap(is_last_reap)
-      if (null != reaped) {
-        ReapableQueueUtility.foreach(reaped, (ball: Ball) => {
-          val prev = ids(ball.index)
-          if (prev + 1 != ball.value) {
-            throw new Error("supposed to be not here!")
-          } else {
-            ids(ball.index) = ball.value
-          }
-        })
-      }
+      ReapableQueueUtility.reap(queue, (ball: Ball) => {
+        val prev = ids(ball.index)
+        if (prev + 1 != ball.value) {
+          throw new Error("supposed to be not here!")
+        } else {
+          ids(ball.index) = ball.value
+        }
+      })
 
-      if (!is_last_reap) {
+      if (i != max_loop) {
         work()
       } else {
         (0 until ids.length).map { x =>
@@ -97,13 +92,19 @@ object ReapableQueueTest extends App {
       new Thread(writer_loads(i))
     }
 
-    writers.map { _.setDaemon(true) }
+    writers.map {
+      _.setDaemon(true)
+    }
     reader.setDaemon(true)
 
-    writers.map { _.start() }
+    writers.map {
+      _.start()
+    }
     reader.start()
 
-    writers.map { _.join() }
+    writers.map {
+      _.join()
+    }
     reader.join()
 
     for (i <- 0 until ids.length) {

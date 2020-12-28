@@ -1,6 +1,6 @@
 package woshilaiceshide.sserver.utility;
 
-import java.util.concurrent.atomic.*;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
  * multiple threads can be 'add(...)' concurrently, but only one thread may
@@ -85,7 +85,7 @@ public class ReapableQueue<T> {
         }
     }
 
-    public static class Reaped<T> {
+    final static class Reaped<T> {
         public Node<T> head;
         public final Node<T> tail;
 
@@ -164,18 +164,16 @@ public class ReapableQueue<T> {
 
     @SuppressWarnings("unchecked")
     /**
-     * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
-     * time.
+     * This method should be invoked in a fixed thread.
      *
-     * @param is_last_reap
      * @return
      */
-    public Reaped<T> reap(final boolean is_last_reap) throws ReapException {
+    Reaped<T> reap() throws ReapException {
 
         Node<T> tmp = new Node<>(null, null, SIGNAL_FAKE_HEAD);
         do {
             Node<T> old_tail = tail_updater.get(this);
-            if(old_tail.isFakeHead()) {
+            if (old_tail.isFakeHead()) {
                 return null;
             } else if (!old_tail.isEnd()) {
                 //Node<T> old_head = head_updater.get(this);
@@ -193,10 +191,7 @@ public class ReapableQueue<T> {
         } while (true);
     }
 
-    /**
-     * DO NOT invoke 'reap(...)' and /or 'end()' in multiple threads at the same
-     * time.
-     */
+    @SuppressWarnings("unchecked")
     public void end() {
 
         Node<T> ended = new Node<>(null, null, SIGNAL_END);

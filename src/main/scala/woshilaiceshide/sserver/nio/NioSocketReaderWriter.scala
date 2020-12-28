@@ -242,11 +242,8 @@ class NioSocketReaderWriter private[nio] (
       }
 
       {
-        val reaped = asynchronously_pended_io_operations.reap(false)
-        if (null != reaped) {
-          ReapableQueueUtility.foreach(reaped, io_checker)
-          has = true
-        }
+        val reapedCount = ReapableQueueUtility.reap(asynchronously_pended_io_operations, io_checker)
+        has = reapedCount > 0
       }
 
       if (has) check_for_pending_io()

@@ -1,16 +1,38 @@
-package woshilaiceshide.sserver.utility;
+package woshilaiceshide.sserver.utility
+
+;
 
 import scala.annotation._
 
 trait ReapableQueueUtility {
 
-  @tailrec final def foreach[T](reaped: ReapableQueue.Reaped[T], runner: T => Unit): Unit = {
+  /**
+   * TODO check the running thread is changed.
+   * @param queue
+   * @param reaper
+   * @tparam T
+   * @return reaped count
+   */
+  final def reap[T](queue: ReapableQueue[T], reaper: T => Unit): Int = {
+    val reaped = queue.reap()
+    if (null != reaped) {
+      foreach(reaped, reaper, 0)
+    } else {
+      0
+    }
+  }
+
+  @tailrec private final def foreach[T](reaped: ReapableQueue.Reaped[T], reaper: T => Unit, reapedCount: Int): Int = {
     val current = reaped.get_current_and_advance()
     if (current != null) {
       if (current.isNormal) {
-        runner(current.value)
+        reaper(current.value)
+        foreach(reaped, reaper, reapedCount + 1)
+      } else {
+        foreach(reaped, reaper, reapedCount)
       }
-      foreach(reaped, runner)
+    } else {
+      reapedCount
     }
   }
 
