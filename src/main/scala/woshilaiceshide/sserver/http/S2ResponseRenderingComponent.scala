@@ -185,6 +185,15 @@ trait S2ResponseRenderingComponent {
         allowUserContentType = entity.isEmpty && ctx.requestMethod == HttpMethods.HEAD,
         contentLengthDefined = ctx.requestMethod != HttpMethods.HEAD || transparentHeadRequests)
 
+      //TODO render all the general headers in one time:
+      /**
+       * < HTTP/1.1 200 OK
+       * < Server: S-SERVER/3.1
+       * < Connection: Keep-Alive
+       * < Content-Length: 13
+       * < Content-Type: text/plain
+       * < Date: Mon, 28 Dec 2020 06:58:03 GMT
+       */
       renderConnectionHeader(close)
 
       // don't set a Content-Length header for non-keep-alive HTTP/1.0 responses (rely on body end by connection close),
