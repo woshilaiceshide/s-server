@@ -1,43 +1,29 @@
 organization := "woshilaiceshide"
-
 name := "s-server"
-
 version := "3.2-SNAPSHOT"
-
 description := "Some Small Servers written in Scala, including a nio server and a small httpd, which also supports websocket(v13 only)."
-
 licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
 
 publishMavenStyle := true
-
-enablePlugins(BintrayPlugin)
-
 pomIncludeRepository  := {_ => false}
 
+enablePlugins(BintrayPlugin)
 bintrayRepository := "maven"
-
 bintrayOrganization := Some("woshilaiceshide")
-
 bintrayVcsUrl := Some(s"git@github.com:woshilaiceshide/${name.value}.git")
-
 bintrayReleaseOnPublish in ThisBuild := false
 
-compileOrder in Compile := CompileOrder.Mixed
-
 transitiveClassifiers := Seq("sources")
+retrieveManaged := false
 
 scalaVersion := "2.12.12"
-
+compileOrder in Compile := CompileOrder.Mixed
 scalacOptions := Seq("-unchecked", "-deprecation", "-opt:l:inline", "-opt-inline-from:**", "-encoding", "utf8", "-Yno-adapted-args", "-target:jvm-1.8")
-
 javacOptions ++= Seq("-Xlint:deprecation", "-Xlint:unchecked", "-source", "1.8", "-target", "1.8", "-g:vars")
-
-retrieveManaged := false
 
 enablePlugins(JavaAppPackaging)
 
 unmanagedSourceDirectories in Compile += baseDirectory( _ / "src" / "scala" ).value
-
 unmanagedSourceDirectories in Compile += baseDirectory( _ / "spray" / "scala" ).value
 
 //libraryDependencies ++= 
@@ -54,11 +40,8 @@ unmanagedSourceDirectories in Compile += baseDirectory( _ / "spray" / "scala" ).
 //  )
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4.17"
-
 libraryDependencies += "org.parboiled" %% "parboiled-scala" % "1.3.1"
-
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
-
 libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.30"
 
 javaOptions in Universal += "-J-XX:-RestrictContended"
