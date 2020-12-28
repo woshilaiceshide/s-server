@@ -113,7 +113,7 @@ final class HttpChannel(
   private[http] def writeResponseToCache(response: HttpResponsePart,
                                          size_hint: Int = 1024,
                                          write_server_and_date_headers: Boolean = configurator.write_server_and_date_headers,
-                                         cachable: Cacheable): WriteResult = {
+                                         cacheable: Cacheable): WriteResult = {
 
     val (wr, should_close) = transformer.synchronized {
 
@@ -124,7 +124,7 @@ final class HttpChannel(
       val close_mode = renderResponsePartRenderingContext(r, ctx, akka.event.NoLogging, write_server_and_date_headers)
 
       //use 'write_even_if_too_busy = true' as intended
-      val write_result = cachable.write(r.to_byte_buffer(), false)
+      val write_result = cacheable.write(r.to_byte_buffer(), false)
 
       configurator.return_bytes_rendering(r)
 

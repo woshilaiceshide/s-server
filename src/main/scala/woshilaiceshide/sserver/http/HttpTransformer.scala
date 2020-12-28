@@ -533,7 +533,7 @@ class HttpTransformer(handler: HttpChannelHandler, configurator: HttpConfigurato
       current_sink = null
     }
 
-    //nothing to do with cachable
+    //nothing to do with cacheable
 
     parser = null
   }
