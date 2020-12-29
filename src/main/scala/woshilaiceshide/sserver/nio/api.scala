@@ -59,9 +59,9 @@ trait Cacheable {
   def flush(): WriteResult
 }
 
-/*
-   * all operations are thread safe
-   */
+/**
+ * A wrapper of a socket channel. All operations are thread safe.
+ */
 trait ChannelWrapper {
 
   /**
@@ -94,7 +94,7 @@ trait ChannelWrapper {
    * 1.
    * if bytes that are already waiting for written is more than max_bytes_waiting_for_written_per_channel,
    * then no bytes will be written, except for write_even_if_too_busy is true.
-   * buf after this method's execution, byte waiting for written may be more than max_bytes_waiting_for_written_per_channel.
+   * but after this method's execution, bytes waiting for written may be more than max_bytes_waiting_for_written_per_channel.
    * if you are a lazy coder, then use true for write_even_if_too_busy.
    *
    * 2.
@@ -212,11 +212,14 @@ trait ByteBufferPool {
 
   /**
    * @param helper
-   * used by the pool when previous buffers returned.
+   * this flag is used by the pool when previous buffers returned.
    * for example, you can use 'helper' to identify the internal bucket from which the returned buffer is borrowed, and lock conflicts may be reduced.
    */
   def return_buffer(buffer: ByteBuffer, helper: Byte): Unit
 
+  /**
+   * release this buffer pool.
+   */
   def free(): Unit
 }
 
