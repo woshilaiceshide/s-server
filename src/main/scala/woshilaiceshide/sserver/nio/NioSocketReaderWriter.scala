@@ -668,7 +668,7 @@ class NioSocketReaderWriter private[nio] (
         }
       }
 
-      def pend_reusable_bytes(buffer: ByteBuffer): Unit = {
+      private def pend_reusable_bytes(buffer: ByteBuffer): Unit = {
         if (cached == null) {
           cached = new BytesList(new BytesNode(buffer, null, 0), null)
         } else {
