@@ -395,7 +395,7 @@ class NioSocketReaderWriter private[nio] (
 
     private[nio] def bytesReceived(bytes: ByteBuffer) = {
       //DO NOT take the received event into account for idle probing!
-      //If ... then use resetIdel()
+      //If ... then use resetIdle()
       /*this.synchronized {
         this.last_active_time = System.currentTimeMillis()
       }*/
