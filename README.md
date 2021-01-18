@@ -39,6 +39,24 @@ To test the above examples, just type the following command in your sbt console:
   	#or set mainClass in Compile := Some("woshilaiceshide.sserver.test.AdvancedHttpServer")
   	stage
 
+## How to Build It?
+If proxy is needed:
+```shell
+sbt \
+    -Dsbt.repository.config=./repositories \
+    -Dsbt.override.build.repos=true \
+    -Dhttp.proxyHost=${proxy_host} -Dhttp.proxyPort=${proxy_port} -Dhttp.proxyUser=${proxy_user} -Dhttp.proxyPassword=${proxy_password} \
+    -Dhttp.nonProxyHosts="localhost|127.0.0.1" \
+    -Dhttps.proxyHost=${proxy_host} -Dhttps.proxyPort=${proxy_port} -Dhttps.proxyUser=${proxy_user} -Dhttps.proxyPassword=${proxy_password} \
+    -Dhttps.nonProxyHosts="localhost|127.0.0.1" \
+    -Dsbt.gigahorse=false \
+    -v -d stage
+```
+If no proxy is needed: 
+```shell
+sbt -Dsbt.repository.config=./repositories -Dsbt.override.build.repos=true -v -d stage
+```
+
 ## Features
 * small footprint when running. HOW SMALL? Try by yourself, and you'll get it!
 * only one single thread is needed for basic running, and this thread can be used as an external task runner and a fuzzy scheduler. (the builtin fuzzy scheduler may be disabled when constructing the server instance.)

@@ -1,0 +1,17 @@
+#from ../sbt-launch.jar/sbt/sbt.boot.properties
+#see http://www.scala-sbt.org/1.x/docs/Launcher-Configuration.html and http://www.scala-sbt.org/1.x/docs/Proxy-Repositories.html
+
+[repositories]
+  local
+  local-preloaded-ivy: file:///${sbt.preloaded-${sbt.global.base-${user.home}/.sbt}/preloaded/}, [organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]
+  local-preloaded: file:///${sbt.preloaded-${sbt.global.base-${user.home}/.sbt}/preloaded/}
+  maven-local
+  maven-central
+  #legacy sbt(<1.3.13?) does not recognise 'allowInsecureProtocol'
+  #private-maven-central: http://xxx/repository/all-in-one/, allowInsecureProtocol
+  sbt-maven-releases: https://repo.scala-sbt.org/scalasbt/maven-releases/, bootOnly
+  sbt-maven-snapshots: https://repo.scala-sbt.org/scalasbt/maven-snapshots/, bootOnly
+  typesafe-ivy-releases: https://repo.typesafe.com/typesafe/ivy-releases/, [organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext], bootOnly
+  sbt-ivy-snapshots: https://repo.scala-sbt.org/scalasbt/ivy-snapshots/, [organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext], bootOnly
+  sbt-plugin-releases: https://dl.bintray.com/sbt/sbt-plugin-releases, [organization]/[module]/scala_[scalaVersion]/sbt_[sbtVersion]/[revision]/[type]s/[artifact](-[classifier]).[ext]
+  sbt-plugin-from-maven: https://repo1.maven.org/maven2/
