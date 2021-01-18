@@ -47,11 +47,21 @@ libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.30"
 javaOptions in Universal += "-J-XX:-RestrictContended"
 javaOptions in Universal += "-J-Xmx1024m"
 javaOptions in Universal += "-J-Xms1024m"
-//javaOptions in Universal += "-J-XX:+UnlockDiagnosticVMOptions"
-//javaOptions in Universal += "-J-XX:+PrintInlining"
 javaOptions in Universal += "-Dproperty1=value1"
 javaOptions in Universal += "-property2=value2"
 javaOptions in Universal += s"-version=${version.value}"
+
+//enable jit log
+//use jitwatch to inspect jit
+//see https://github.com/AdoptOpenJDK/jitwatch/releases
+javaOptions in Universal += "-J-XX:+UnlockDiagnosticVMOptions"
+javaOptions in Universal += "-J-XX:+PrintCompilation"
+javaOptions in Universal += "-J-XX:+PrintInlining"
+javaOptions in Universal += "-J-XX:+PrintCodeCache"
+javaOptions in Universal += "-J-XX:+PrintCodeCacheOnCompilation"
+javaOptions in Universal += "-J-XX:+TraceClassLoading"
+javaOptions in Universal += "-J-XX:+LogCompilation"
+javaOptions in Universal += "-J-XX:LogFile=./jvm.log"
 
 //use jol to inspect object layout schemes.
 //see 'http://openjdk.java.net/projects/code-tools/jol/'

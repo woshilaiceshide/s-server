@@ -98,6 +98,10 @@ Since 3.x, s-server clears out all those codes. So do not run s-server on jdk 6 
 * write test cases
 * ...
 
+## JVM Introspection
+* use [jol](http://openjdk.java.net/projects/code-tools/jol/) to inspect MEMORY
+* use [jitwatch](https://github.com/AdoptOpenJDK/jitwatch/releases) about BYTE CODE & JIT, see https://medium.com/@malith.jayasinghe/performance-improvements-via-jit-optimization-aa9766b705d2
+
 ## Attention Please!
 When the input stream is shutdown by the client, the server will read "-1" bytes from the stream.
 But, "-1" can not determine among "the entire socket is broken" or "just the input is shutdown by peer, but the output is still alive".
