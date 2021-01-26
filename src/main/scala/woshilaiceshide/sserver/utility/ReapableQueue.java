@@ -179,6 +179,7 @@ public class ReapableQueue<T> {
                 //Node<T> old_head = head_updater.get(this);
                 Node<T> old_head = this.head;
                 if (tail_updater.compareAndSet(this, old_tail, tmp)) {
+                    //only a single thread could modify 'this.head'
                     //head_updater.set(this, tmp);
                     this.head = tmp;
                     return new Reaped<>(old_head, old_tail);
