@@ -3,7 +3,7 @@ package woshilaiceshide.sserver.utility;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
- * multiple threads can be 'add(...)' concurrently, but only one thread may
+ * multiple threads can 'add(...)' concurrently, but only one thread may
  * 'reap()' and/or 'end()' at the same time.
  *
  * @param <T>
